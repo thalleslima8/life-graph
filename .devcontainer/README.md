@@ -36,6 +36,13 @@ throwaway `lifegraph_test_*` database on the `postgres` service, applies the
 same bootstrap and migrations, and drops it at the end. On CI and on the host
 (variable unset) the fixture uses Testcontainers with the same pinned image.
 
+## Claude Code
+
+`post-create.sh` copies `claude-settings.json` (`bypassPermissions` plus a broad
+allowlist) to `~/.claude/settings.json` **inside the container only**. That is
+safe here because the container is disposable, has no Docker socket and sees
+only the workspace. Never merge it into the versioned `.claude/settings.json`.
+
 ## Recovery
 
 `Rebuild Container` fixes a broken `app`. To reset the database, delete the
