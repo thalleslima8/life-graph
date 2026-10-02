@@ -1,0 +1,45 @@
+# --- Sistema operacional ---
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# --- Editores / IDEs ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Segredos e variáveis de ambiente ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Claude Code (configurações locais/pessoais) ---
+.claude/settings.local.json
+CLAUDE.local.md
+
+# --- Logs e temporários ---
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# --- Build / dependências (genérico; ajustar quando a stack for definida) ---
+dist/
+build/
+out/
+coverage/
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+bin/
+obj/

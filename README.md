@@ -1,91 +1,163 @@
-# ai-starter-kit
+# Life Graph
 
-Base de tooling de IA para novos projetos. Este repositório **não contém
-código** — sem `src/`, `test/` ou devcontainer. Ele traz só a configuração do
-Claude Code:
+> **Capture without organizing. Explore without searching. Understand
+> relationships without building them all by hand.**
 
-| Arquivo                | Função                                                              |
-| ---------------------- | ------------------------------------------------------------------- |
-| `.claude/settings.json` | Declara o marketplace `my-skills` e habilita o plugin `workflow`.   |
-| `CLAUDE.md`            | Template genérico de instruções, com placeholders a preencher.      |
+Life Graph is an application for organizing your life as a network of topics,
+objects, resources, people, events and the relationships between them.
 
-## Este repositório não é autossuficiente
+Instead of forcing information into folders, pages or isolated lists, Life
+Graph represents your life as a **navigable graph**, where things connect
+through context, meaning, semantic proximity, explicit relations, time, people,
+projects, external resources, location and user-defined properties.
 
-Ele é uma camada que se **combina** com outra base, não a substitui. Para um
-projeto .NET/Azure Functions, a base de código vem do
-[limaj-framework](https://github.com/limajsolutions/limaj-framework)
-(`template-backend/`), e o conteúdo deste repositório é copiado por cima. Para
-outras stacks, este repositório é o ponto de partida e você traz a stack.
+The goal: **a life graph that almost organizes itself**, letting you navigate
+your own life by context, semantic proximity and time, without having to
+maintain a knowledge base by hand.
 
-## Fluxo de uso
+> **Status:** early concept stage. There is no code yet. The full product
+> specification (in Portuguese) is in [`docs/global.md`](docs/global.md).
 
-### Projeto novo usando limaj-framework (.NET/Azure Functions)
+## The problem
 
-```bash
-git clone https://github.com/limajsolutions/limaj-framework.git
-cp -r limaj-framework/template-backend <Produto>
-cd <Produto> && rm -rf .git && git init -b main
+Traditional tools organize information hierarchically:
 
-git clone https://github.com/thalleslima8/ai-starter-kit.git /tmp/ai-base
-cp -r /tmp/ai-base/.claude ./.claude
-cp /tmp/ai-base/CLAUDE.md ./CLAUDE.md
-# preencher os placeholders do CLAUDE.md (camadas e identidade vêm do
-# CLAUDE.md do limaj-framework; Segurança e Migrations são do produto —
-# ver comentário dentro do arquivo) e seguir o rename Template→Produto
-# documentado no README do limaj-framework
+```text
+Folder
+└── Subfolder
+    └── Document
 ```
 
-### Projeto novo em outra stack (sem limaj-framework)
+But life doesn't follow a single hierarchy. The same thing belongs to many
+contexts at once:
 
-```bash
-git clone https://github.com/thalleslima8/ai-starter-kit.git <Produto>
-cd <Produto> && rm -rf .git && git init -b main
-# preencher CLAUDE.md do zero para a stack real
-# substituir este README.md pelo README do projeto
+```text
+Meditations
+├── Philosophy
+├── Stoicism
+├── Marcus Aurelius
+├── Books I own
+├── Books I'm reading
+└── Living room bookshelf
 ```
 
-### Em ambos os casos, dentro do projeto
+Forcing a single folder or category throws away those connections. Life Graph
+represents them directly.
 
-```bash
-code . && claude
+## Principles
+
+- **Capture first, organize later.** Adding information should be effortless.
+  You never have to decide up front where something goes, which tags to use or
+  what it relates to. The system can suggest that later, and anything
+  unclassified waits in an **Inbox**.
+- **The graph emerges.** Connections come from three sources:
+  - **explicit relations** you create (`Meditations ─ written_by → Marcus Aurelius`);
+  - **structural relations** derived from properties (`Dresser ─ belongs_to → Nursery`);
+  - **semantic relations** inferred by the system (`Meditations - - - Ethics`).
+- **AI-assisted, not AI-dependent.** AI helps extract, classify and suggest,
+  but creating, editing, filtering, searching by property and navigating the
+  graph all work without any model call. Embeddings and traditional algorithms
+  handle most similarity work, and models are called only on meaningful events
+  such as new content, a new URL or a natural-language question.
+- **You are the authority over your graph.** AI produces *proposals*, not
+  silent changes, and every automatic relation can answer *"why is this
+  related?"*
+
+## Core concepts
+
+| Concept         | Description                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Node**        | Any relevant entity in your life: a topic, person, place, item, project, goal or event.                                                  |
+| **Relation**    | A typed, weighted link between Nodes (`related_to`, `part_of`, `written_by`, `located_at`, …) with an `origin` (user, system, ai, import) and a `confidence`. |
+| **Hard Graph**  | Confirmed facts and relations: the actual structure of your life.                                                                        |
+| **Soft Graph**  | Inferred relations with a confidence score, visually distinct, which you can accept, ignore, remove or promote to permanent.              |
+| **Type**        | User-defined schema (Book, Person, Project, Place, …) describing the usual properties of a Node.                                         |
+| **Property**    | Configurable fields (text, date, status, select, rating, node reference, location, …) that become filters, groupings and views.           |
+| **Tag**         | Lightweight classifier for filtering and grouping. It complements Relations and never replaces them.                                      |
+| **Collection**  | A manual or dynamic grouping, often a saved query (`Type = Book AND Status = WantToRead`), that also serves as navigation.                 |
+| **Resource**    | External content (video, article, web page, podcast, PDF, …) treated as a first-class object with metadata and an embedding.             |
+| **View**        | A representation of a query over the graph (Graph, List, Cards, Timeline, Table, Gallery, Map). Views never own data.                    |
+
+## Navigating the graph
+
+- **2.5D graph view:** spatial depth without the usability cost of free 3D.
+  Size reflects relevance, proximity reflects similarity, and intensity
+  reflects recent activity.
+- **Semantic zoom:** zooming changes the *level of meaning*, not just the
+  scale (`My Life → Knowledge → Philosophy → Stoicism → Meditations`). It
+  should feel like *entering* a subject.
+- **Local graph:** open any Node and see only its immediate context, with
+  adjustable depth.
+- **Global graph:** an exploratory, contemplative overview with automatic
+  clustering. It is not the main working interface.
+- **Time as a dimension:** Nodes carry dates, deadlines, periods and
+  recurrence, so you can ask *"show everything related to the baby in the next
+  three months."*
+
+## Search
+
+- **Text search:** `"Marcus Aurelius"`
+- **Property search:** `Type = Book AND Status = Reading`
+- **Semantic search:** `"things about dealing better with problems"` finds
+  Stoicism, *Meditations* and related notes without a literal match.
+- **Natural-language questions:** *"Which philosophy books do I already
+  own?"*, *"Where is my copy of Meditations?"*
+
+## Sharing
+
+Share **part** of your graph, never the whole thing, through a
+**Shared Graph View**: a root Node with depth and size limits, in *snapshot*
+or *live* mode, with private, unlisted, public or password-protected access.
+Access control is enforced on the backend, so a viewer can never use visible
+relations or APIs to escape the authorized subgraph.
+
+## Architecture (conceptual)
+
+```text
+USER GRAPH        Nodes · Relations · Properties · Collections
+      ↓
+SEMANTIC LAYER    Embeddings · Similarity · Clustering · Ranking
+      ↓
+AI LAYER          Classification · Extraction · Summaries · Suggestions · Natural language
 ```
 
-```
-/plugin marketplace add thalleslima8/my-skills
-/plugin install workflow@my-skills
-# opcional, só em projeto .NET/EF Core:
-/plugin install dotnet@my-skills
-```
+**The user's graph is the product.** AI, calendar, notes and resources are all
+ways to enrich and interact with it.
 
-O `.claude/settings.json` já declara o marketplace e habilita o `workflow`, então
-ao abrir o projeto e confiar na pasta o Claude Code oferece a instalação. Os
-comandos `/plugin` acima são o caminho manual equivalente.
+## Roadmap
 
-> `extraKnownMarketplaces` só vale depois que você confia na pasta do projeto.
-> Antes disso o marketplace não é carregado e nenhum plugin é instalado.
+**MVP:** validate one hypothesis: *do people find it useful to organize and
+navigate personal information through context and relationships, without
+manually structuring a knowledge base?*
 
-### Plugin opcional: `dotnet`
+- Nodes, Relations, Types, Tags, Collections
+- Resources from URLs (web pages, YouTube, articles)
+- Inbox
+- Local 2.5D graph view
+- Embedding-based semantic suggestions
+- Text search and basic filters
+- Basic AI capture (suggests type, tags and relations)
 
-O `settings.json` deste repositório **não** habilita `dotnet@my-skills`, porque
-ele é específico de stack e só faz sentido depois de saber se o projeto usa
-EF Core. Se usar, escolha um dos dois caminhos:
+**Phase 2:** calendar integration, timeline, shared graph views, advanced
+collections, mobile share target, AI summaries, natural-language graph search,
+physical locations.
 
-- rodar `/plugin install dotnet@my-skills`, ou
-- adicionar a linha ao `enabledPlugins` do `.claude/settings.json` do projeto:
+**Phase 3:** Constellations (shareable curated subgraphs), public sharing,
+collaborative graphs, import/export, agents, browser extension.
 
-```json
-"enabledPlugins": {
-  "workflow@my-skills": true,
-  "dotnet@my-skills": true
-}
-```
+**Explicitly out of the MVP:** 3D graph, social network, collaborative
+editing, autonomous agents, native mobile apps, complex offline-first, plugin
+system.
 
-## Onde vivem commands, agents e skills
+## What Life Graph is not
 
-Os commands, agents e skills do Claude Code (`analyst`, `arquiteto`, `flow`,
-`spike`, `qa`, `infra` e as skills de teste, review e commit) **não vivem
-aqui**. Eles ficam em
-[thalleslima8/my-skills](https://github.com/thalleslima8/my-skills) e chegam a
-este ou a qualquer projeto apenas via `/plugin install`. Não adicione arquivos
-de command, agent ou skill a este repositório — a mudança deve ser feita no
-`my-skills`.
+Not a Notion clone, an Obsidian clone, a task manager, a calendar app, a
+bookmark manager or an AI chatbot. It may borrow from these, but its core is
+**a contextual, evolving map of your life**.
+
+## Inspiration
+
+Learning from [TheBrain](https://thebrain.com), [Capacities](https://capacities.io),
+[Heptabase](https://heptabase.com), [Anytype](https://anytype.io),
+[Tana](https://tana.inc) and [Obsidian](https://obsidian.md) without copying
+any of them.
