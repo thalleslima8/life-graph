@@ -118,9 +118,9 @@ em ambiente de desenvolvimento até o E13 (Infra & Deploy).
 
 > **Validação (2026-10-02):** dentro do devcontainer real (sem socket do Docker),
 > `dotnet build`, `dotnet test` (26 testes) e `npm run lint/typecheck/test` (6
-> testes) passaram; o mesmo vale pelo caminho do Testcontainers. Os workflows de
-> CI ainda **não rodaram no GitHub**: falta o primeiro push. O épico continua em
-> `in-progress` até o CI ficar verde.
+> testes) passaram; o mesmo vale pelo caminho do Testcontainers. CI e CodeQL
+> verdes no GitHub no push para `master`. O Dependabot de npm não sobe o
+> TypeScript para 6+ (ignorado em `dependabot.yml`; ver nota no CLAUDE.md).
 
 ## Critérios de saída
 

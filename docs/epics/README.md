@@ -10,7 +10,7 @@ menor. Ao adicionar ou alterar um épico, verifique esta tabela.
 
 | # | Épico | Objetivo | Depende de |
 |---|---|---|---|
-| E0 | [Plataforma de dev](in-progress/e00-plataforma-dev.md) | Solução .NET 10 + React, devcontainer, migrations, RLS, CI com scans | — |
+| E0 | [Plataforma de dev](done/e00-plataforma-dev.md) | Solução .NET 10 + React, devcontainer, migrations, RLS, CI com scans | — |
 | E1 | [Contas e login](backlog/e01-contas-e-login.md) | Identity + OpenIddict como emissor, cookie BFF | E0 |
 | E2 | [Núcleo de escrita](backlog/e02-nucleo-de-escrita.md) | Nodes/Relations/Types, ChangeSet + Provenance, Undo, Delete/Purge, Inbox, UI mínima | E1 |
 | E3 | [Conexão de agentes](backlog/e03-conexao-de-agentes.md) | OAuth 2.1, consentimento, túnel de dev, primeira conexão com ChatGPT/Claude.ai | E1, E2 |

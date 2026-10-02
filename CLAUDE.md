@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Estado atual
 
-A stack é **.NET 10 + React**. O E0 (`docs/epics/in-progress/e00-plataforma-dev.md`)
+A stack é **.NET 10 + React**. O E0 (`docs/epics/done/e00-plataforma-dev.md`)
 criou a plataforma: solução com Host, Infrastructure e oito módulos vazios,
 migrations, papéis e harness de RLS, casca React, devcontainer e CI. Ainda **não
 há funcionalidade de produto**. Também existem:
@@ -168,7 +168,7 @@ com mensagens em inglês.
 
 ## Stack e camadas específicas do projeto
 
-Decisões completas: `docs/epics/in-progress/e00-plataforma-dev.md` (DA-001 a
+Decisões completas: `docs/epics/done/e00-plataforma-dev.md` (DA-001 a
 DA-008 e DA-093) e `e01-contas-e-login.md` (DA-009 a DA-012).
 
 **Backend:** .NET 10 LTS, ASP.NET Core, como monólito modular com vertical

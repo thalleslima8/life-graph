@@ -18,4 +18,4 @@ histórico, e permite RLS por conta.
   armazenamento para vetores e contas, custa mais caro de hospedar e tem
   multi-tenancy fraca na edição gratuita.
 
-Origem: DA-003, épico `docs/epics/in-progress/e00-plataforma-dev.md`.
+Origem: DA-003, épico `docs/epics/done/e00-plataforma-dev.md`.
