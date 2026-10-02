@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Estado atual
 
-A stack está **decidida (.NET 10 + React)**, mas ainda **não há código**. O
-primeiro épico (`docs/epics/backlog/e00-plataforma-dev.md`) cria a solução. Hoje
-existem:
+A stack é **.NET 10 + React**. O E0 (`docs/epics/in-progress/e00-plataforma-dev.md`)
+criou a plataforma: solução com Host, Infrastructure e oito módulos vazios,
+migrations, papéis e harness de RLS, casca React, devcontainer e CI. Ainda **não
+há funcionalidade de produto**. Também existem:
 
 - a especificação do produto (`docs/global_v2.md`);
 - os padrões de desenvolvimento (`docs/standards/`);
@@ -19,9 +20,6 @@ existem:
   `workflow@my-skills`).
 
 O projeto foi criado a partir do ai-starter-kit (remote `template`).
-
-Os comandos em "Stack e camadas" são os **planejados**. Confirme-os ao concluir
-o E0.
 
 ## Propósito do projeto
 
@@ -170,8 +168,8 @@ com mensagens em inglês.
 
 ## Stack e camadas específicas do projeto
 
-Decisões completas: `docs/epics/backlog/e00-plataforma-dev.md` (DA-001 a
-DA-008) e `e01-contas-e-login.md` (DA-009 a DA-012).
+Decisões completas: `docs/epics/in-progress/e00-plataforma-dev.md` (DA-001 a
+DA-008 e DA-093) e `e01-contas-e-login.md` (DA-009 a DA-012).
 
 **Backend:** .NET 10 LTS, ASP.NET Core, como monólito modular com vertical
 slices num único deployable. O deployable contém:
@@ -215,17 +213,35 @@ spike no E6.
 Mailpit. O perfil `public` (Cloudflare Tunnel) expõe apenas MCP/OAuth/login
 para testar com ChatGPT/Claude.ai (DA-027/028).
 
-**Comandos (planejados; confirmar no E0):**
+**Comandos (confirmados no E0; rodam dentro do devcontainer):**
 
 ```bash
-dotnet build LifeGraph.sln
-dotnet test LifeGraph.sln
-dotnet test tests/<Projeto> --filter "FullyQualifiedName~<Namespace>.<Classe>.<Metodo>"   # um único teste
-dotnet ef migrations add <Nome> --project src/LifeGraph.Infrastructure --startup-project src/LifeGraph.Host
+dotnet build LifeGraph.sln            # também regenera openapi/lifegraph.json (commitar se mudar)
+dotnet test --solution LifeGraph.sln  # xUnit v3 sobre Microsoft.Testing.Platform (global.json)
+dotnet test --project tests/<Projeto> --filter-method "<Namespace>.<Classe>.<Metodo>"   # um único teste
+dotnet format LifeGraph.sln --verify-no-changes
+dotnet ef migrations add <Nome> --project src/LifeGraph.Infrastructure --startup-project src/LifeGraph.Host --output-dir Persistence/Migrations
 dotnet ef database update --project src/LifeGraph.Infrastructure --startup-project src/LifeGraph.Host
+dotnet run --project src/LifeGraph.Host   # http://localhost:5000
 
 cd web
-npm ci && npm run dev
+npm ci && npm run dev                      # http://localhost:5173, proxy de /api e /health
 npm run lint && npm run typecheck && npm test
 npx vitest run <arquivo> -t "<nome>"   # um único teste
 ```
+
+**Notas do E0:**
+- `dotnet ef` lê `ConnectionStrings__Migrations` (papel `lifegraph_migrator`); a
+  API usa `ConnectionStrings__Default` (papel `lifegraph_app`, sem BYPASSRLS).
+  Nunca rode migrations com o papel da app.
+- Toda tabela de Account tem `account_id` e uma policy contra
+  `app.current_account_id()`. O valor vem do `AccountRlsInterceptor`, só dentro
+  de transação: use `InAccountTransactionAsync` também em leituras, ou a RLS
+  devolve zero linhas.
+- Testes de integração: Testcontainers no CI e no host; no devcontainer, banco
+  descartável no serviço `postgres` via `LIFEGRAPH_TEST_DB_ADMIN` (DA-093).
+- Parâmetros de log com dado pessoal ou segredo levam `[PersonalData]` ou
+  `[SecretData]` num `[LoggerMessage]`; o redator apaga o valor (GEN-043).
+- O cliente do frontend é `web/src/api/schema.gen.ts`, gerado de
+  `openapi/lifegraph.json` antes de dev/build/typecheck/test (não versionado).
+- TypeScript fica em 5.9 até typescript-eslint e openapi-typescript suportarem a 7.

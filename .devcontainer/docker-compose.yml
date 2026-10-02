@@ -1,0 +1,38 @@
+# Devcontainer BASE compose: only the `app` service (where VS Code and Claude run).
+# Postgres and Mailpit come from fragments listed in devcontainer.json.
+#
+# Isolation conventions (inherited from the limaj-framework template):
+#   - own network `lifegraph_devnet`
+#   - container_name with `-dev` suffix, volumes with `_dev` suffix
+#   - NO `ports:`: the host reaches services through VS Code forwardPorts only
+#   - NO Docker socket mount
+#
+# Every credential below is a dev-only placeholder that matches db/bootstrap/roles.sql.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_NODE: "true"
+        INSTALL_PSQL: "true"
+    container_name: lifegraph-app-dev
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    networks:
+      - lifegraph_devnet
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      USE_FRONTEND: "true"
+      # The application connects as the non-owner role, without BYPASSRLS (DA-004).
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=lifegraph;Username=lifegraph_app;Password=lifegraph_app_dev"
+      # `dotnet ef` runs as the owner role (DB-060).
+      ConnectionStrings__Migrations: "Host=postgres;Port=5432;Database=lifegraph;Username=lifegraph_migrator;Password=lifegraph_migrator_dev"
+      # Integration tests create throwaway databases here instead of using Testcontainers (DA-093).
+      LIFEGRAPH_TEST_DB_ADMIN: "Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=Dev_Local_Pass_w0rd!"
+
+networks:
+  lifegraph_devnet:
+    name: lifegraph_devnet

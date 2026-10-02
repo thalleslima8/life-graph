@@ -1,0 +1,10 @@
+# Mail fragment: Mailpit catches every e-mail the app sends in dev (confirmation, reset;
+# first used in E1). SMTP at `mailpit:1025`; the web UI (8025) reaches the host through
+# forwardPorts. No `ports:`.
+
+services:
+  mailpit:
+    image: axllent/mailpit@sha256:ed9b00c609e77e99c79b93f1178255ebc271868920f2c69a8d166bd5634ed10d
+    container_name: lifegraph-mailpit-dev
+    networks:
+      - lifegraph_devnet

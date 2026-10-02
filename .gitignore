@@ -43,3 +43,8 @@ __pycache__/
 venv/
 bin/
 obj/
+
+# --- Life Graph ---
+# Generated from openapi/lifegraph.json on every frontend build (E0).
+web/src/api/schema.gen.ts
+TestResults/

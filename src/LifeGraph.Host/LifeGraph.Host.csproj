@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- The contract is versioned in the repo (API-001) and feeds the frontend client. -->
+    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/../../openapi</OpenApiDocumentsDirectory>
+    <OpenApiGenerateDocumentsOptions>--file-name lifegraph</OpenApiGenerateDocumentsOptions>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- Startup project for `dotnet ef`; never shipped. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+    <PackageReference Include="Npgsql.OpenTelemetry" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LifeGraph.Infrastructure\LifeGraph.Infrastructure.csproj" />
+    <ProjectReference Include="..\LifeGraph.Accounts\LifeGraph.Accounts.csproj" />
+    <ProjectReference Include="..\LifeGraph.Graph\LifeGraph.Graph.csproj" />
+    <ProjectReference Include="..\LifeGraph.Changes\LifeGraph.Changes.csproj" />
+    <ProjectReference Include="..\LifeGraph.Agents\LifeGraph.Agents.csproj" />
+    <ProjectReference Include="..\LifeGraph.Resources\LifeGraph.Resources.csproj" />
+    <ProjectReference Include="..\LifeGraph.Semantic\LifeGraph.Semantic.csproj" />
+    <ProjectReference Include="..\LifeGraph.Sharing\LifeGraph.Sharing.csproj" />
+    <ProjectReference Include="..\LifeGraph.Collections\LifeGraph.Collections.csproj" />
+  </ItemGroup>
+
+</Project>

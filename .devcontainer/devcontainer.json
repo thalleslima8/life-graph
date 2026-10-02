@@ -1,0 +1,42 @@
+{
+  // Isolated devcontainer, derived from the limaj-framework template. See README.md.
+  // VS Code enters the `app` service; postgres and mailpit are sibling services on the
+  // internal `lifegraph_devnet` network, reached by hostname.
+  "name": "Life Graph",
+
+  // Base first, fragments after (they merge into it).
+  "dockerComposeFile": [
+    "docker-compose.yml",
+    "compose.postgres.yml",
+    "compose.mailpit.yml"
+  ],
+  "service": "app",
+  "runServices": ["app", "postgres", "mailpit"],
+  "workspaceFolder": "/workspace",
+
+  // Idempotent bootstrap: restore, npm ci, Claude allowlist, migrations.
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  // VS Code tunnel (not compose `ports:`).
+  "forwardPorts": [5173, 5000, "mailpit:8025"],
+  "portsAttributes": {
+    "5173": { "label": "Frontend (Vite)", "onAutoForward": "notify" },
+    "5000": { "label": "API", "onAutoForward": "silent" },
+    "mailpit:8025": { "label": "Mailpit", "onAutoForward": "silent" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "vitest.explorer",
+        "anthropic.claude-code"
+      ]
+    }
+  },
+
+  "remoteUser": "vscode"
+}

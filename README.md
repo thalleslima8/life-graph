@@ -15,8 +15,11 @@ The goal: **a life graph that almost organizes itself**, letting you navigate
 your own life by context, semantic proximity and time, without having to
 maintain a knowledge base by hand.
 
-> **Status:** early concept stage. There is no code yet. The full product
-> specification (in Portuguese) is in [`docs/global.md`](docs/global.md).
+> **Status:** development platform in place (epic E0), no product features yet.
+> The current product specification (in Portuguese) is in
+> [`docs/global_v2.md`](docs/global_v2.md); the roadmap is in
+> [`docs/epics/README.md`](docs/epics/README.md). See [Development](#development)
+> to build and run it.
 
 ## The problem
 
@@ -161,3 +164,46 @@ Learning from [TheBrain](https://thebrain.com), [Capacities](https://capacities.
 [Heptabase](https://heptabase.com), [Anytype](https://anytype.io),
 [Tana](https://tana.inc) and [Obsidian](https://obsidian.md) without copying
 any of them.
+
+## Development
+
+Stack: .NET 10 (ASP.NET Core, EF Core, PostgreSQL + pgvector) and React 19
+(Vite, TypeScript). Coding standards live in [`docs/standards/`](docs/standards/).
+
+### Recommended: devcontainer
+
+Requirements: Docker and VS Code with the Dev Containers extension.
+
+1. Open the repository in VS Code and run **Reopen in Container**.
+2. Wait for `post-create.sh`: it restores packages, runs `npm ci` and applies
+   the migrations to the `postgres` service.
+3. Run the API and the frontend in two terminals:
+
+   ```bash
+   dotnet run --project src/LifeGraph.Host   # http://localhost:5000
+   cd web && npm run dev                     # http://localhost:5173
+   ```
+
+Mailpit (captured e-mails) is forwarded from `mailpit:8025`. Details in
+[`.devcontainer/README.md`](.devcontainer/README.md).
+
+### Tests and checks
+
+```bash
+dotnet test --solution LifeGraph.sln
+dotnet format LifeGraph.sln --verify-no-changes
+cd web && npm run lint && npm run typecheck && npm test
+```
+
+Integration tests need PostgreSQL. Inside the devcontainer they create a
+throwaway database on the `postgres` service; anywhere else they start one with
+Testcontainers, so Docker must be running.
+
+### Without the devcontainer
+
+The .NET 10 SDK, Node 24 and Docker are enough to build and run every test
+(integration tests use Testcontainers). Running the API itself needs a
+PostgreSQL bootstrapped with [`db/bootstrap/`](db/bootstrap/) (roles, database,
+extensions), which the devcontainer does for you. The application connects as
+`lifegraph_app` (`ConnectionStrings__Default`) and migrations run as
+`lifegraph_migrator` (`ConnectionStrings__Migrations`).

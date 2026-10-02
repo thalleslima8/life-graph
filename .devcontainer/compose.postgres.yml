@@ -1,0 +1,36 @@
+# DB fragment: PostgreSQL 17 + pgvector, pinned by digest (same image as the
+# Testcontainers fixture, DA-007). Reachable as `postgres:5432`. No `ports:`.
+#
+# On an empty volume, init-dev.sh creates the roles, the `lifegraph` database owned by
+# the migrator and the extensions. post-create.sh then applies the migrations.
+
+services:
+  app:
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
+    container_name: lifegraph-postgres-dev
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "Dev_Local_Pass_w0rd!"   # dev only; matches LIFEGRAPH_TEST_DB_ADMIN
+    volumes:
+      - lifegraph_postgres_data_dev:/var/lib/postgresql/data
+      - ../db/bootstrap/init-dev.sh:/docker-entrypoint-initdb.d/10-lifegraph.sh:ro
+      - ../db/bootstrap:/docker-entrypoint-initdb.d/lifegraph:ro
+    networks:
+      - lifegraph_devnet
+    healthcheck:
+      # TCP on purpose: during init the server only listens on the unix socket, so this
+      # stays unhealthy until the bootstrap script has finished.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d lifegraph || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  lifegraph_postgres_data_dev:
+    name: lifegraph_postgres_data_dev

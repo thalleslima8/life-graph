@@ -62,6 +62,18 @@ em ambiente de desenvolvimento até o E13 (Infra & Deploy).
   Vite (SPA, sem SSR), TanStack Query, React Router, Radix/shadcn-ui + Tailwind
   (acessibilidade, FE-030), React Hook Form + Zod e cliente tipado gerado do
   OpenAPI (openapi-typescript).
+- **DA-093 — No devcontainer, os testes de integração usam o Postgres do
+  compose, não Testcontainers** (usuário). O template do limaj-framework não
+  monta o socket do Docker no devcontainer, e é isso que torna seguro rodar o
+  Claude lá dentro sem prompts. Testcontainers precisa de um daemon Docker, então
+  havia três saídas: montar o socket (dá ao container controle do Docker do host,
+  na prática root), Docker-in-Docker (exige `privileged: true`) ou um fallback. A
+  fixture usa Testcontainers com a imagem fixada por digest quando
+  `LIFEGRAPH_TEST_DB_ADMIN` não está definida (CI, host). Dentro do devcontainer
+  a variável está definida, e a fixture cria um banco `lifegraph_test_*`
+  descartável no serviço `postgres`, aplica o mesmo bootstrap e as mesmas
+  migrations, e o remove no fim. É o mesmo motor e a mesma imagem (DB-064). O
+  isolamento do template fica intacto.
 
 ## Estrutura proposta
 
@@ -69,33 +81,46 @@ em ambiente de desenvolvimento até o E13 (Infra & Deploy).
   `src/LifeGraph.<Modulo>`, `src/LifeGraph.Infrastructure`, `tests/*`, `web/`.
 - **Ambiente de dev:** devcontainer derivado do template do limaj-framework,
   com `compose.postgres` trocado pela imagem pgvector, `USE_FRONTEND=true`,
-  `INSTALL_FUNC=false` e um serviço Mailpit. O perfil `public` (cloudflared)
-  entra no E3.
+  `INSTALL_FUNC=false` e um serviço Mailpit. Sem socket do Docker: os testes de
+  integração rodam contra o Postgres do compose (DA-093). O perfil `public`
+  (cloudflared) entra no E3.
+- **Banco:** `db/bootstrap/` cria os papéis `lifegraph_migrator` (dono) e
+  `lifegraph_app` (sem BYPASSRLS), o banco e as extensões. A migration inicial
+  concede privilégios ao papel da app e cria `app.current_account_id()`, que
+  toda policy de RLS compara com `account_id`. O `AccountRlsInterceptor` publica
+  a Account com `set_config(..., true)` (equivale a `SET LOCAL`, mas aceita
+  parâmetro) no início de cada transação. Sem Account, nenhuma linha aparece.
 - **Observabilidade:** logs estruturados com redação de PII e segredos
   (GEN-043) e instrumentação OpenTelemetry, com exporters ligados só no E13.
 
 ## Checklist
 
 ### Fase 1 — Solução e ambiente
-- [ ] Criar solução, Host, projeto de Infrastructure, módulos vazios e `.config/dotnet-tools.json`
-- [ ] Devcontainer/compose com Postgres+pgvector e Mailpit
-- [ ] Casca React (Vite + TS strict + Router + Query + Tailwind/shadcn)
-- [ ] Geração do cliente OpenAPI no build do frontend
+- [x] Criar solução, Host, projeto de Infrastructure, módulos vazios e `.config/dotnet-tools.json`
+- [x] Devcontainer/compose com Postgres+pgvector e Mailpit
+- [x] Casca React (Vite + TS strict + Router + Query + Tailwind/shadcn)
+- [x] Geração do cliente OpenAPI no build do frontend
 
 ### Fase 2 — Banco e isolamento
-- [ ] Pipeline de migrations versionadas (DB-010), naming snake_case
-- [ ] Papéis: owner de migração e papel da app sem BYPASSRLS
-- [ ] Harness de RLS: `SET LOCAL` do account na transação, aplicado por interceptor
-- [ ] Teste de integração: acesso cross-account retorna 404, e a RLS sozinha bloqueia quando o filtro da app é contornado
+- [x] Pipeline de migrations versionadas (DB-010), naming snake_case
+- [x] Papéis: owner de migração e papel da app sem BYPASSRLS
+- [x] Harness de RLS: `SET LOCAL` do account na transação, aplicado por interceptor
+- [x] Teste de integração: acesso cross-account retorna 404, e a RLS sozinha bloqueia quando o filtro da app é contornado
 
 ### Fase 3 — Qualidade
-- [ ] Testes de arquitetura (fronteiras de módulos; Domain sem AspNetCore/MCP)
-- [ ] Fixtures Testcontainers + WebApplicationFactory
-- [ ] CI (GitHub Actions): build, testes, `dotnet format --verify-no-changes`, `npm run lint/typecheck/test`
-- [ ] CI: `dotnet list package --vulnerable --include-transitive` e `npm audit --audit-level=high` falhando em high (GEN-063)
-- [ ] CI: gitleaks, Dependabot, SAST (CodeQL se o repo for público, senão Semgrep CE)
-- [ ] Logging estruturado com redação de PII; instrumentação OpenTelemetry sem exporter
-- [ ] Registrar stack e comandos no `CLAUDE.md`
+- [x] Testes de arquitetura (fronteiras de módulos; Domain sem AspNetCore/MCP)
+- [x] Fixtures Testcontainers + WebApplicationFactory
+- [x] CI (GitHub Actions): build, testes, `dotnet format --verify-no-changes`, `npm run lint/typecheck/test`
+- [x] CI: `dotnet list package --vulnerable --include-transitive` e `npm audit --audit-level=high` falhando em high (GEN-063)
+- [x] CI: gitleaks, Dependabot, SAST (CodeQL se o repo for público, senão Semgrep CE) — repo público, CodeQL
+- [x] Logging estruturado com redação de PII; instrumentação OpenTelemetry sem exporter
+- [x] Registrar stack e comandos no `CLAUDE.md`
+
+> **Validação (2026-10-02):** dentro do devcontainer real (sem socket do Docker),
+> `dotnet build`, `dotnet test` (26 testes) e `npm run lint/typecheck/test` (6
+> testes) passaram; o mesmo vale pelo caminho do Testcontainers. Os workflows de
+> CI ainda **não rodaram no GitHub**: falta o primeiro push. O épico continua em
+> `in-progress` até o CI ficar verde.
 
 ## Critérios de saída
 
