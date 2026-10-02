@@ -13,6 +13,11 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    ignore:
+      # typescript-eslint (<6.1) and openapi-typescript (^5) do not support
+      # TypeScript 6+/7 yet. Remove once both widen their peer range.
+      - dependency-name: typescript
+        versions: [">= 6"]
     groups:
       web:
         patterns: ["*"]
