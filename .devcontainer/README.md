@@ -8,7 +8,7 @@ the host filesystem outside the workspace and has **no Docker socket**.
 
 | Service | Source | Internal address | Host access |
 |---|---|---|---|
-| `app` | `Dockerfile` (.NET 10 SDK, Node 24, psql, Claude Code) | — | forwardPorts 5000 (API), 5173 (Vite) |
+| `app` | `Dockerfile` (.NET 10 SDK, Node 24, psql/pg_dump 17, gh, jq, Claude Code) | — | forwardPorts 5000 (API), 5173 (Vite) |
 | `postgres` | `compose.postgres.yml` (pgvector/pgvector:pg17, pinned) | `postgres:5432` | none |
 | `mailpit` | `compose.mailpit.yml` | SMTP `mailpit:1025` | forwardPorts `mailpit:8025` (UI) |
 
@@ -38,10 +38,31 @@ same bootstrap and migrations, and drops it at the end. On CI and on the host
 
 ## Claude Code
 
-`post-create.sh` copies `claude-settings.json` (`bypassPermissions` plus a broad
-allowlist) to `~/.claude/settings.json` **inside the container only**. That is
+`post-create.sh` merges `claude-settings.json` (`bypassPermissions` plus a broad
+allowlist) into `~/.claude/settings.json` **inside the container only**. That is
 safe here because the container is disposable, has no Docker socket and sees
 only the workspace. Never merge it into the versioned `.claude/settings.json`.
+
+The merge keeps whatever was set later in the container (for example
+`enabledPlugins`), so running `post-create.sh` again is safe: the allowlist wins
+on conflicting keys and `permissions.allow` becomes the union of both lists. An
+invalid settings file is saved as `settings.json.bak` and replaced.
+
+`gh` is installed but not authenticated (no host credentials are mounted). Run
+`gh auth login` inside the container when you need it.
+
+## Tool versions
+
+The `psql`/`pg_dump` client comes from the PGDG repo, pinned by `PG_MAJOR` in the
+`Dockerfile`. Keep it equal to the server major in `compose.postgres.yml`:
+`pg_dump` refuses to dump a newer server.
+
+## Known harmless warnings
+
+- `safe.directory 'D:/Repos/...' not absolute`: VS Code copies the Windows
+  `.gitconfig` into the container, and git can't parse Windows paths there.
+  You can ignore it, or remove the entry from `~/.gitconfig` inside the container.
+- `HTMLCanvasElement.prototype.getContext` in Vitest: jsdom has no canvas.
 
 ## Recovery
 

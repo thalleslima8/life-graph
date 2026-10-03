@@ -26,11 +26,27 @@ fi
 
 # Broad allowlist that is safe only inside this container. Never merge it into the
 # versioned .claude/settings.json.
+# Merged (not copied) so a re-run keeps what was set later in the container, such as
+# enabledPlugins: the allowlist wins on conflicting keys and permissions.allow is a union.
 CLAUDE_ALLOWLIST="$WORKSPACE/.devcontainer/claude-settings.json"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 if [ -f "$CLAUDE_ALLOWLIST" ]; then
-  log "Installing Claude allowlist into ~/.claude/settings.json..."
+  log "Merging Claude allowlist into ~/.claude/settings.json..."
   mkdir -p "$HOME/.claude"
-  cp "$CLAUDE_ALLOWLIST" "$HOME/.claude/settings.json"
+  if [ ! -s "$CLAUDE_SETTINGS" ]; then
+    echo '{}' > "$CLAUDE_SETTINGS"
+  elif ! jq -e . "$CLAUDE_SETTINGS" > /dev/null 2>&1; then
+    log "WARNING: ~/.claude/settings.json is not valid JSON; saved as settings.json.bak."
+    mv "$CLAUDE_SETTINGS" "$CLAUDE_SETTINGS.bak"
+    echo '{}' > "$CLAUDE_SETTINGS"
+  fi
+  jq -s '
+    .[0] as $current
+    | (.[1] | del(."// NOTE")) as $allowlist
+    | ($current * $allowlist)
+    | .permissions.allow = (($current.permissions.allow // []) + ($allowlist.permissions.allow // []) | unique)
+  ' "$CLAUDE_SETTINGS" "$CLAUDE_ALLOWLIST" > "$CLAUDE_SETTINGS.tmp"
+  mv "$CLAUDE_SETTINGS.tmp" "$CLAUDE_SETTINGS"
 fi
 
 # ConnectionStrings__Migrations comes from the compose env; the design-time factory

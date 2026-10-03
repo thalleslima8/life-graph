@@ -12,11 +12,16 @@ FROM mcr.microsoft.com/devcontainers/dotnet:10.0
 
 ARG INSTALL_NODE=true
 ARG INSTALL_PSQL=true
+ARG INSTALL_GH=true
+# Must match the major of the server image in compose.postgres.yml (pgvector:pg17):
+# pg_dump refuses to dump a server newer than itself.
+ARG PG_MAJOR=17
 
 USER root
 
+# jq: post-create.sh merges the Claude allowlist into ~/.claude/settings.json.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg jq \
     && mkdir -p /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
@@ -31,10 +36,28 @@ RUN if [ "$INSTALL_NODE" = "true" ]; then \
         && rm -rf /var/lib/apt/lists/* ; \
     fi
 
-# psql client, for inspecting the compose database by hand.
+# psql/pg_dump from the PGDG repo, pinned to the server major (the distro package
+# lags behind it).
 RUN if [ "$INSTALL_PSQL" = "true" ]; then \
-        apt-get update \
-        && apt-get install -y --no-install-recommends postgresql-client \
+        curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | gpg --dearmor -o /etc/apt/keyrings/pgdg.gpg \
+        && echo "deb [signed-by=/etc/apt/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
+            > /etc/apt/sources.list.d/pgdg.list \
+        && apt-get update \
+        && apt-get install -y --no-install-recommends "postgresql-client-${PG_MAJOR}" \
+        && rm -rf /var/lib/apt/lists/* ; \
+    fi
+
+# GitHub CLI: the container allowlist permits Bash(gh:*). No host credentials are
+# mounted, so authenticate inside the container (`gh auth login`) when needed.
+RUN if [ "$INSTALL_GH" = "true" ]; then \
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+        && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            > /etc/apt/sources.list.d/github-cli.list \
+        && apt-get update \
+        && apt-get install -y --no-install-recommends gh \
         && rm -rf /var/lib/apt/lists/* ; \
     fi
 

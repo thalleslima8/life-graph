@@ -34,7 +34,16 @@
         "bradlc.vscode-tailwindcss",
         "vitest.explorer",
         "anthropic.claude-code"
-      ]
+      ],
+
+      // Allow-all for the Claude VS Code extension, ONLY in this isolated container.
+      // The extension ignores `defaultMode: bypassPermissions` from ~/.claude/settings.json
+      // unless "Allow dangerously skip permissions" is on; without it the session silently
+      // falls back to default mode and prompts again.
+      "settings": {
+        "claudeCode.allowDangerouslySkipPermissions": true,
+        "claudeCode.initialPermissionMode": "bypassPermissions"
+      }
     }
   },
 
