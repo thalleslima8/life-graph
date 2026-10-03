@@ -1,6 +1,7 @@
 {
   "enabledPlugins": {
-    "workflow@my-skills": true
+    "workflow@my-skills": true,
+    "writing@my-skills": true
   },
   "extraKnownMarketplaces": {
     "my-skills": {

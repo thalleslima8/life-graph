@@ -48,6 +48,23 @@ The merge keeps whatever was set later in the container (for example
 on conflicting keys and `permissions.allow` becomes the union of both lists. An
 invalid settings file is saved as `settings.json.bak` and replaced.
 
+`~/.claude` is the named volume `lifegraph_claude_home_dev`, and
+`CLAUDE_CONFIG_DIR` points at it so `.claude.json` (account and onboarding state)
+lives there too. Login, plugins, settings and history survive a rebuild. The
+volume holds your Claude credentials: it stays on this machine and is never
+committed.
+
+`claude-plugins.sh` keeps the plugins current. It runs from `post-create.sh` (create
+and rebuild) and from `postAttachCommand` (every attach, including Reload Window).
+It adds the marketplaces in `extraKnownMarketplaces`, refreshes them, installs at
+user scope every plugin set to `true` in `enabledPlugins` of
+`.claude/settings.json` and `.claude/settings.local.json`, and updates the ones
+already installed. To add a plugin, enable it in those files; don't list it in the
+script. Failures (offline, for example) only warn; it never blocks the container.
+
+An update applies to the next Claude session. A session that was already open
+keeps the old version until you start a new one.
+
 `gh` is installed but not authenticated (no host credentials are mounted). Run
 `gh auth login` inside the container when you need it.
 
@@ -68,6 +85,11 @@ The `psql`/`pg_dump` client comes from the PGDG repo, pinned by `PG_MAJOR` in th
 
 `Rebuild Container` fixes a broken `app`. To reset the database, delete the
 `lifegraph_postgres_data_dev` volume; the bootstrap runs again on the next start.
+
+A rebuild does **not** reset Claude Code. If `~/.claude` is in a bad state (broken
+settings, stuck plugin, wrong account), stop the container, run
+`docker volume rm lifegraph_claude_home_dev` on the host and rebuild. You will log
+in again, and `post-create.sh` reinstalls the allowlist and plugins.
 
 ## Credentials
 

@@ -17,6 +17,9 @@
   // Idempotent bootstrap: restore, npm ci, Claude allowlist, migrations.
   "postCreateCommand": "bash .devcontainer/post-create.sh",
 
+  // Every attach (Reload Window, reopen, after a rebuild): update the Claude plugins.
+  "postAttachCommand": "bash .devcontainer/claude-plugins.sh",
+
   // VS Code tunnel (not compose `ports:`).
   "forwardPorts": [5173, 5000, "mailpit:8025"],
   "portsAttributes": {

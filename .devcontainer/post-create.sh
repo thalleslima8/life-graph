@@ -49,6 +49,10 @@ if [ -f "$CLAUDE_ALLOWLIST" ]; then
   mv "$CLAUDE_SETTINGS.tmp" "$CLAUDE_SETTINGS"
 fi
 
+# Install/update the plugins the project settings enable (best effort, never fails).
+# postAttachCommand runs the same script on every attach.
+bash "$WORKSPACE/.devcontainer/claude-plugins.sh"
+
 # ConnectionStrings__Migrations comes from the compose env; the design-time factory
 # reads it, so migrations run as the owner role, never as the app role.
 log "Applying migrations..."

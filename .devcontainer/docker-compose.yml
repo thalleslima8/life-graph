@@ -20,6 +20,8 @@ services:
     container_name: lifegraph-app-dev
     volumes:
       - ..:/workspace:cached
+      # Claude login, plugins and settings survive a rebuild. Delete the volume to reset.
+      - lifegraph_claude_home_dev:/home/vscode/.claude
     command: sleep infinity
     networks:
       - lifegraph_devnet
@@ -32,7 +34,14 @@ services:
       ConnectionStrings__Migrations: "Host=postgres;Port=5432;Database=lifegraph;Username=lifegraph_migrator;Password=lifegraph_migrator_dev"
       # Integration tests create throwaway databases here instead of using Testcontainers (DA-093).
       LIFEGRAPH_TEST_DB_ADMIN: "Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=Dev_Local_Pass_w0rd!"
+      # Same path as the default, but it also moves ~/.claude.json (account and
+      # onboarding state) into the volume, so the login survives a rebuild too.
+      CLAUDE_CONFIG_DIR: "/home/vscode/.claude"
 
 networks:
   lifegraph_devnet:
     name: lifegraph_devnet
+
+volumes:
+  lifegraph_claude_home_dev:
+    name: lifegraph_claude_home_dev

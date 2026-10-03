@@ -16,8 +16,8 @@ há funcionalidade de produto**. Também existem:
 - as decisões de arquitetura duradouras em `docs/adr/` (ADRs 0001–0013, cada
   uma ligada ao seu `DA-###`). Leia antes de "corrigir" algo que parece
   estranho: provavelmente foi deliberado;
-- a configuração do Claude Code (`.claude/settings.json`, que habilita o plugin
-  `workflow@my-skills`).
+- a configuração do Claude Code (`.claude/settings.json`, que habilita os plugins
+  `workflow@my-skills` e `writing@my-skills`).
 
 O projeto foi criado a partir do ai-starter-kit (remote `template`).
 

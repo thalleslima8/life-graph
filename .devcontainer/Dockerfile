@@ -73,4 +73,9 @@ RUN if [ "$INSTALL_NODE" = "true" ]; then \
 RUN echo 'export PATH="$PATH:/home/vscode/.dotnet/tools"' > /etc/profile.d/dotnet-tools.sh
 ENV PATH="${PATH}:/home/vscode/.dotnet/tools"
 
+# Mount point of the lifegraph_claude_home_dev volume (docker-compose.yml). It must
+# exist owned by vscode: an empty named volume copies the ownership of the image
+# directory, otherwise Docker creates it as root and Claude cannot write to it.
+RUN mkdir -p /home/vscode/.claude && chown vscode:vscode /home/vscode/.claude
+
 USER vscode
