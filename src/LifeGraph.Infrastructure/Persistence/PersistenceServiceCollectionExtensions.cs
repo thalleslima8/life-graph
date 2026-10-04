@@ -10,16 +10,17 @@ public static class PersistenceServiceCollectionExtensions
 
     public static IServiceCollection AddLifeGraphPersistence(this IServiceCollection services, IConfiguration configuration)
     {
-        services.TryAddScoped<IAccountContext, AnonymousAccountContext>();
+        // Needs an ICurrentPrincipal, registered by the Accounts module (DA-094).
+        services.TryAddScoped<IAccountContext, PrincipalAccountContext>();
 
         // The connection string is read lazily so tooling that boots the host without a
         // database (OpenAPI generation at build time) still works.
-        services.AddDbContext<LifeGraphDbContext>((_, options) =>
+        services.AddDbContext<LifeGraphDbContext>((serviceProvider, options) =>
         {
             var connectionString = configuration.GetConnectionString(ConnectionStringName)
                 ?? throw new InvalidOperationException($"Connection string '{ConnectionStringName}' is not configured.");
 
-            LifeGraphDbContextOptions.Configure(options, connectionString);
+            LifeGraphDbContextOptions.Configure(options, connectionString, serviceProvider.GetService<TimeProvider>());
         });
 
         return services;

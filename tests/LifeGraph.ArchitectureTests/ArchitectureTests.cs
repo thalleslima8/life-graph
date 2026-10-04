@@ -37,8 +37,20 @@ public sealed class ArchitectureTests
         ArchitectureRules.ModuleDoesNotDependOnOtherModules(module).Check(Production);
 
     [Fact]
+    public void Only_accounts_uses_identity_and_openiddict() =>
+        ArchitectureRules.OnlyAccountsUsesIdentityAndOpenIddict("LifeGraph").Check(Production);
+
+    [Fact]
+    public void Only_accounts_uses_the_user_entity() =>
+        ArchitectureRules.OnlyAccountsUsesTheUserEntity("LifeGraph").Check(Production);
+
+    [Fact]
     public void Domain_does_not_depend_on_web_mcp_or_persistence() =>
         ArchitectureRules.DomainIsFrameworkFree("LifeGraph").Check(Production);
+
+    [Fact]
+    public void Shared_infrastructure_does_not_read_http() =>
+        ArchitectureRules.SharedInfrastructureIsHttpFree("LifeGraph").Check(Production);
 
     [Fact]
     public void Application_does_not_depend_on_web_or_mcp() =>

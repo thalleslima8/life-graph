@@ -76,6 +76,16 @@ public sealed class PostgresDatabase : IAsyncLifetime
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>Reads as the table owner, past RLS: for asserting what is really stored.</summary>
+    public async Task<T> QueryScalarAsMigratorAsync<T>(string sql, params NpgsqlParameter[] parameters)
+    {
+        await using var connection = new NpgsqlConnection(MigratorConnectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddRange(parameters);
+        return (T)(await command.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
+    }
+
     public async ValueTask DisposeAsync()
     {
         NpgsqlConnection.ClearAllPools();

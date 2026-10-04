@@ -1,6 +1,6 @@
 namespace LifeGraph.Infrastructure.Persistence;
 
-// Default until authentication exists. TODO(E1): replace with the principal-backed context.
+/// <summary>No Account at all: for migrations and design-time tooling, which never read Account rows.</summary>
 public sealed class AnonymousAccountContext : IAccountContext
 {
     public Guid? AccountId => null;

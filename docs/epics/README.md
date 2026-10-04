@@ -11,7 +11,7 @@ menor. Ao adicionar ou alterar um épico, verifique esta tabela.
 | # | Épico | Objetivo | Depende de |
 |---|---|---|---|
 | E0 | [Plataforma de dev](done/e00-plataforma-dev.md) | Solução .NET 10 + React, devcontainer, migrations, RLS, CI com scans | — |
-| E1 | [Contas e login](backlog/e01-contas-e-login.md) | Identity + OpenIddict como emissor, cookie BFF | E0 |
+| E1 | [Contas e login](done/e01-contas-e-login.md) | Identity + OpenIddict como emissor, cookie BFF | E0 |
 | E2 | [Núcleo de escrita](backlog/e02-nucleo-de-escrita.md) | Nodes/Relations/Types, ChangeSet + Provenance, Undo, Delete/Purge, Inbox, UI mínima | E1 |
 | E3 | [Conexão de agentes](backlog/e03-conexao-de-agentes.md) | OAuth 2.1, consentimento, túnel de dev, primeira conexão com ChatGPT/Claude.ai | E1, E2 |
 | E4 | [MCP leitura](backlog/e04-mcp-leitura.md) | `get_context`, busca, oculto para agentes, auditoria | E3 |
@@ -40,4 +40,4 @@ E3–E5.
 - Toda exceção a uma regra **DEVE** de `docs/standards/` vira um `DA-###` no
   épico, citando o ID da regra.
 - **Numeração de decisões:** os `DA-###` são sequenciais e **globais** entre
-  os épicos (DA-001 a DA-093 nesta versão do roadmap). O próximo é o DA-094.
+  os épicos (DA-001 a DA-098 nesta versão do roadmap). O próximo é o DA-099.

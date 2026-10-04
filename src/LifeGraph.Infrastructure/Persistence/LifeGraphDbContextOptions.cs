@@ -8,9 +8,10 @@ public static class LifeGraphDbContextOptions
 
     /// <summary>
     /// Single place that configures the provider, so the host, the design-time factory and
-    /// the test fixtures cannot drift apart (naming, history table, RLS interceptor).
+    /// the test fixtures cannot drift apart (naming, history table, OpenIddict entities, interceptors).
     /// </summary>
-    public static TBuilder Configure<TBuilder>(TBuilder builder, string connectionString)
+    /// <param name="clock">Clock of the audit timestamps; the system clock when not given.</param>
+    public static TBuilder Configure<TBuilder>(TBuilder builder, string connectionString, TimeProvider? clock = null)
         where TBuilder : DbContextOptionsBuilder
     {
         builder
@@ -18,7 +19,8 @@ public static class LifeGraphDbContextOptions
                 .UseVector()
                 .MigrationsHistoryTable(MigrationsHistoryTable))
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(AccountRlsInterceptor.Instance);
+            .UseOpenIddict<Guid>()
+            .AddInterceptors(AccountRlsInterceptor.Instance, new AuditTimestampsInterceptor(clock ?? TimeProvider.System));
 
         return builder;
     }

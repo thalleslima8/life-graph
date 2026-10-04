@@ -237,7 +237,8 @@ npx vitest run <arquivo> -t "<nome>"   # um único teste
 - Toda tabela de Account tem `account_id` e uma policy contra
   `app.current_account_id()`. O valor vem do `AccountRlsInterceptor`, só dentro
   de transação: use `InAccountTransactionAsync` também em leituras, ou a RLS
-  devolve zero linhas.
+  devolve zero linhas. Exceção: as tabelas do diretório de credenciais (`users`,
+  `user_claims`, `user_logins`, `user_tokens`), pela DA-098.
 - Testes de integração: Testcontainers no CI e no host; no devcontainer, banco
   descartável no serviço `postgres` via `LIFEGRAPH_TEST_DB_ADMIN` (DA-093).
 - Parâmetros de log com dado pessoal ou segredo levam `[PersonalData]` ou

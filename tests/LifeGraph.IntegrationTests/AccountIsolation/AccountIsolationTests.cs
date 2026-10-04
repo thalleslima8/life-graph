@@ -5,40 +5,54 @@ using Npgsql;
 
 namespace LifeGraph.IntegrationTests.AccountIsolation;
 
+/// <summary>
+/// Two real Accounts, each signed in through its own session (DA-094): the principal's
+/// Account is the only one RLS lets a request see.
+/// </summary>
 public sealed class AccountIsolationTests(PostgresDatabase database) : IAsyncLifetime
 {
+    private const string EmailA = "ada@example.test";
+    private const string EmailB = "grace@example.test";
+
     private static readonly Guid AccountA = Guid.CreateVersion7();
     private static readonly Guid AccountB = Guid.CreateVersion7();
 
     private readonly Guid _probeOfAccountA = Guid.CreateVersion7();
+    private readonly Guid _probeOfAccountB = Guid.CreateVersion7();
     private readonly LifeGraphApiFactory _factory = new(database);
 
     public async ValueTask InitializeAsync()
     {
         await database.ResetAsync();
-        await RlsProbes.SeedAsync(database, _probeOfAccountA, AccountA, "a-probe");
+        var accountA = (await TestAccounts.ProvisionConfirmedAsync(_factory, EmailA)).AccountId;
+        var accountB = (await TestAccounts.ProvisionConfirmedAsync(_factory, EmailB)).AccountId;
+        await RlsProbes.SeedAsync(database, _probeOfAccountA, accountA, "a-probe");
+        await RlsProbes.SeedAsync(database, _probeOfAccountB, accountB, "b-probe");
     }
 
     public ValueTask DisposeAsync() => _factory.DisposeAsync();
 
-    [Fact]
-    public async Task Reading_own_row_returns_it()
+    [Theory]
+    [InlineData(EmailA, "a-probe")]
+    [InlineData(EmailB, "b-probe")]
+    public async Task Each_account_reads_its_own_row(string email, string label)
     {
-        using var client = _factory.CreateClientFor(AccountA);
+        using var spa = await TestAccounts.SignedInAsync(_factory, email);
+        var ownProbe = email == EmailA ? _probeOfAccountA : _probeOfAccountB;
 
-        var response = await client.GetAsync($"{RlsProbes.RoutePrefix}/{_probeOfAccountA}", TestContext.Current.CancellationToken);
+        var response = await spa.GetAsync($"{RlsProbes.RoutePrefix}/{ownProbe}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var probe = await response.Content.ReadFromJsonAsync<RlsProbes.ProbeResponse>(TestContext.Current.CancellationToken);
-        Assert.Equal("a-probe", probe?.Label);
+        Assert.Equal(label, probe?.Label);
     }
 
     [Fact]
     public async Task Reading_another_accounts_row_returns_not_found()
     {
-        using var client = _factory.CreateClientFor(AccountB);
+        using var spa = await TestAccounts.SignedInAsync(_factory, EmailB);
 
-        var response = await client.GetAsync($"{RlsProbes.RoutePrefix}/{_probeOfAccountA}", TestContext.Current.CancellationToken);
+        var response = await spa.GetAsync($"{RlsProbes.RoutePrefix}/{_probeOfAccountA}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -46,17 +60,26 @@ public sealed class AccountIsolationTests(PostgresDatabase database) : IAsyncLif
     [Fact]
     public async Task Reading_another_accounts_row_without_the_app_filter_is_still_blocked_by_rls()
     {
-        using var client = _factory.CreateClientFor(AccountB);
+        using var spa = await TestAccounts.SignedInAsync(_factory, EmailB);
 
-        var response = await client.GetAsync(
-            $"{RlsProbes.RoutePrefix}/{_probeOfAccountA}?skipAppFilter=true",
-            TestContext.Current.CancellationToken);
+        var response = await spa.GetAsync($"{RlsProbes.RoutePrefix}/{_probeOfAccountA}?skipAppFilter=true");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
-    public async Task Reading_without_an_account_context_returns_not_found()
+    public async Task After_signing_out_the_same_client_sees_nothing()
+    {
+        using var spa = await TestAccounts.SignedInAsync(_factory, EmailA);
+        (await spa.LogoutAsync()).EnsureSuccessStatusCode();
+
+        var response = await spa.GetAsync($"{RlsProbes.RoutePrefix}/{_probeOfAccountA}?skipAppFilter=true");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reading_without_a_session_is_unauthorized()
     {
         using var client = _factory.CreateClient();
 
@@ -64,7 +87,7 @@ public sealed class AccountIsolationTests(PostgresDatabase database) : IAsyncLif
             $"{RlsProbes.RoutePrefix}/{_probeOfAccountA}?skipAppFilter=true",
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
