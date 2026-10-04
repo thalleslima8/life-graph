@@ -32,16 +32,18 @@ humano será o emissor OAuth dos agentes no E3.
   `IUserIdentityGateway`** (consenso, decidido no `/flow` de 2026-10-04). Revê
   a DA-005 neste ponto. A interface do limaj só devolve um user id `string?`,
   sem account_id nem tipo de principal, então montar por cima dela obrigaria a
-  reler os claims de qualquer forma. O limaj também não está publicado (repo
-  privado, net9.0, sem feed, sem pacote `Web`). O principal falha fechado:
+  reler os claims de qualquer forma. *Correção (2026-10-04):* o texto original
+  dizia que o limaj "não está publicado (repo privado, net9.0, sem feed, sem
+  pacote `Web`)". Isso descrevia uma cópia privada e antiga
+  (`thalleslima8/limaj-framework`). O repositório vigente é
+  `limajsolutions/limaj-framework`, e a 2.0.0 está no nuget.org (net10.0, MIT).
+  A decisão não muda: o motivo é o formato da interface. *Revalidada pela DA-106 (E2):* a 3.0.0 trouxe um principal tipado, e a decisão foi mantida com outros motivos. O principal falha fechado:
   claim ausente, `account_id` que não é Guid ou tipo desconhecido contam como
   não autenticado, nunca como conta padrão. O tipo já prevê ShareVisitor (filtro
   central de leitura), embora o E1 só produza Human. `ICurrentPrincipal`
   substitui o `AnonymousAccountContext` como fonte do `IAccountContext`.
-  **Em aberto, fora do E1:** o resto da DA-005 (Result/Error, `ResultExtensions`,
-  `RequestRunner` como pacotes) depende de um pacote que não existe. Publicar,
-  copiar ou dispensar o limaj é decisão do usuário antes do primeiro épico que
-  precisar deles.
+  **Fora do E1:** o resto da DA-005 (Result/Error e o mapeamento HTTP) foi
+  decidido na DA-099 (E2).
 - **DA-095 — Conta criada por comando de CLI do owner; o convidado define a
   própria senha pelo link** (consenso). `dotnet run --project
   src/LifeGraph.Host -- accounts create --email ...` roda com o papel da app,

@@ -2,7 +2,7 @@
 
 - **Ordem:** 0
 - **Depende de:** —
-- **Última revisão:** 2026-10-02
+- **Última revisão:** 2026-10-04
 
 ## Contexto
 
@@ -47,7 +47,11 @@ em ambiente de desenvolvimento até o E13 (Infra & Deploy).
   `local.settings.json` (Azure Functions), e o UnitOfWork não aplica
   `SET LOCAL`. Regra BOLA: acesso a outra conta aparece como `NotFound`, nunca
   403. Pré-requisito externo: migrar o limaj-framework para .NET 10, no
-  repositório dele.
+  repositório dele. *Revista (2026-10-04):* o `IUserIdentityGateway` saiu pela
+  DA-094 (E1). O consumo do Result/Error e do `Web` foi redefinido pela DA-099
+  (E2): `Abstractions` 2.0.0 já, e `Web` a partir da 3.0.0, com o formato `V3`
+  e um `IErrorHttpMapper` próprio. O pré-requisito do .NET 10 foi cumprido na
+  2.0.0.
 - **DA-006 — Só ambiente de dev até o E13** (usuário). Hospedagem, backups e
   região ficam para o épico de Infra & Deploy. Para não forçar retrabalho, os
   **requisitos mínimos do host** ficam registrados já: Postgres ≥16,

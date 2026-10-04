@@ -192,11 +192,27 @@ Sharing, Collections.
 - RLS com `SET LOCAL` por transação; o papel da app não tem BYPASSRLS;
 - IDs UUIDv7.
 
-**limaj-framework:** reutilize apenas `Abstractions` (Result/Error, exceções,
-`IUserIdentityGateway`) e `Web` (ResultExtensions, RequestRunner), como
-pacotes. **Não** use `Persistence.EFCore`/`BaseEntity`/`BaseRepository` nos
-agregados do grafo: o soft delete por `IsActive` conflita com Delete/Purge e
-ChangeSet (DA-005). Erros de ownership mapeiam para `NotFound`.
+**limaj-framework:** o objetivo é padronizar no framework (DA-099). Quando
+faltar algo, o caminho é pedir ao owner, não fazer um substituto local.
+**Antes de qualquer mudança que toque o limaj, valide o estado do pacote** no
+CHANGELOG do repositório `limajsolutions/limaj-framework` e no nuget.org. Siga
+SemVer: subir de major é uma tarefa explícita. Use só `Limaj.Framework.Core` e
+`Limaj.Framework.Web` 3.0.0, na mesma versão (DA-100). `Abstractions`,
+`Application` e `Persistence.EFCore` não entram. O `Core` (`Result`/`Error`)
+vale em qualquer camada; o `Web` só em `LifeGraph.Http`, Host e `*.Http`, pelo
+`IHttpResultResponder` injetado, nunca pelas fachadas estáticas. Configure
+`Format = V3`, `IncludeExceptionDetails = false` e
+`IncludeDetailsOutsideValidation = false` explícitos, porque os padrões da
+3.0.0 são outros (DA-102). Não use `Error.HttpStatusCode` (obsoleto) nem
+`switch` exaustivo sobre `ErrorType`. Regra de negócio é
+`ErrorType.Validation` com o 422 vindo do catálogo de códigos (DA-101). Falha
+esperada é sempre `Result`, e os módulos não lançam as exceções do limaj
+(DA-104). Código de erro de módulo leva prefixo (`accounts.*`, `graph.*`), e
+código comum não (DA-105). Não use `IUserIdentityGateway` (DA-094, DA-106) nem
+`BaseEntity`/`BaseRepository` nos agregados do grafo: o soft delete por
+`IsActive` conflita com Delete/Purge e ChangeSet (DA-005). Erros de ownership
+mapeiam para `NotFound`. Detalhes no E2, seção "Contrato de resultado e
+erro".
 
 **Frontend:** React 19 + TypeScript strict + Vite (SPA, autenticada por cookie
 BFF), TanStack Query, React Router, Radix/shadcn-ui + Tailwind, React Hook

@@ -2,7 +2,43 @@
 
 - **Ordem:** 5
 - **Depende de:** E4
-- **Última revisão:** 2026-10-02
+- **Última revisão:** 2026-10-04
+
+## Pendências do `/flow` de 2026-10-04 (contrato de erro)
+
+O contrato de resultado e erro do backend foi discutido antes do E2. Veja a
+seção "Contrato de resultado e erro" do [E2](e02-nucleo-de-escrita.md) e a
+DA-099. Dois pontos dele são deste épico.
+
+- **Pré-decisão a revalidar, Q9: uma ação Sensitive pedida por agente é
+  sucesso pendente, não erro** (consenso de arquiteto + analista, antes da
+  premissa da DA-099).
+  - O caso de uso devolve `Result<ChangeOutcome>`, com `Applied(changeSetId)`
+    ou `PendingApproval(proposalId)`. Não há um terceiro estado no `Result`.
+  - REST responde `202 Accepted` com `Location` para a proposta.
+  - MCP devolve um resultado normal de ferramenta, não um erro, com status
+    pendente, o id da proposta e as orientações "nada foi aplicado", "não tente
+    de novo" e "avise o usuário onde aprovar".
+  - Motivo: se a resposta fosse erro, o agente tentaria de novo, criando
+    propostas duplicadas, ou diria ao usuário que falhou. O texto também deve
+    impedir o agente de dizer "feito" para algo que só foi proposto.
+  - Ainda falta decidir: um pedido Sensitive repetido devolve a proposta
+    pendente que já existe, em vez de criar outra; e o agente consulta o status
+    depois que o usuário aprovar, rejeitar ou deixar expirar.
+  - Candidata a ADR.
+- **Em aberto, decisão do usuário, Q4b: em que ordem checar scope e
+  visibilidade.** Os especialistas já concordam num princípio: a checagem que
+  depende só do principal roda antes de buscar o alvo e responde 403
+  (`insufficient_scope`/`scope_missing`), sem revelar se algo existe. Um alvo
+  oculto ou de outra conta responde sempre `NotFound`. A divergência que
+  sobrou é só o caso "alvo oculto e falta `.delete`":
+  - *Arquiteto:* scopes amplos (`lifegraph.read`, `lifegraph.write`) antes da
+    busca, com 403; scopes por operação (`.delete`, `.share`) depois de o alvo
+    se mostrar visível. Nesse caso, a resposta é 404.
+  - *Analista:* todo scope, inclusive `.delete` e `.share`, antes da busca. Nesse
+    caso, a resposta é 403.
+  - As duas formas são seguras. Seja qual for a escolhida, precisa de um teste
+    de integração para cada combinação.
 
 ## Contexto
 
