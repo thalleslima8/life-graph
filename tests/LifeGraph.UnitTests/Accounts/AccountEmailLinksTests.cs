@@ -31,12 +31,13 @@ public sealed class AccountEmailLinksTests
     [Fact]
     public void Encoded_token_is_url_safe_and_decodes_back()
     {
-        const string token = "CfDJ8+abc/def==";
+        // Low entropy on purpose: a key-shaped literal trips the secret scan (gitleaks generic-api-key).
+        const string original = "a+b/c==";
 
-        var encoded = AccountEmailLinks.EncodeToken(token);
+        var encoded = AccountEmailLinks.EncodeToken(original);
 
         Assert.DoesNotContain(encoded, character => character is '+' or '/' or '=');
-        Assert.Equal(token, AccountEmailLinks.DecodeToken(encoded));
+        Assert.Equal(original, AccountEmailLinks.DecodeToken(encoded));
     }
 
     [Fact]

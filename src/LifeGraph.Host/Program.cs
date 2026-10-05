@@ -1,3 +1,4 @@
+using System.Reflection;
 using LifeGraph.Accounts;
 using LifeGraph.Accounts.Provisioning;
 using LifeGraph.Agents;
@@ -16,6 +17,11 @@ using Microsoft.AspNetCore.Authorization;
 // `accounts ...` runs the owner's account command instead of the web server (DA-095).
 var isAccountsCommand = AccountsCommandLine.IsInvocation(args);
 var builder = WebApplication.CreateBuilder(isAccountsCommand ? [] : args);
+
+if (BuildTimeDocumentGeneration.IsRunningUnder(Assembly.GetEntryAssembly()))
+{
+    builder.Configuration.AddInMemoryCollection(BuildTimeDocumentGeneration.PlaceholderSettings);
+}
 
 builder.AddLifeGraphObservability();
 
