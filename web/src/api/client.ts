@@ -19,17 +19,31 @@ let csrfToken: string | undefined;
 let csrfTokenRequest: Promise<string> | undefined;
 let unauthorizedHandler: (() => void) | undefined;
 
+type ErrorDetails = Record<string, string[]>;
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | undefined;
-  readonly fieldErrors: Record<string, string[]>;
+  /** The `errors` of a validation problem, by request field. */
+  readonly fieldErrors: ErrorDetails;
+  /** What the refusal carries: limaj writes it under `details`, or under `errors` for a 400/422. */
+  readonly details: ErrorDetails;
+  /** From `Retry-After`, on a 429. */
+  readonly retryAfterSeconds: number | undefined;
 
-  constructor(status: number, code: string | undefined, message: string, fieldErrors: Record<string, string[]> = {}) {
+  constructor(
+    status: number,
+    code: string | undefined,
+    message: string,
+    { fieldErrors = {}, details = fieldErrors, retryAfterSeconds }: { fieldErrors?: ErrorDetails; details?: ErrorDetails; retryAfterSeconds?: number } = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.fieldErrors = fieldErrors;
+    this.details = details;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -61,15 +75,34 @@ export function unwrap<T>(result: ApiResult<T>): T {
     unauthorizedHandler?.();
   }
 
-  throw toApiError(response.status, result.error);
+  throw toApiError(response, result.error);
 }
 
-function toApiError(status: number, body: unknown): ApiError {
+function toApiError(response: Response, body: unknown): ApiError {
+  const { status } = response;
   const problem = isRecord(body) ? body : {};
   const code = typeof problem.code === "string" ? problem.code : undefined;
   const title = typeof problem.title === "string" ? problem.title : `HTTP ${status}`;
-  const fieldErrors = isRecord(problem.errors) ? (problem.errors as Record<string, string[]>) : {};
-  return new ApiError(status, code, title, fieldErrors);
+  const fieldErrors = detailsOf(problem.errors) ?? {};
+  const details = detailsOf(problem.details) ?? fieldErrors;
+  return new ApiError(status, code, title, { fieldErrors, details, retryAfterSeconds: retryAfterSecondsOf(response) });
+}
+
+function detailsOf(value: unknown): ErrorDetails | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, messages]) => [key, Array.isArray(messages) ? messages.filter((item) => typeof item === "string") : []]),
+  );
+}
+
+// Retry-After in seconds; the server never sends the HTTP-date form.
+function retryAfterSecondsOf(response: Response): number | undefined {
+  const header = response.headers.get("Retry-After");
+  const seconds = header === null ? Number.NaN : Number(header);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

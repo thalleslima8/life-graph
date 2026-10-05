@@ -1,4 +1,5 @@
 using System.Net;
+using LifeGraph.Accounts;
 using LifeGraph.Accounts.Provisioning;
 using LifeGraph.IntegrationTests.Infrastructure;
 
@@ -44,6 +45,24 @@ public sealed class AccountsCommandLineTests(PostgresDatabase database) : IAsync
     }
 
     [Fact]
+    public async Task Resend_voids_the_earlier_link_and_only_the_newest_sets_the_password()
+    {
+        await RunAsync("accounts", "create", "--email", Email);
+        var firstLink = EmailedLink.Parse(_factory.Mailer.LastTo(Email));
+        await RunAsync("accounts", "resend", "--email", Email);
+        var newestLink = EmailedLink.Parse(_factory.Mailer.LastTo(Email));
+        using var spa = new SpaClient(_factory.CreateClient());
+
+        var withTheFirstLink = await spa.ConfirmEmailAsync(firstLink, TestAccounts.Password);
+        var withTheNewestLink = await spa.ConfirmEmailAsync(newestLink, TestAccounts.Password);
+
+        // The first e-mail may have gone to a mistyped address (DA-108).
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, withTheFirstLink.StatusCode);
+        Assert.Equal(AccountsErrors.InvalidOrExpiredToken.Code, await ProblemCode.ReadAsync(withTheFirstLink));
+        Assert.Equal(HttpStatusCode.NoContent, withTheNewestLink.StatusCode);
+    }
+
+    [Fact]
     public async Task Resend_to_an_unknown_email_fails()
     {
         var (exitCode, _) = await RunAsync("accounts", "resend", "--email", Email);
@@ -82,7 +101,7 @@ public sealed class AccountsCommandLineTests(PostgresDatabase database) : IAsync
     private async Task<(int ExitCode, string Output)> RunAsync(params string[] args)
     {
         await using var output = new StringWriter();
-        var exitCode = await AccountsCommandLine.RunAsync(_factory.Services, args, output, TestContext.Current.CancellationToken);
+        var exitCode = await AccountsCommandLine.RunAsync(_factory.Provisioning.Services, args, output, TestContext.Current.CancellationToken);
         return (exitCode, output.ToString());
     }
 }

@@ -1,6 +1,6 @@
 using System.Net;
+using LifeGraph.Accounts;
 using LifeGraph.Accounts.Email;
-using LifeGraph.Accounts.Http;
 using LifeGraph.Accounts.RateLimiting;
 using LifeGraph.IntegrationTests.Infrastructure;
 
@@ -59,7 +59,7 @@ public sealed class PasswordResetTests(PostgresDatabase database) : IAsyncLifeti
         var completion = await spa.CompletePasswordResetAsync(link, "short");
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, completion.StatusCode);
-        Assert.Equal(CredentialProblems.PasswordRejectedCode, await ProblemCode.ReadAsync(completion));
+        Assert.Equal(AccountsErrors.PasswordRejected.Code, await ProblemCode.ReadAsync(completion));
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public sealed class PasswordResetTests(PostgresDatabase database) : IAsyncLifeti
         var reuse = await spa.CompletePasswordResetAsync(link, "yet another long passphrase");
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, reuse.StatusCode);
-        Assert.Equal(CredentialProblems.InvalidOrExpiredTokenCode, await ProblemCode.ReadAsync(reuse));
+        Assert.Equal(AccountsErrors.InvalidOrExpiredToken.Code, await ProblemCode.ReadAsync(reuse));
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public sealed class PasswordResetTests(PostgresDatabase database) : IAsyncLifeti
         var completion = await spa.CompletePasswordResetAsync(link with { UserId = Guid.CreateVersion7() }, NewPassword);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, completion.StatusCode);
-        Assert.Equal(CredentialProblems.InvalidOrExpiredTokenCode, await ProblemCode.ReadAsync(completion));
+        Assert.Equal(AccountsErrors.InvalidOrExpiredToken.Code, await ProblemCode.ReadAsync(completion));
     }
 
     // The credential directory has no RLS (DA-098): the link must never act on, or reveal, another user.
@@ -103,7 +103,7 @@ public sealed class PasswordResetTests(PostgresDatabase database) : IAsyncLifeti
         var completion = await spa.CompletePasswordResetAsync(link with { UserId = otherUserId }, NewPassword);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, completion.StatusCode);
-        Assert.Equal(CredentialProblems.InvalidOrExpiredTokenCode, await ProblemCode.ReadAsync(completion));
+        Assert.Equal(AccountsErrors.InvalidOrExpiredToken.Code, await ProblemCode.ReadAsync(completion));
         Assert.Equal(HttpStatusCode.NoContent, (await spa.LoginAsync(otherEmail, TestAccounts.Password)).StatusCode);
     }
 
@@ -157,7 +157,7 @@ public sealed class PasswordResetTests(PostgresDatabase database) : IAsyncLifeti
         var nextRequest = await spa.PostAsync("/api/password-resets", new { email });
 
         Assert.Equal(HttpStatusCode.TooManyRequests, nextRequest.StatusCode);
-        Assert.Equal(CredentialAttemptLimiter.TooManyAttemptsCode, await ProblemCode.ReadAsync(nextRequest));
+        Assert.Equal(AccountsErrors.TooManyAttempts.Code, await ProblemCode.ReadAsync(nextRequest));
         Assert.Equal(TimeSpan.FromSeconds(900), nextRequest.Headers.RetryAfter?.Delta);
     }
 
@@ -178,7 +178,7 @@ public sealed class PasswordResetTests(PostgresDatabase database) : IAsyncLifeti
         var nextAttempt = await spa.CompletePasswordResetAsync(guessedLink, NewPassword);
 
         Assert.Equal(HttpStatusCode.TooManyRequests, nextAttempt.StatusCode);
-        Assert.Equal(CredentialAttemptLimiter.TooManyAttemptsCode, await ProblemCode.ReadAsync(nextAttempt));
+        Assert.Equal(AccountsErrors.TooManyAttempts.Code, await ProblemCode.ReadAsync(nextAttempt));
         Assert.Equal(TimeSpan.FromSeconds(900), nextAttempt.Headers.RetryAfter?.Delta);
     }
 }

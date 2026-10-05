@@ -95,7 +95,7 @@ describe.each(linkPages)("$path", (page) => {
   });
 
   it("explains a password the server rejects next to the field", async () => {
-    apiFor(page, () => problem(422, "password_rejected"));
+    apiFor(page, () => problem(422, "accounts.password_rejected"));
     openLink(page);
 
     await choosePassword(page);
@@ -106,7 +106,7 @@ describe.each(linkPages)("$path", (page) => {
   });
 
   it("says the link is invalid or expired when the server refuses it", async () => {
-    apiFor(page, () => problem(422, "invalid_or_expired_token"));
+    apiFor(page, () => problem(422, "accounts.invalid_or_expired_token"));
     openLink(page);
 
     await choosePassword(page);

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json.Nodes;
+using LifeGraph.Infrastructure.Errors;
 using LifeGraph.IntegrationTests.Infrastructure;
 using Npgsql;
 
@@ -78,8 +80,10 @@ public sealed class AccountIsolationTests(PostgresDatabase database) : IAsyncLif
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    // No session is 401 with a challenge, before any lookup (DA-109); another Account's row
+    // seen by a signed-in principal is 404 (Reading_another_accounts_row_returns_not_found).
     [Fact]
-    public async Task Reading_without_a_session_is_unauthorized()
+    public async Task Reading_without_a_session_is_unauthorized_with_a_challenge()
     {
         using var client = _factory.CreateClient();
 
@@ -88,6 +92,29 @@ public sealed class AccountIsolationTests(PostgresDatabase database) : IAsyncLif
             TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotEmpty(response.Headers.WwwAuthenticate);
+        Assert.Equal(CommonErrors.Unauthorized.Code, await ProblemCode.ReadAsync(response));
+    }
+
+    [Fact]
+    public async Task Without_a_session_an_existing_and_a_missing_id_get_the_same_answer()
+    {
+        using var client = _factory.CreateClient();
+
+        var existing = await client.GetAsync($"{RlsProbes.RoutePrefix}/{_probeOfAccountA}", TestContext.Current.CancellationToken);
+        var missing = await client.GetAsync($"{RlsProbes.RoutePrefix}/{Guid.CreateVersion7()}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, existing.StatusCode);
+        Assert.Equal(existing.StatusCode, missing.StatusCode);
+        Assert.Equal(existing.Headers.WwwAuthenticate.ToString(), missing.Headers.WwwAuthenticate.ToString());
+        Assert.Equal(await BodyWithoutTraceIdAsync(existing), await BodyWithoutTraceIdAsync(missing));
+    }
+
+    private static async Task<string> BodyWithoutTraceIdAsync(HttpResponseMessage response)
+    {
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!.AsObject();
+        body.Remove("traceId");
+        return body.ToJsonString();
     }
 
     [Fact]

@@ -40,7 +40,7 @@ describe("forgot password page", () => {
   });
 
   it("shows the generic message when requests are limited", async () => {
-    apiAnswering(() => problem(429, "too_many_attempts"));
+    apiAnswering(() => problem(429, "accounts.too_many_attempts"));
     renderRoute("/forgot-password");
 
     await requestLink("ada@example.test");

@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using ArchUnitNET.Fluent;
+using Limaj.Framework.Core;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace LifeGraph.ArchitectureTests;
@@ -11,21 +12,21 @@ namespace LifeGraph.ArchitectureTests;
 public static class ArchitectureRules
 {
     public static readonly string[] Modules =
-        ["Accounts", "Graph", "Changes", "Agents", "Resources", "Semantic", "Sharing", "Collections"];
+        ["Accounts", "Graph", "Agents", "Resources", "Semantic", "Sharing", "Collections"];
 
     private const string WebAndAgentFrameworks = @"^(Microsoft\.AspNetCore|ModelContextProtocol)(\..+)?$";
     private const string WebAgentAndPersistenceFrameworks =
         @"^(Microsoft\.AspNetCore|ModelContextProtocol|Microsoft\.EntityFrameworkCore|Npgsql)(\..+)?$";
 
-    // Slices talk to each other through the API surface they expose, never by reaching into
-    // another module's namespaces (DA-002).
+    // A module reaches another only through that module's Contracts namespace, never its
+    // domain, persistence or slices (DA-112, revising DA-002).
     public static IArchRule ModuleDoesNotDependOnOtherModules(string module)
     {
         var otherModules = string.Join('|', Modules.Where(other => other != module));
 
         return Types().That().ResideInNamespaceMatching($@"^LifeGraph\.{module}(\..+)?$")
-            .Should().NotDependOnAnyTypesThat().ResideInNamespaceMatching($@"^LifeGraph\.({otherModules})(\..+)?$")
-            .Because("modules are isolated from each other (DA-002)");
+            .Should().NotDependOnAnyTypesThat().ResideInNamespaceMatching($@"^LifeGraph\.({otherModules})(?!\.Contracts(\.|$))(\..+)?$")
+            .Because("a module depends only on another module's Contracts (DA-112)");
     }
 
     // The credential directory (users and their claims, logins and tokens) has no RLS, so
@@ -64,4 +65,38 @@ public static class ArchitectureRules
             .Should().NotDependOnAnyTypesThat().ResideInNamespaceMatching(WebAndAgentFrameworks)
             .Because("use cases serve both REST and MCP adapters")
             .WithoutRequiringPositiveResults();
+
+    // Limaj.Framework.Web reaches only the thin HTTP layer: LifeGraph.Http, the Host and the
+    // *.Http namespaces of the modules (DA-100).
+    public static IArchRule OnlyHttpLayersUseLimajWeb(string rootNamespace) =>
+        Types().That().ResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}(\..+)?$")
+            .And().DoNotResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}\.(Http|Host)(\..+)?$")
+            .And().DoNotResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}\.\w+\.Http(\..+)?$")
+            .Should().NotDependOnAnyTypesThat().ResideInNamespaceMatching(@"^Limaj\.Framework\.Web(\..+)?$")
+            .Because("the Limaj HTTP adapter lives only in LifeGraph.Http, the Host and *.Http namespaces (DA-100)");
+
+    // Abstractions brings BaseEntity, IRepository and IUnitOfWork back (DA-005, DA-100, DA-106).
+    public static IArchRule NoLimajBeyondCoreAndWeb(string rootNamespace) =>
+        Types().That().ResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}(\..+)?$")
+            .Should().NotDependOnAnyTypesThat().ResideInNamespaceMatching(@"^Limaj\.Framework\.(Abstractions|Application|Persistence)(\..+)?$")
+            .Because("only Limaj.Framework.Core and Limaj.Framework.Web are consumed (DA-100)");
+
+    // Expected failures are Results; the Limaj exceptions would become 4xx with the exception
+    // message through the built-in mapper that runs before the product's (DA-104).
+    public static IArchRule ModulesDoNotUseLimajExceptions(string rootNamespace) =>
+        Types().That().ResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}\.({string.Join('|', Modules)})(\..+)?$")
+            .Should().NotDependOnAnyTypesThat().ResideInNamespaceMatching(@"^Limaj\.Framework\.Core\.Errors(\..+)?$")
+            .Because("modules return Result for expected failures and never throw Limaj exceptions (DA-104)");
+
+    // The status of a code comes from the catalog, never from the deprecated Error member (DA-101, DA-102).
+    public static IArchRule NoErrorHttpStatusCode(string rootNamespace) =>
+        Types().That().ResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}(\..+)?$")
+            .Should().NotCallAny(MethodMembers().That().HaveFullNameMatching($@"{Regex.Escape(typeof(Error).FullName!)}::.*HttpStatusCode"))
+            .Because("Error.HttpStatusCode is obsolete; statuses come from the error catalog (DA-102)");
+
+    // The static facades always use the default options (V2, environment-driven details) (DA-102).
+    public static IArchRule NoLimajStaticFacades(string rootNamespace) =>
+        Types().That().ResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}(\..+)?$")
+            .Should().NotDependOnAnyTypesThat().HaveFullNameMatching(@"^Limaj\.Framework\.Web\.Http\.(ResultExtensions|RequestRunner|ExceptionExtensions)$")
+            .Because("endpoints use the injected IHttpResultResponder with the explicit options (DA-102)");
 }

@@ -1,3 +1,4 @@
+using LifeGraph.Accounts;
 using LifeGraph.Accounts.Email;
 using LifeGraph.Accounts.Provisioning;
 using LifeGraph.IntegrationTests.Infrastructure;
@@ -89,7 +90,7 @@ public sealed class AccountProvisioningTests(PostgresDatabase database) : IAsync
         var outcome = await TestAccounts.ProvisionAsync(_factory, new string('a', 250) + "@example.test");
 
         var rejected = Assert.IsType<AccountProvisioningOutcome.Rejected>(outcome);
-        Assert.Contains(AccountProvisioner.EmailTooLongCode, rejected.ErrorCodes);
+        Assert.Contains(AccountsErrors.EmailTooLong.Code, rejected.ErrorCodes);
     }
 
     [Fact]
@@ -99,7 +100,7 @@ public sealed class AccountProvisioningTests(PostgresDatabase database) : IAsync
         var created = Assert.IsType<AccountProvisioningOutcome.Created>(await TestAccounts.ProvisionAsync(_factory, Email));
         _factory.Mailer.IsFailing = false;
 
-        await using var scope = _factory.Services.CreateAsyncScope();
+        await using var scope = _factory.Provisioning.Services.CreateAsyncScope();
         var resend = await scope.ServiceProvider.GetRequiredService<AccountProvisioner>()
             .ResendEmailConfirmationAsync(Email, TestContext.Current.CancellationToken);
 

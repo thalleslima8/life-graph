@@ -12,6 +12,12 @@ internal static class IdentityRegistration
 {
     public const string SessionCookieBaseName = "lifegraph-session";
 
+    /// <summary>
+    /// The challenge of a request without a session (DA-109). E3 adds the Bearer challenge that
+    /// OAuth/MCP clients use for discovery next to it.
+    /// </summary>
+    public const string SessionChallenge = "Cookie realm=\"lifegraph\"";
+
     public static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(8);
 
     /// <summary>How long an e-mailed link (set password, reset password) stays valid.</summary>
@@ -71,10 +77,12 @@ internal static class IdentityRegistration
                 }
             };
 
-            // An API answers with status codes; the SPA decides where to navigate.
+            // An API answers with status codes; the SPA decides where to navigate. No session is
+            // 401 on every route, before any lookup, so it is the same for any id (DA-109).
             options.Events.OnRedirectToLogin = context =>
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.Headers.WWWAuthenticate = SessionChallenge;
                 return Task.CompletedTask;
             };
             options.Events.OnRedirectToAccessDenied = context =>

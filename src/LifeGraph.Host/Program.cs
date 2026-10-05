@@ -2,12 +2,14 @@ using System.Reflection;
 using LifeGraph.Accounts;
 using LifeGraph.Accounts.Provisioning;
 using LifeGraph.Agents;
-using LifeGraph.Changes;
 using LifeGraph.Collections;
 using LifeGraph.Graph;
+using LifeGraph.Graph.Http;
 using LifeGraph.Host.Observability;
 using LifeGraph.Host.OpenApi;
 using LifeGraph.Host.Operations;
+using LifeGraph.Http;
+using LifeGraph.Infrastructure.Jobs;
 using LifeGraph.Infrastructure.Persistence;
 using LifeGraph.Resources;
 using LifeGraph.Semantic;
@@ -25,10 +27,17 @@ if (BuildTimeDocumentGeneration.IsRunningUnder(Assembly.GetEntryAssembly()))
 
 builder.AddLifeGraphObservability();
 
-builder.Services.AddProblemDetails();
-builder.Services.AddOpenApi(options => options.AddOperationTransformer<RetryAfterHeaderTransformer>());
-builder.Services.AddLifeGraphPersistence(builder.Configuration);
+builder.Services.AddLifeGraphHttpErrors();
+builder.Services.AddLifeGraphHttpJson();
+builder.Services.AddLifeGraphApiRateLimiting();
+builder.Services.AddOpenApi(options => options
+    .AddOperationTransformer<RetryAfterHeaderTransformer>()
+    .AddDocumentTransformer<ErrorCatalogDocumentTransformer>());
+
+// The owner's CLI connects as the provisioning role, the web process never does (DA-107).
+builder.Services.AddLifeGraphPersistence(builder.Configuration, AccountsCommandLine.ConnectionStringNameFor(args));
 builder.Services.AddLifeGraphHealthChecks();
+builder.Services.AddLifeGraphJobs(builder.Configuration);
 
 // Authentication by default (API-080): every endpoint needs a signed-in principal unless
 // it opts out with AllowAnonymous.
@@ -38,7 +47,6 @@ builder.Services.AddAuthorizationBuilder()
 builder.Services
     .AddAccountsModule()
     .AddGraphModule()
-    .AddChangesModule()
     .AddAgentsModule()
     .AddResourcesModule()
     .AddSemanticModule()
@@ -63,8 +71,13 @@ if (app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 
+// After authorization: no session is 401 before any budget or size check (DA-109, DA-116).
+app.UseRequestBodyLimit();
+app.UseRateLimiter();
+
 app.MapLifeGraphHealthChecks();
 app.MapAccountsEndpoints();
+app.MapGraphEndpoints();
 
 app.Run();
 return 0;

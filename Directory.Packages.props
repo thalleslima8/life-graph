@@ -1,5 +1,12 @@
 <Project>
+  <PropertyGroup>
+    <!-- Every Limaj.* package must share one version, or the app fails with TypeLoadException (DA-100). -->
+    <LimajFrameworkVersion>3.0.0</LimajFrameworkVersion>
+  </PropertyGroup>
   <ItemGroup>
+    <!-- Result/Error contract and its HTTP adapter; nothing else from Limaj (DA-100). -->
+    <PackageVersion Include="Limaj.Framework.Core" Version="$(LimajFrameworkVersion)" />
+    <PackageVersion Include="Limaj.Framework.Web" Version="$(LimajFrameworkVersion)" />
     <!-- Persistence -->
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />

@@ -194,7 +194,7 @@ Mailpit (captured e-mails) is forwarded from `mailpit:8025`. Details in
 
    ```bash
    dotnet run --project src/LifeGraph.Host -- accounts create --email you@example.com
-   dotnet run --project src/LifeGraph.Host -- accounts resend --email you@example.com   # new link, still pending
+   dotnet run --project src/LifeGraph.Host -- accounts resend --email you@example.com   # new link, still pending; earlier links stop working
    ```
 
 ### Tests and checks
@@ -215,5 +215,6 @@ The .NET 10 SDK, Node 24 and Docker are enough to build and run every test
 (integration tests use Testcontainers). Running the API itself needs a
 PostgreSQL bootstrapped with [`db/bootstrap/`](db/bootstrap/) (roles, database,
 extensions), which the devcontainer does for you. The application connects as
-`lifegraph_app` (`ConnectionStrings__Default`) and migrations run as
-`lifegraph_migrator` (`ConnectionStrings__Migrations`).
+`lifegraph_app` (`ConnectionStrings__Default`), the owner's `accounts` CLI as
+`lifegraph_provisioner` (`ConnectionStrings__Provisioning`, DA-107) and
+migrations run as `lifegraph_migrator` (`ConnectionStrings__Migrations`).

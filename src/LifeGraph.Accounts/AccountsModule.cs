@@ -1,12 +1,12 @@
 using LifeGraph.Accounts.Csrf;
 using LifeGraph.Accounts.Email;
-using LifeGraph.Accounts.EmailConfirmation;
+using LifeGraph.Accounts.Http;
 using LifeGraph.Accounts.Identity;
 using LifeGraph.Accounts.Issuer;
-using LifeGraph.Accounts.PasswordReset;
 using LifeGraph.Accounts.Provisioning;
 using LifeGraph.Accounts.RateLimiting;
-using LifeGraph.Accounts.Sessions;
+using LifeGraph.Http;
+using LifeGraph.Infrastructure.Errors;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +20,8 @@ public static class AccountsModule
 
     public static IServiceCollection AddAccountsModule(this IServiceCollection services)
     {
+        services.AddErrorCodes(AccountsErrors.All);
+
         services.AddOptions<SmtpOptions>().BindConfiguration(SmtpOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
         services.AddOptions<SpaOptions>().BindConfiguration(SpaOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 

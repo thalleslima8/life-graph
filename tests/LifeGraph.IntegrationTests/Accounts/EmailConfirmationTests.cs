@@ -1,6 +1,6 @@
 using System.Net;
+using LifeGraph.Accounts;
 using LifeGraph.Accounts.Email;
-using LifeGraph.Accounts.Http;
 using LifeGraph.Accounts.RateLimiting;
 using LifeGraph.Infrastructure.Identity;
 using LifeGraph.IntegrationTests.Infrastructure;
@@ -61,7 +61,7 @@ public sealed class EmailConfirmationTests(PostgresDatabase database) : IAsyncLi
         var reuse = await spa.ConfirmEmailAsync(link, "a password chosen by someone else");
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, reuse.StatusCode);
-        Assert.Equal(CredentialProblems.InvalidOrExpiredTokenCode, await ProblemCode.ReadAsync(reuse));
+        Assert.Equal(AccountsErrors.InvalidOrExpiredToken.Code, await ProblemCode.ReadAsync(reuse));
         Assert.Equal(HttpStatusCode.NoContent, (await spa.LoginAsync(Email, TestAccounts.Password)).StatusCode);
     }
 
@@ -75,7 +75,7 @@ public sealed class EmailConfirmationTests(PostgresDatabase database) : IAsyncLi
         var retry = await spa.ConfirmEmailAsync(link, TestAccounts.Password);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, rejected.StatusCode);
-        Assert.Equal(CredentialProblems.PasswordRejectedCode, await ProblemCode.ReadAsync(rejected));
+        Assert.Equal(AccountsErrors.PasswordRejected.Code, await ProblemCode.ReadAsync(rejected));
         Assert.Equal(HttpStatusCode.NoContent, retry.StatusCode);
     }
 
@@ -88,7 +88,7 @@ public sealed class EmailConfirmationTests(PostgresDatabase database) : IAsyncLi
         var confirmation = await spa.ConfirmEmailAsync(link with { Token = link.Token + "AA" }, TestAccounts.Password);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, confirmation.StatusCode);
-        Assert.Equal(CredentialProblems.InvalidOrExpiredTokenCode, await ProblemCode.ReadAsync(confirmation));
+        Assert.Equal(AccountsErrors.InvalidOrExpiredToken.Code, await ProblemCode.ReadAsync(confirmation));
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class EmailConfirmationTests(PostgresDatabase database) : IAsyncLi
         var confirmation = await spa.ConfirmEmailAsync(link with { UserId = Guid.CreateVersion7() }, TestAccounts.Password);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, confirmation.StatusCode);
-        Assert.Equal(CredentialProblems.InvalidOrExpiredTokenCode, await ProblemCode.ReadAsync(confirmation));
+        Assert.Equal(AccountsErrors.InvalidOrExpiredToken.Code, await ProblemCode.ReadAsync(confirmation));
     }
 
     // The credential directory has no RLS (DA-098): the link must never act on, or reveal, another user.
@@ -126,7 +126,7 @@ public sealed class EmailConfirmationTests(PostgresDatabase database) : IAsyncLi
         var confirmation = await spa.ConfirmEmailAsync(link with { UserId = otherUserId }, TestAccounts.Password);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, confirmation.StatusCode);
-        Assert.Equal(CredentialProblems.InvalidOrExpiredTokenCode, await ProblemCode.ReadAsync(confirmation));
+        Assert.Equal(AccountsErrors.InvalidOrExpiredToken.Code, await ProblemCode.ReadAsync(confirmation));
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public sealed class EmailConfirmationTests(PostgresDatabase database) : IAsyncLi
         var confirmation = await spa.ConfirmEmailAsync(link with { Token = resetToken }, TestAccounts.Password);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, confirmation.StatusCode);
-        Assert.Equal(CredentialProblems.InvalidOrExpiredTokenCode, await ProblemCode.ReadAsync(confirmation));
+        Assert.Equal(AccountsErrors.InvalidOrExpiredToken.Code, await ProblemCode.ReadAsync(confirmation));
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public sealed class EmailConfirmationTests(PostgresDatabase database) : IAsyncLi
         var withTheRealLink = await spa.ConfirmEmailAsync(link, TestAccounts.Password);
 
         Assert.Equal(HttpStatusCode.TooManyRequests, withTheRealLink.StatusCode);
-        Assert.Equal(CredentialAttemptLimiter.TooManyAttemptsCode, await ProblemCode.ReadAsync(withTheRealLink));
+        Assert.Equal(AccountsErrors.TooManyAttempts.Code, await ProblemCode.ReadAsync(withTheRealLink));
         Assert.Equal(TimeSpan.FromSeconds(900), withTheRealLink.Headers.RetryAfter?.Delta);
     }
 

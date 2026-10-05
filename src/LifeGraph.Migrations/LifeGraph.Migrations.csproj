@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The migrations of the one LifeGraphDbContext and its design-time factory (DA-111). It
+    references every module that contributes to the model; the web host does not reference
+    it, so migrations never ship inside the running application.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LifeGraph.Infrastructure\LifeGraph.Infrastructure.csproj" />
+    <ProjectReference Include="..\LifeGraph.Graph\LifeGraph.Graph.csproj" />
+  </ItemGroup>
+
+</Project>

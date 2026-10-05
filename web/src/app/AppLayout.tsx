@@ -4,6 +4,13 @@ import { Button } from "@/components/ui/button";
 import { useSession } from "@/features/session/session";
 import { useLogout } from "@/features/session/useLogout";
 
+const GRAPH_LINKS = [
+  { to: "/nodes", label: "Nodes" },
+  { to: "/nodes?inbox=1", label: "Inbox" },
+  { to: "/changes", label: "Recent Changes" },
+  { to: "/types", label: "Types" },
+];
+
 export function AppLayout() {
   const session = useSession();
   const logout = useLogout();
@@ -22,9 +29,22 @@ export function AppLayout() {
     <div className="min-h-screen">
       <header className="border-b">
         <nav aria-label="Principal" className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
-          <Link to="/" className="font-semibold">
-            Life Graph
-          </Link>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link to="/" className="font-semibold">
+              Life Graph
+            </Link>
+            {session && (
+              <ul className="flex flex-wrap gap-3 text-sm">
+                {GRAPH_LINKS.map(({ to, label }) => (
+                  <li key={to}>
+                    <Link to={to} className="underline-offset-4 hover:underline">
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {session && (
             <div className="flex items-center gap-3 text-sm">
               <span className="text-muted-foreground">{session.email}</span>

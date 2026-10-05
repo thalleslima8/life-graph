@@ -1,7 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using LifeGraph.Accounts;
+using LifeGraph.Accounts.Http;
 using LifeGraph.Accounts.RateLimiting;
-using LifeGraph.Accounts.Sessions;
 using LifeGraph.IntegrationTests.Infrastructure;
 
 namespace LifeGraph.IntegrationTests.Accounts;
@@ -81,7 +82,7 @@ public sealed class SessionTests(PostgresDatabase database) : IAsyncLifetime
         var login = await spa.LoginAsync(email, password);
 
         Assert.Equal(HttpStatusCode.BadRequest, login.StatusCode);
-        Assert.Equal(SessionEndpoints.InvalidCredentialsCode, await ProblemCode.ReadAsync(login));
+        Assert.Equal(AccountsErrors.InvalidCredentials.Code, await ProblemCode.ReadAsync(login));
     }
 
     [Theory]
@@ -98,7 +99,7 @@ public sealed class SessionTests(PostgresDatabase database) : IAsyncLifetime
         var nextAttempt = await spa.LoginAsync(email, TestAccounts.Password);
 
         Assert.Equal(HttpStatusCode.TooManyRequests, nextAttempt.StatusCode);
-        Assert.Equal(CredentialAttemptLimiter.TooManyAttemptsCode, await ProblemCode.ReadAsync(nextAttempt));
+        Assert.Equal(AccountsErrors.TooManyAttempts.Code, await ProblemCode.ReadAsync(nextAttempt));
         Assert.Equal(DefaultWindow, nextAttempt.Headers.RetryAfter?.Delta);
     }
 
@@ -140,7 +141,7 @@ public sealed class SessionTests(PostgresDatabase database) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
         Assert.Equal(TimeSpan.FromSeconds(1), limited.Headers.RetryAfter?.Delta);
         Assert.Equal(HttpStatusCode.BadRequest, afterTheWindow.StatusCode);
-        Assert.Equal(SessionEndpoints.InvalidCredentialsCode, await ProblemCode.ReadAsync(afterTheWindow));
+        Assert.Equal(AccountsErrors.InvalidCredentials.Code, await ProblemCode.ReadAsync(afterTheWindow));
     }
 
     [Fact]

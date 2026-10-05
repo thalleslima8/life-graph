@@ -1,4 +1,5 @@
 using LifeGraph.Accounts.Identity;
+using LifeGraph.Http;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -18,10 +19,9 @@ namespace LifeGraph.Accounts.Csrf;
 /// </summary>
 public static class CsrfProtection
 {
-    public const string HeaderName = "X-CSRF-TOKEN";
+    public const string HeaderName = CsrfContract.HeaderName;
     public const string CookieBaseName = "lifegraph-csrf";
-    public const string TokenPath = "/csrf-token";
-    public const string InvalidTokenCode = "csrf_token_invalid";
+    public const string TokenPath = CsrfContract.TokenPath;
 
     internal static IServiceCollection AddLifeGraphCsrfProtection(this IServiceCollection services)
     {
@@ -31,9 +31,6 @@ public static class CsrfProtection
 
         return services;
     }
-
-    internal static RouteGroupBuilder RequireCsrfTokenOnUnsafeMethods(this RouteGroupBuilder group) =>
-        group.AddEndpointFilter<CsrfEndpointFilter>();
 
     internal static IEndpointRouteBuilder MapCsrfTokenEndpoint(this IEndpointRouteBuilder endpoints)
     {
@@ -49,26 +46,6 @@ public static class CsrfProtection
     {
         var tokens = antiforgery.GetAndStoreTokens(httpContext);
         return TypedResults.Ok(new CsrfTokenResponse(tokens.RequestToken!));
-    }
-
-    private sealed class CsrfEndpointFilter(IAntiforgery antiforgery) : IEndpointFilter
-    {
-        public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
-        {
-            var method = context.HttpContext.Request.Method;
-            var isSafeMethod = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
-
-            if (!isSafeMethod && !await antiforgery.IsRequestValidAsync(context.HttpContext))
-            {
-                return Http.ApiProblems.Create(
-                    StatusCodes.Status400BadRequest,
-                    InvalidTokenCode,
-                    "Missing or invalid CSRF token",
-                    $"Send the token from GET /api{TokenPath} in the {HeaderName} header.");
-            }
-
-            return await next(context);
-        }
     }
 }
 

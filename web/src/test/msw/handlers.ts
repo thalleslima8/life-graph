@@ -5,8 +5,8 @@ export type FakeSession = { email: string } | null;
 
 export const ACCOUNT_ID = "01a10492-43b8-7176-9da5-49f6f624aa1e";
 
-export function problem(status: number, code: string, extra: Record<string, unknown> = {}) {
-  return HttpResponse.json({ status, title: code, code, ...extra }, { status, headers: { "Content-Type": "application/problem+json" } });
+export function problem(status: number, code: string, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) {
+  return HttpResponse.json({ status, title: code, code, ...extra }, { status, headers: { "Content-Type": "application/problem+json", ...headers } });
 }
 
 export function sessionHandler(getSession: () => FakeSession) {

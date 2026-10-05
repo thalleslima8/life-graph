@@ -1,17 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Limaj.Framework.Core" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="EFCore.NamingConventions" />
     <PackageReference Include="Pgvector.EntityFrameworkCore" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
     <PackageReference Include="OpenIddict.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.Extensions.Compliance.Redaction" />
     <PackageReference Include="Microsoft.Extensions.Telemetry" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LifeGraph.UnitTests" />
+    <InternalsVisibleTo Include="LifeGraph.IntegrationTests" />
   </ItemGroup>
 
 </Project>

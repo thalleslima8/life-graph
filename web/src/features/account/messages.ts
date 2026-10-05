@@ -1,9 +1,9 @@
 import { isApiError } from "@/api/client";
 import { PASSWORD_MIN_LENGTH } from "./passwordSchema";
 
-export const TOO_MANY_ATTEMPTS_CODE = "too_many_attempts";
-export const INVALID_OR_EXPIRED_TOKEN_CODE = "invalid_or_expired_token";
-export const PASSWORD_REJECTED_CODE = "password_rejected";
+export const TOO_MANY_ATTEMPTS_CODE = "accounts.too_many_attempts";
+export const INVALID_OR_EXPIRED_TOKEN_CODE = "accounts.invalid_or_expired_token";
+export const PASSWORD_REJECTED_CODE = "accounts.password_rejected";
 
 // Generic on purpose: the same text whether or not the e-mail has an account (DA-097).
 export const TOO_MANY_ATTEMPTS_MESSAGE = "Muitas tentativas. Aguarde alguns minutos e tente novamente.";

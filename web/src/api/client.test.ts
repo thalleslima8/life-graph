@@ -109,7 +109,32 @@ describe("api client", () => {
     expect(failure).toBeInstanceOf(ApiError);
     expect(failure).toMatchObject({ status: 400, code: "validation_failed", fieldErrors: { email: ["Required."] } });
     expect(isApiError(failure, "validation_failed")).toBe(true);
-    expect(isApiError(failure, "invalid_credentials")).toBe(false);
+    expect(isApiError(failure, "accounts.invalid_credentials")).toBe(false);
+  });
+
+  it("reads the details of a refusal from details, or from errors when there are none", async () => {
+    server.use(
+      csrfTokenHandler().handler,
+      http.patch("/api/nodes/:nodeId", () => problem(409, "graph.node_version_conflict", { details: { version: ["2"] } })),
+      http.delete("/api/types/:typeId", () =>
+        problem(422, "graph.type_in_use_by_deleted_nodes", { errors: { deletedNodeCount: ["1"], lastPurgeAt: ["2026-11-04T00:00:00Z"] } }),
+      ),
+    );
+    const id = "01a10492-43b8-7176-9da5-49f6f624aa1e";
+
+    const conflict = await api.PATCH("/api/nodes/{nodeId}", { params: { path: { nodeId: id } }, body: { version: 1 } }).then(unwrap).catch((error: unknown) => error);
+    const inUse = await api.DELETE("/api/types/{typeId}", { params: { path: { typeId: id } } }).then(unwrap).catch((error: unknown) => error);
+
+    expect(conflict).toMatchObject({ status: 409, details: { version: ["2"] }, fieldErrors: {} });
+    expect(inUse).toMatchObject({ status: 422, details: { deletedNodeCount: ["1"], lastPurgeAt: ["2026-11-04T00:00:00Z"] } });
+  });
+
+  it("reads Retry-After in seconds", async () => {
+    server.use(http.get("/api/changesets", () => problem(429, "too_many_requests", {}, { "Retry-After": "12" })));
+
+    const refusal = await api.GET("/api/changesets").then(unwrap).catch((error: unknown) => error);
+
+    expect(refusal).toMatchObject({ status: 429, code: "too_many_requests", retryAfterSeconds: 12 });
   });
 
   it("reports a 401 to the unauthorized handler, and nothing else", async () => {
@@ -118,7 +143,7 @@ describe("api client", () => {
     server.use(
       http.get("/api/sessions/current", () => new HttpResponse(null, { status: 401 })),
       csrfTokenHandler().handler,
-      http.post("/api/sessions", () => problem(400, "invalid_credentials")),
+      http.post("/api/sessions", () => problem(400, "accounts.invalid_credentials")),
     );
 
     await expect(api.GET("/api/sessions/current").then(unwrap)).rejects.toMatchObject({ status: 401 });

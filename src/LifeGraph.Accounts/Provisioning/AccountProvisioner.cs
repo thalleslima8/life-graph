@@ -25,14 +25,12 @@ public sealed partial class AccountProvisioner(
     IAccountMailer mailer,
     ILogger<AccountProvisioner> logger)
 {
-    public const string EmailTooLongCode = "EmailTooLong";
-
     public async Task<AccountProvisioningOutcome> ProvisionAsync(string email, CancellationToken cancellationToken)
     {
         var trimmedEmail = email.Trim();
         if (trimmedEmail.Length > InputLimits.EmailMaxLength)
         {
-            return new AccountProvisioningOutcome.Rejected([EmailTooLongCode]);
+            return new AccountProvisioningOutcome.Rejected([AccountsErrors.EmailTooLong.Code]);
         }
 
         var existing = await userManager.FindByEmailAsync(trimmedEmail);
@@ -62,7 +60,10 @@ public sealed partial class AccountProvisioner(
         return new AccountProvisioningOutcome.Created(account.Id, user.Id, linkSent);
     }
 
-    /// <summary>Sends a fresh set-password link to a pending account; active accounts use password recovery.</summary>
+    /// <summary>
+    /// Sends a fresh set-password link to a pending account and voids the earlier ones;
+    /// active accounts use password recovery.
+    /// </summary>
     public async Task<AccountProvisioningOutcome> ResendEmailConfirmationAsync(string email, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByEmailAsync(email.Trim());
@@ -78,12 +79,21 @@ public sealed partial class AccountProvisioner(
             return new AccountProvisioningOutcome.AlreadyActive();
         }
 
+        // A new stamp voids every link sent before, so only the newest works (DA-108): the
+        // first e-mail may have gone to a mistyped address. A pending user has no session to end.
+        var rotation = await userManager.UpdateSecurityStampAsync(user);
+        if (!rotation.Succeeded)
+        {
+            return new AccountProvisioningOutcome.Rejected([.. rotation.Errors.Select(error => error.Code)]);
+        }
+
         var linkSent = await TrySendEmailConfirmationAsync(user, cancellationToken);
         return new AccountProvisioningOutcome.Pending(user.AccountId, user.Id, linkSent);
     }
 
-    // Users are a global directory (no RLS); the Account insert goes through the
-    // accounts_provisioning policy, the only write allowed before an Account is known.
+    // Users are a global directory (no RLS). The Account insert goes through the
+    // accounts_provisioning policy, which only the provisioning role of the CLI has (DA-107).
+    // One transaction: a rejected user leaves no orphan Account.
     private Task<IdentityResult> CreateAccountAndUserAsync(
         Account account,
         LifeGraphUser user,

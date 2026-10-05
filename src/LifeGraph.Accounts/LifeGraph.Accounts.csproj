@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LifeGraph.Infrastructure\LifeGraph.Infrastructure.csproj" />
+    <ProjectReference Include="..\LifeGraph.Http\LifeGraph.Http.csproj" />
   </ItemGroup>
 
   <ItemGroup>

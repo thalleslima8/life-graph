@@ -47,8 +47,10 @@ public static class RlsProbes
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {
-            // A branch ahead of the app pipeline: it needs its own authentication and authorization.
+            // A branch ahead of the app pipeline: it needs its own status code pages (the coded
+            // Problem Details of a 401), authentication and authorization.
             app.Map(RoutePrefix, branch => branch
+                .UseStatusCodePages()
                 .UseAuthentication()
                 .UseRouting()
                 .UseAuthorization()

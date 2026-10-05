@@ -179,8 +179,11 @@ slices num único deployable. O deployable contém:
   agentes);
 - workers `BackgroundService` sobre uma fila em Postgres.
 
-Módulos: Accounts/Identity, Graph, Changes, Agents, Resources, Semantic,
-Sharing, Collections.
+Módulos: Accounts/Identity, Graph, Agents, Resources, Semantic, Sharing,
+Collections. O Graph é dono de GraphChangeSet, Undo, Delete/Purge e dos feeds
+de mudanças (DA-112); um módulo só depende de `LifeGraph.<Módulo>.Contracts` de
+outro. Um único `LifeGraphDbContext` recebe o modelo de cada módulo por
+`IModelContributor`, e as migrations ficam em `LifeGraph.Migrations` (DA-111).
 
 **Dados:**
 - PostgreSQL + pgvector;
@@ -236,8 +239,8 @@ dotnet build LifeGraph.sln            # também regenera openapi/lifegraph.json 
 dotnet test --solution LifeGraph.sln  # xUnit v3 sobre Microsoft.Testing.Platform (global.json)
 dotnet test --project tests/<Projeto> --filter-method "<Namespace>.<Classe>.<Metodo>"   # um único teste
 dotnet format LifeGraph.sln --verify-no-changes
-dotnet ef migrations add <Nome> --project src/LifeGraph.Infrastructure --startup-project src/LifeGraph.Host --output-dir Persistence/Migrations
-dotnet ef database update --project src/LifeGraph.Infrastructure --startup-project src/LifeGraph.Host
+dotnet ef migrations add <Nome> --project src/LifeGraph.Migrations
+dotnet ef database update --project src/LifeGraph.Migrations
 dotnet run --project src/LifeGraph.Host   # http://localhost:5000
 
 cd web
@@ -250,6 +253,9 @@ npx vitest run <arquivo> -t "<nome>"   # um único teste
 - `dotnet ef` lê `ConnectionStrings__Migrations` (papel `lifegraph_migrator`); a
   API usa `ConnectionStrings__Default` (papel `lifegraph_app`, sem BYPASSRLS).
   Nunca rode migrations com o papel da app.
+- Só a CLI `accounts` (create/resend) usa `ConnectionStrings__Provisioning`
+  (papel `lifegraph_provisioner`, DA-107), o único que insere em `accounts`. O
+  processo web nunca recebe essa connection string.
 - Toda tabela de Account tem `account_id` e uma policy contra
   `app.current_account_id()`. O valor vem do `AccountRlsInterceptor`, só dentro
   de transação: use `InAccountTransactionAsync` também em leituras, ou a RLS

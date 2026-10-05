@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using LifeGraph.Accounts.Csrf;
+using LifeGraph.Infrastructure.Errors;
 using LifeGraph.IntegrationTests.Infrastructure;
 
 namespace LifeGraph.IntegrationTests.Accounts;
@@ -27,7 +28,7 @@ public sealed class CsrfProtectionTests(PostgresDatabase database) : IAsyncLifet
         var login = await client.PostAsJsonAsync("/api/sessions", new { email = Email, password = TestAccounts.Password }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, login.StatusCode);
-        Assert.Equal(CsrfProtection.InvalidTokenCode, await ProblemCode.ReadAsync(login));
+        Assert.Equal(CommonErrors.CsrfTokenInvalid.Code, await ProblemCode.ReadAsync(login));
     }
 
     [Fact]

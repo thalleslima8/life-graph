@@ -22,7 +22,7 @@ const NOTICES = new Map([
   ["session_expired", "Sua sessão expirou. Entre novamente."],
 ]);
 
-const LOGIN_ERRORS = { invalid_credentials: "E-mail ou senha incorretos." };
+const LOGIN_ERRORS = { "accounts.invalid_credentials": "E-mail ou senha incorretos." };
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();

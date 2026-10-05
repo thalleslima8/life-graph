@@ -1,12 +1,13 @@
+using LifeGraph.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LifeGraph.Accounts.Provisioning;
 
 /// <summary>
 /// The owner's way to create accounts while open sign-up is off (DA-011, DA-095). It runs
-/// on the host, with the application's database role, and has no HTTP surface:
+/// on the host, as the provisioning database role (DA-107), and has no HTTP surface:
 /// <code>
-/// dotnet run --project src/LifeGraph.Host -- accounts create --email ada@example.com
+/// ConnectionStrings__Provisioning=... dotnet run --project src/LifeGraph.Host -- accounts create --email ada@example.com
 /// dotnet run --project src/LifeGraph.Host -- accounts resend --email ada@example.com
 /// </code>
 /// It takes no password: the user chooses it through the e-mailed link. The link itself is
@@ -28,6 +29,15 @@ public static class AccountsCommandLine
 
     public static bool IsInvocation(IReadOnlyList<string> args) =>
         args.Count > 0 && string.Equals(args[0], CommandName, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Only the CLI connects as <c>lifegraph_provisioner</c>, the one role allowed to insert an
+    /// Account without an Account in context; the web process keeps the application role (DA-107).
+    /// </summary>
+    public static string ConnectionStringNameFor(IReadOnlyList<string> args) =>
+        IsInvocation(args)
+            ? PersistenceServiceCollectionExtensions.ProvisioningConnectionStringName
+            : PersistenceServiceCollectionExtensions.ConnectionStringName;
 
     public static async Task<int> RunAsync(
         IServiceProvider services,

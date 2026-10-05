@@ -1,4 +1,5 @@
 using LifeGraph.Infrastructure.Persistence;
+using LifeGraph.Migrations;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Respawn;
@@ -8,8 +9,8 @@ using Testcontainers.PostgreSql;
 namespace LifeGraph.IntegrationTests.Infrastructure;
 
 /// <summary>
-/// One migrated, throwaway database per test run, connected through the same two roles
-/// the application uses.
+/// One migrated, throwaway database per test run, connected through the same roles the
+/// application uses: the owner, the application and the provisioning CLI (DA-107).
 /// <para>
 /// Where it comes from (DA-093): with <see cref="ExternalAdminVariable"/> set, a fresh
 /// database is created on that server (the devcontainer's postgres service, which has no
@@ -26,6 +27,7 @@ public sealed class PostgresDatabase : IAsyncLifetime
 
     private const string MigratorPassword = "lifegraph_migrator_dev";
     private const string ApplicationPassword = "lifegraph_app_dev";
+    private const string ProvisionerPassword = "lifegraph_provisioner_dev";
 
     private readonly string _databaseName = $"lifegraph_test_{Guid.NewGuid():N}";
     private PostgreSqlContainer? _container;
@@ -36,6 +38,8 @@ public sealed class PostgresDatabase : IAsyncLifetime
 
     public string ApplicationConnectionString { get; private set; } = string.Empty;
 
+    public string ProvisioningConnectionString { get; private set; } = string.Empty;
+
     public async ValueTask InitializeAsync()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -45,6 +49,7 @@ public sealed class PostgresDatabase : IAsyncLifetime
 
         MigratorConnectionString = ConnectionStringFor(DatabaseRoles.Migrator, MigratorPassword);
         ApplicationConnectionString = ConnectionStringFor(DatabaseRoles.Application, ApplicationPassword);
+        ProvisioningConnectionString = ConnectionStringFor(DatabaseRoles.Provisioner, ProvisionerPassword);
 
         await ProvisionDatabaseAsync(cancellationToken);
         await MigrateAsync(cancellationToken);
@@ -126,8 +131,7 @@ public sealed class PostgresDatabase : IAsyncLifetime
 
     private async Task MigrateAsync(CancellationToken cancellationToken)
     {
-        var options = LifeGraphDbContextOptions.Configure(new DbContextOptionsBuilder<LifeGraphDbContext>(), MigratorConnectionString);
-        await using var context = new LifeGraphDbContext(options.Options, new AnonymousAccountContext());
+        await using var context = LifeGraphDbContextFactory.Create(MigratorConnectionString);
         await context.Database.MigrateAsync(cancellationToken);
     }
 

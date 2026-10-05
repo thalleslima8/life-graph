@@ -44,7 +44,7 @@ describe("login page", () => {
   });
 
   it("says the credentials are wrong without telling which", async () => {
-    anonymousApiAnswering(() => problem(400, "invalid_credentials"));
+    anonymousApiAnswering(() => problem(400, "accounts.invalid_credentials"));
     renderRoute("/login");
 
     await fillAndSubmit();
@@ -53,7 +53,7 @@ describe("login page", () => {
   });
 
   it("shows the generic message when attempts are limited", async () => {
-    anonymousApiAnswering(() => problem(429, "too_many_attempts"));
+    anonymousApiAnswering(() => problem(429, "accounts.too_many_attempts"));
     renderRoute("/login");
 
     await fillAndSubmit();
@@ -74,7 +74,7 @@ describe("login page", () => {
   it("sends a double click once and disables the button meanwhile", async () => {
     let release: () => void = () => undefined;
     const calls = anonymousApiAnswering(
-      () => new Promise<Response>((resolve) => (release = () => resolve(problem(400, "invalid_credentials")))),
+      () => new Promise<Response>((resolve) => (release = () => resolve(problem(400, "accounts.invalid_credentials")))),
     );
     renderRoute("/login");
     await userEvent.type(await screen.findByLabelText("E-mail"), EMAIL);
@@ -108,7 +108,7 @@ describe("login page", () => {
   });
 
   it("has no accessibility violations, also with errors shown", async () => {
-    anonymousApiAnswering(() => problem(400, "invalid_credentials"));
+    anonymousApiAnswering(() => problem(400, "accounts.invalid_credentials"));
     const { container } = renderRoute("/login?notice=password_set");
     await screen.findByRole("heading", { level: 1, name: "Entrar" });
     expect(await axe(container)).toHaveNoViolations();

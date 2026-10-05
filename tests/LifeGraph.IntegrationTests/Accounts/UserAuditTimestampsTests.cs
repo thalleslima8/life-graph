@@ -26,7 +26,7 @@ public sealed class UserAuditTimestampsTests(PostgresDatabase database) : IAsync
     [Fact]
     public async Task A_new_user_is_stamped_with_its_creation_time_and_a_later_change_moves_only_updated_at()
     {
-        await using var host = _factory.WithWebHostBuilder(builder =>
+        await using var host = _factory.Provisioning.WithWebHostBuilder(builder =>
             builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(_clock)));
 
         Guid userId;

@@ -7,6 +7,12 @@ import { server } from "./msw/server";
 
 expect.extend(axeMatchers);
 
+// jsdom lacks what Radix Select calls on open (pointer capture, scrolling the chosen item into view).
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => undefined;
+Element.prototype.releasePointerCapture ??= () => undefined;
+Element.prototype.scrollIntoView ??= () => undefined;
+
 // Any request without a handler fails the test, so no test talks to a real API by accident.
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {

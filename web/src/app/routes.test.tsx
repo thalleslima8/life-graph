@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { axe } from "vitest-axe";
@@ -16,6 +16,20 @@ describe("app shell", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "Life Graph" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Principal" })).toBeInTheDocument();
+  });
+
+  it("links the graph screens in the navigation", async () => {
+    renderRoute("/");
+
+    const navigation = await screen.findByRole("navigation", { name: "Principal" });
+    for (const [name, href] of [
+      ["Nodes", "/nodes"],
+      ["Inbox", "/nodes?inbox=1"],
+      ["Recent Changes", "/changes"],
+      ["Types", "/types"],
+    ]) {
+      expect(await within(navigation).findByRole("link", { name })).toHaveAttribute("href", href);
+    }
   });
 
   it("shows the not found page for an unknown route and links back home", async () => {

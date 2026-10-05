@@ -58,3 +58,31 @@ namespace LifeGraph.ArchitectureTests.Canary.Collections.CanarySample
         public string? Subject => token.Subject;
     }
 }
+
+namespace LifeGraph.Graph.Contracts.CanarySample
+{
+    public sealed record GraphContractType(Guid NodeId);
+}
+
+namespace LifeGraph.Graph.Domain.CanarySample
+{
+    public sealed class GraphDomainType;
+}
+
+// Allowed: another module's Contracts (DA-112).
+namespace LifeGraph.Sharing.CanarySample
+{
+    public sealed class SharingTypeUsingGraphContracts(LifeGraph.Graph.Contracts.CanarySample.GraphContractType contract)
+    {
+        public Guid NodeId => contract.NodeId;
+    }
+}
+
+// Not allowed: anything of another module outside its Contracts (DA-112).
+namespace LifeGraph.Collections.CanarySample
+{
+    public sealed class CollectionsTypeReachingIntoGraphDomain(LifeGraph.Graph.Domain.CanarySample.GraphDomainType domain)
+    {
+        public object Domain => domain;
+    }
+}

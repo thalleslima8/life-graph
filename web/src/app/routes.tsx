@@ -4,6 +4,10 @@ import { ForgotPasswordPage } from "@/features/account/ForgotPasswordPage";
 import { LoginPage } from "@/features/account/LoginPage";
 import { ResetPasswordPage } from "@/features/account/ResetPasswordPage";
 import { SignedOutOnly } from "@/features/account/SignedOutOnly";
+import { NodeInspectorPage } from "@/features/graph/NodeInspectorPage";
+import { NodeListPage } from "@/features/graph/NodeListPage";
+import { OntologyPage } from "@/features/graph/OntologyPage";
+import { RecentChangesPage } from "@/features/graph/RecentChangesPage";
 import { HomePage } from "@/features/home/HomePage";
 import { NotFoundPage } from "@/features/not-found/NotFoundPage";
 import {
@@ -25,6 +29,10 @@ export const routes: RouteObject[] = [
     errorElement: <RouteErrorPage />,
     children: [
       { index: true, loader: requireSession, element: <HomePage /> },
+      { path: "nodes", loader: requireSession, element: <NodeListPage /> },
+      { path: "nodes/:nodeId", loader: requireSession, element: <NodeInspectorPage /> },
+      { path: "changes", loader: requireSession, element: <RecentChangesPage /> },
+      { path: "types", loader: requireSession, element: <OntologyPage /> },
       { path: "login", loader: redirectIfAuthenticated, element: <LoginPage /> },
       { path: "forgot-password", loader: redirectIfAuthenticated, element: <ForgotPasswordPage /> },
       {

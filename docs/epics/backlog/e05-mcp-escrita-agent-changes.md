@@ -2,12 +2,12 @@
 
 - **Ordem:** 5
 - **Depende de:** E4
-- **Última revisão:** 2026-10-04
+- **Última revisão:** 2026-10-05
 
 ## Pendências do `/flow` de 2026-10-04 (contrato de erro)
 
 O contrato de resultado e erro do backend foi discutido antes do E2. Veja a
-seção "Contrato de resultado e erro" do [E2](e02-nucleo-de-escrita.md) e a
+seção "Contrato de resultado e erro" do [E2](../done/e02-nucleo-de-escrita.md) e a
 DA-099. Dois pontos dele são deste épico.
 
 - **Pré-decisão a revalidar, Q9: uma ação Sensitive pedida por agente é
@@ -110,6 +110,7 @@ e automação reversível".
 
 ## Checklist
 
+- [ ] Pré-requisito do E2 (DA-115): comando Restore por entidade, com ChangeSet compensatório próprio e conflito checado só na entidade e nas Relations em cascata (`cascade_of`)
 - [ ] Ferramentas: `create_node`, `update_node`, `create_relation`, `remove_relation`, `suggest_changes`, `apply_changes`, retirar a própria proposta
 - [ ] Política central de escrita de agentes (Write imediato, Sensitive/requires_user/bulk viram Proposed)
 - [ ] Proteções do `apply_changes` (DA-043)

@@ -3,9 +3,9 @@ using ArchUnitNET.Loader;
 using ArchUnitNET.xUnitV3;
 using LifeGraph.Accounts;
 using LifeGraph.Agents;
-using LifeGraph.Changes;
 using LifeGraph.Collections;
 using LifeGraph.Graph;
+using LifeGraph.Http;
 using LifeGraph.Infrastructure.Persistence;
 using LifeGraph.Resources;
 using LifeGraph.Semantic;
@@ -20,13 +20,15 @@ public sealed class ArchitectureTests
             typeof(Program).Assembly,
             typeof(LifeGraphDbContext).Assembly,
             typeof(AccountsModule).Assembly,
+            typeof(LifeGraphErrorHttpMapper).Assembly,
             typeof(GraphModule).Assembly,
-            typeof(ChangesModule).Assembly,
             typeof(AgentsModule).Assembly,
             typeof(ResourcesModule).Assembly,
             typeof(SemanticModule).Assembly,
             typeof(SharingModule).Assembly,
-            typeof(CollectionsModule).Assembly)
+            typeof(CollectionsModule).Assembly,
+            // Loaded so the rules can see the members Limaj declares (Error.HttpStatusCode).
+            typeof(Limaj.Framework.Core.Error).Assembly)
         .Build();
 
     public static TheoryData<string> Modules => new(ArchitectureRules.Modules);
@@ -55,4 +57,24 @@ public sealed class ArchitectureTests
     [Fact]
     public void Application_does_not_depend_on_web_or_mcp() =>
         ArchitectureRules.ApplicationIsTransportFree("LifeGraph").Check(Production);
+
+    [Fact]
+    public void Only_http_layers_use_limaj_web() =>
+        ArchitectureRules.OnlyHttpLayersUseLimajWeb("LifeGraph").Check(Production);
+
+    [Fact]
+    public void No_limaj_package_beyond_core_and_web_is_used() =>
+        ArchitectureRules.NoLimajBeyondCoreAndWeb("LifeGraph").Check(Production);
+
+    [Fact]
+    public void Modules_do_not_use_limaj_exceptions() =>
+        ArchitectureRules.ModulesDoNotUseLimajExceptions("LifeGraph").Check(Production);
+
+    [Fact]
+    public void Nothing_reads_the_obsolete_error_http_status_code() =>
+        ArchitectureRules.NoErrorHttpStatusCode("LifeGraph").Check(Production);
+
+    [Fact]
+    public void Nothing_uses_the_limaj_static_facades() =>
+        ArchitectureRules.NoLimajStaticFacades("LifeGraph").Check(Production);
 }

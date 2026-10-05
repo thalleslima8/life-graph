@@ -1,5 +1,6 @@
 using LifeGraph.Infrastructure.Accounts;
 using LifeGraph.Infrastructure.Identity;
+using LifeGraph.Infrastructure.Jobs;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -9,9 +10,15 @@ namespace LifeGraph.Infrastructure.Persistence;
 
 public sealed class LifeGraphDbContext(
     DbContextOptions<LifeGraphDbContext> options,
-    IAccountContext accountContext) : IdentityUserContext<LifeGraphUser, Guid>(options)
+    IAccountContext accountContext,
+    IEnumerable<IModelContributor> modelContributors) : IdentityUserContext<LifeGraphUser, Guid>(options)
 {
+    private readonly IModelContributor[] _modelContributors =
+        [.. modelContributors.OrderBy(contributor => contributor.GetType().FullName, StringComparer.Ordinal)];
+
     internal Guid? AccountId => accountContext.AccountId;
+
+    internal string ContributorsKey => string.Join('|', _modelContributors.Select(contributor => contributor.GetType().FullName));
 
     public DbSet<Account> Accounts => Set<Account>();
 
@@ -29,8 +36,16 @@ public sealed class LifeGraphDbContext(
             account.Property(entity => entity.Id).ValueGeneratedNever();
         });
 
+        // The job queue is shared by the modules (DA-113), so it is part of every model.
+        modelBuilder.ApplyConfiguration(new JobConfiguration());
+
         ConfigureIdentityTables(modelBuilder);
         ConfigureOpenIddictTables(modelBuilder);
+
+        foreach (var contributor in _modelContributors)
+        {
+            contributor.Configure(modelBuilder);
+        }
     }
 
     // The credential directory has no RLS policy by exception (DA-098): only the Accounts

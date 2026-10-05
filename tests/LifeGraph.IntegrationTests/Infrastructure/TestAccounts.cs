@@ -7,10 +7,13 @@ public static class TestAccounts
 {
     public const string Password = "correct horse battery staple";
 
-    /// <summary>What the owner's CLI does (DA-095): a pending account and a set-password e-mail.</summary>
+    /// <summary>
+    /// What the owner's CLI does (DA-095), as its database role (DA-107): a pending account
+    /// and a set-password e-mail.
+    /// </summary>
     public static async Task<AccountProvisioningOutcome> ProvisionAsync(LifeGraphApiFactory factory, string email)
     {
-        await using var scope = factory.Services.CreateAsyncScope();
+        await using var scope = factory.Provisioning.Services.CreateAsyncScope();
         var provisioner = scope.ServiceProvider.GetRequiredService<AccountProvisioner>();
         return await provisioner.ProvisionAsync(email, TestContext.Current.CancellationToken);
     }

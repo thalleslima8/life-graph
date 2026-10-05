@@ -1,3 +1,4 @@
+using LifeGraph.Infrastructure.Persistence;
 using LifeGraph.IntegrationTests.Infrastructure;
 using Npgsql;
 
@@ -29,6 +30,27 @@ public sealed class RowLevelSecurityCatalogTests(PostgresDatabase database)
         Assert.Contains("users", tablesWithoutIsolation);
         Assert.Empty(tablesWithoutIsolation.Except(CredentialDirectoryTables));
     }
+
+    // An open WITH CHECK for the application role would let any web request create Account
+    // rows; only the provisioning role of the CLI has one (DA-107).
+    [Fact]
+    public async Task No_policy_opens_writes_to_the_application_role_or_public()
+    {
+        var openToApplication = await OpenPoliciesForAsync("public", DatabaseRoles.Application);
+        var openToProvisioner = await OpenPoliciesForAsync(DatabaseRoles.Provisioner);
+
+        Assert.Empty(openToApplication);
+        // The same query finds the one deliberate exception, so it does detect open policies.
+        Assert.Equal(["accounts.accounts_provisioning"], openToProvisioner);
+    }
+
+    private Task<List<string>> OpenPoliciesForAsync(params string[] roles) => QueryTableNamesAsync($"""
+        SELECT tablename || '.' || policyname
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND (with_check = 'true' OR (qual = 'true' AND cmd <> 'INSERT'))
+          AND roles && ARRAY[{string.Join(", ", roles.Select(role => $"'{role}'"))}]::name[]
+        """);
 
     [Fact]
     public async Task Users_keep_their_account_id_with_a_foreign_key_to_accounts()
