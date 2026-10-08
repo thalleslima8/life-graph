@@ -1,3 +1,4 @@
+using LifeGraph.Accounts.Persistence;
 using LifeGraph.Graph.Persistence;
 using LifeGraph.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,7 @@ public sealed class LifeGraphDbContextFactory : IDesignTimeDbContextFactory<Life
     /// Every module that contributes to the model, listed by hand rather than scanned (DA-111).
     /// A module registered in the host but missing here makes the pending-model test fail.
     /// </summary>
-    public static IReadOnlyList<IModelContributor> ModelContributors { get; } = [new GraphModelContributor()];
+    public static IReadOnlyList<IModelContributor> ModelContributors { get; } = [new GraphModelContributor(), new AccountsModelContributor()];
 
     public LifeGraphDbContext CreateDbContext(string[] args)
     {

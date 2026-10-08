@@ -37,6 +37,43 @@ public static class ArchitectureRules
             .Should().NotDependOnAnyTypesThat().ResideInNamespaceMatching(@"^(Microsoft\.AspNetCore\.Identity|OpenIddict)(\..+)?$")
             .Because("the credential directory has no RLS; only the Accounts module touches it (DA-098)");
 
+    // The issuer's grants are read only by the current principal's subject (or the grant's own
+    // id), never listed across users, applications or the whole table (DA-119).
+    public static IArchRule GrantsAreReadOnlyBySubjectOrId(string rootNamespace) =>
+        Types().That().ResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}(\..+)?$")
+            .Should().NotCallAny(MethodMembers().That().HaveFullNameMatching(
+                @"OpenIddict\.Abstractions\.IOpenIddictAuthorizationManager::(ListAsync|FindAsync|FindByApplicationIdAsync|CountAsync)\("))
+            .Because("the oidc_* tables have no RLS; a grant is found only by the user's subject or its id (DA-119)");
+
+    // Raw SQL over the issuer's tables would bypass both OpenIddict and the rule above: no string
+    // literal outside the Accounts module names one (DA-119). The pattern is written so this
+    // file's own literals never match it.
+    private static readonly Regex CredentialTableName = new(@"\boidc[_]\w+", RegexOptions.CultureInvariant);
+
+    /// <summary>Every string literal of <paramref name="assemblies"/> that names an <c>oidc_*</c> table.</summary>
+    public static IReadOnlyList<string> CredentialTableLiterals(IEnumerable<System.Reflection.Assembly> assemblies)
+    {
+        var found = new List<string>();
+        foreach (var assembly in assemblies)
+        {
+            using var stream = File.OpenRead(assembly.Location);
+            using var portableExecutable = new System.Reflection.PortableExecutable.PEReader(stream);
+            var metadata = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(portableExecutable);
+            for (var handle = System.Reflection.Metadata.Ecma335.MetadataTokens.UserStringHandle(1);
+                 !handle.IsNil;
+                 handle = System.Reflection.Metadata.Ecma335.MetadataReaderExtensions.GetNextHandle(metadata, handle))
+            {
+                var literal = metadata.GetUserString(handle);
+                if (CredentialTableName.IsMatch(literal))
+                {
+                    found.Add($"{assembly.GetName().Name}: {literal}");
+                }
+            }
+        }
+
+        return found;
+    }
+
     public static IArchRule OnlyAccountsUsesTheUserEntity(string rootNamespace) =>
         Types().That().ResideInNamespaceMatching(NonAccountsModules(rootNamespace))
             .Should().NotDependOnAnyTypesThat().HaveFullName($"{rootNamespace}.Infrastructure.Identity.LifeGraphUser")

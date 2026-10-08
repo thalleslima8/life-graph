@@ -27,6 +27,7 @@ describe("app shell", () => {
       ["Inbox", "/nodes?inbox=1"],
       ["Recent Changes", "/changes"],
       ["Types", "/types"],
+      ["Agentes conectados", "/agentes"],
     ]) {
       expect(await within(navigation).findByRole("link", { name })).toHaveAttribute("href", href);
     }

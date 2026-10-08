@@ -22,7 +22,9 @@ public static class PrincipalClaims
 
     /// <summary>
     /// Fails closed (DA-094): unauthenticated, a missing or repeated claim, an Account id
-    /// that is not a non-empty Guid, or an unknown type all read as no principal.
+    /// that is not a non-empty Guid, or an unknown type all read as no principal. An
+    /// AgentIdentity id is read only for an agent, and a malformed or repeated one is no
+    /// principal either; whoever serves agents requires it (DA-030).
     /// </summary>
     public static AuthenticatedPrincipal? Read(ClaimsPrincipal? user)
     {
@@ -46,7 +48,25 @@ public static class PrincipalClaims
             _ => null,
         };
 
-        return type is null ? null : new AuthenticatedPrincipal(accountId, type.Value);
+        if (type is null)
+        {
+            return null;
+        }
+
+        if (type != PrincipalType.AgentIdentity)
+        {
+            return new AuthenticatedPrincipal(accountId, type.Value);
+        }
+
+        var agentIdentityClaims = user.FindAll(LifeGraphClaimTypes.AgentIdentityId).Take(2).ToArray();
+        if (agentIdentityClaims.Length == 0)
+        {
+            return new AuthenticatedPrincipal(accountId, type.Value);
+        }
+
+        return agentIdentityClaims.Length == 1 && Guid.TryParse(agentIdentityClaims[0].Value, out var agentIdentityId) && agentIdentityId != Guid.Empty
+            ? new AuthenticatedPrincipal(accountId, type.Value, agentIdentityId)
+            : null;
     }
 
     // Two values for the same claim are ambiguous, so they count as none.

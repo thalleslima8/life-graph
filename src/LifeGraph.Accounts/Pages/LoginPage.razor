@@ -1,0 +1,50 @@
+@* Sign-in on the issuer's own origin: an agent's authorization request arrives from another site, where the SameSite=Strict session cookie does not travel. *@
+@using LifeGraph.Accounts.Http
+
+<IssuerPageLayout Title="Entrar para conectar um agente" IssuerHost="@IssuerHost">
+    <p class="muted">Um agente pediu acesso ao seu Life Graph. Entre para revisar o pedido.</p>
+    @if (ErrorMessage is not null)
+    {
+        <p class="error" role="alert">@ErrorMessage</p>
+    }
+    <form method="post" action="@Action">
+        <input type="hidden" name="@AntiforgeryFieldName" value="@AntiforgeryToken" />
+        <input type="hidden" name="@AuthorizationEndpoints.ReturnUrlField" value="@ReturnUrl" />
+        <label for="@AuthorizationEndpoints.EmailField">E-mail</label>
+        <input id="@AuthorizationEndpoints.EmailField" name="@AuthorizationEndpoints.EmailField" type="email" autocomplete="username" required maxlength="@InputLimits.EmailMaxLength" value="@Email" />
+        <label for="@AuthorizationEndpoints.PasswordField">Senha</label>
+        <input id="@AuthorizationEndpoints.PasswordField" name="@AuthorizationEndpoints.PasswordField" type="password" autocomplete="current-password" required maxlength="@InputLimits.PasswordMaxLength" />
+        <div class="actions">
+            <button class="primary" type="submit">Entrar</button>
+        </div>
+    </form>
+    <p class="muted"><a href="@ForgotPasswordUrl">Esqueci a senha</a></p>
+</IssuerPageLayout>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Action { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string ReturnUrl { get; set; } = string.Empty;
+
+    /// <summary>The issuer's own host: where the person is typing the password.</summary>
+    [Parameter, EditorRequired]
+    public string IssuerHost { get; set; } = string.Empty;
+
+    /// <summary>The SPA's password reset request; the issuer has no reset page of its own.</summary>
+    [Parameter, EditorRequired]
+    public string ForgotPasswordUrl { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string AntiforgeryFieldName { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string AntiforgeryToken { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Email { get; set; }
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+}

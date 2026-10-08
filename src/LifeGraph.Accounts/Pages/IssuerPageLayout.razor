@@ -1,0 +1,61 @@
+@* The shell of the issuer's server pages (login, consent): standalone, no script, inline style. *@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>@Title · Life Graph</title>
+    <style>
+        :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #f6f6f4; --card: #ffffff; --muted: #5c5c66; --line: #d9d9de; --accent: #2f5bd3; --warn-bg: #fff4d6; --warn-fg: #5b4300; }
+        @@media (prefers-color-scheme: dark) { :root { --fg: #ececf0; --bg: #16161a; --card: #202026; --muted: #a3a3ad; --line: #3a3a44; --accent: #8aa6ff; --warn-bg: #3d3117; --warn-fg: #f5d98a; } }
+        * { box-sizing: border-box; }
+        body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+        main { max-width: 30rem; margin: 3rem auto; padding: 0 1rem; }
+        .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1.5rem; }
+        h1 { font-size: 1.35rem; margin: 0 0 1rem; }
+        p { margin: 0 0 1rem; }
+        .muted { color: var(--muted); font-size: .9rem; }
+        .warning { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: .75rem 1rem; margin: 0 0 1rem; }
+        .error { border: 1px solid #c4314b; border-radius: 8px; padding: .75rem 1rem; margin: 0 0 1rem; }
+        ul { padding-left: 1.25rem; margin: 0 0 1rem; }
+        label { display: block; font-weight: 600; margin: 0 0 .25rem; }
+        input[type=email], input[type=password] { width: 100%; padding: .6rem .7rem; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: transparent; color: inherit; margin: 0 0 1rem; }
+        .actions { display: flex; gap: .75rem; flex-wrap: wrap; }
+        button { font: inherit; padding: .6rem 1.1rem; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+        button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        strong.host { word-break: break-all; }
+        .issuer { color: var(--muted); font-size: .9rem; margin: 0 0 .5rem; }
+        fieldset { border: 0; padding: 0; margin: 0 0 1rem; }
+        legend { padding: 0; margin: 0 0 .5rem; }
+        .scope { display: flex; gap: .5rem; align-items: flex-start; margin: 0 0 .5rem; }
+        .scope input { margin-top: .35rem; }
+        .scope label { font-weight: 400; }
+        a { color: var(--accent); }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="card">
+            @if (IssuerHost is not null)
+            {
+                <p class="issuer">Life Graph · <strong class="host">@IssuerHost</strong></p>
+            }
+            <h1>@Title</h1>
+            @ChildContent
+        </div>
+    </main>
+</body>
+</html>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>The issuer's host, shown on top so the person can check where they are typing.</summary>
+    [Parameter]
+    public string? IssuerHost { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

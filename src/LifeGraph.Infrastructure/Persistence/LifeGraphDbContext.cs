@@ -50,7 +50,8 @@ public sealed class LifeGraphDbContext(
 
     // The credential directory has no RLS policy by exception (DA-098): only the Accounts
     // module reaches it, and Account data never lives here, only the link from a user to
-    // its Account. The oidc_* tables have no account_id yet; E3 decides their isolation.
+    // its Account. The issuer's oidc_* tables join that exception (DA-119): OpenIddict reads
+    // them before any Account is in context; the agent connections live in agent_identities.
     private static void ConfigureIdentityTables(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<LifeGraphUser>(user =>

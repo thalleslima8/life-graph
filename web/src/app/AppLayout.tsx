@@ -9,6 +9,7 @@ const GRAPH_LINKS = [
   { to: "/nodes?inbox=1", label: "Inbox" },
   { to: "/changes", label: "Recent Changes" },
   { to: "/types", label: "Types" },
+  { to: "/agentes", label: "Agentes conectados" },
 ];
 
 export function AppLayout() {

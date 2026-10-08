@@ -28,7 +28,9 @@ public sealed class ArchitectureTests
             typeof(SharingModule).Assembly,
             typeof(CollectionsModule).Assembly,
             // Loaded so the rules can see the members Limaj declares (Error.HttpStatusCode).
-            typeof(Limaj.Framework.Core.Error).Assembly)
+            typeof(Limaj.Framework.Core.Error).Assembly,
+            // And the issuer's managers, whose listing methods are restricted (DA-119).
+            typeof(OpenIddict.Abstractions.IOpenIddictAuthorizationManager).Assembly)
         .Build();
 
     public static TheoryData<string> Modules => new(ArchitectureRules.Modules);
@@ -41,6 +43,26 @@ public sealed class ArchitectureTests
     [Fact]
     public void Only_accounts_uses_identity_and_openiddict() =>
         ArchitectureRules.OnlyAccountsUsesIdentityAndOpenIddict("LifeGraph").Check(Production);
+
+    [Fact]
+    public void Grants_are_read_only_by_subject_or_id() =>
+        ArchitectureRules.GrantsAreReadOnlyBySubjectOrId("LifeGraph").Check(Production);
+
+    // Infrastructure maps the oidc_* tables for EF and the migrations create them; nothing else
+    // outside Accounts writes SQL over them (DA-119).
+    [Fact]
+    public void No_raw_sql_over_the_issuers_tables_outside_accounts() =>
+        Assert.Empty(ArchitectureRules.CredentialTableLiterals(
+        [
+            typeof(Program).Assembly,
+            typeof(LifeGraphErrorHttpMapper).Assembly,
+            typeof(GraphModule).Assembly,
+            typeof(AgentsModule).Assembly,
+            typeof(ResourcesModule).Assembly,
+            typeof(SemanticModule).Assembly,
+            typeof(SharingModule).Assembly,
+            typeof(CollectionsModule).Assembly,
+        ]));
 
     [Fact]
     public void Only_accounts_uses_the_user_entity() =>

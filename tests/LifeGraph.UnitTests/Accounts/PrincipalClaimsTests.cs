@@ -70,6 +70,46 @@ public sealed class PrincipalClaimsTests
             Claim(LifeGraphClaimTypes.AccountId, Guid.CreateVersion7().ToString()),
             Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.HumanType))));
 
+    [Fact]
+    public void An_agent_principal_carries_its_agent_identity()
+    {
+        var agentIdentityId = Guid.CreateVersion7();
+        var user = Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.AgentIdentityType),
+            Claim(LifeGraphClaimTypes.AgentIdentityId, agentIdentityId.ToString()));
+
+        Assert.Equal(new AuthenticatedPrincipal(AccountId, PrincipalType.AgentIdentity, agentIdentityId), PrincipalClaims.Read(user));
+    }
+
+    [Theory]
+    [InlineData("not-a-guid")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    public void An_agent_principal_with_a_malformed_agent_identity_is_no_principal(string agentIdentityId) =>
+        Assert.Null(PrincipalClaims.Read(Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.AgentIdentityType),
+            Claim(LifeGraphClaimTypes.AgentIdentityId, agentIdentityId))));
+
+    [Fact]
+    public void An_agent_principal_with_two_agent_identities_is_no_principal() =>
+        Assert.Null(PrincipalClaims.Read(Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.AgentIdentityType),
+            Claim(LifeGraphClaimTypes.AgentIdentityId, Guid.CreateVersion7().ToString()),
+            Claim(LifeGraphClaimTypes.AgentIdentityId, Guid.CreateVersion7().ToString()))));
+
+    [Fact]
+    public void A_person_never_carries_an_agent_identity()
+    {
+        var user = Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.HumanType),
+            Claim(LifeGraphClaimTypes.AgentIdentityId, Guid.CreateVersion7().ToString()));
+
+        Assert.Null(PrincipalClaims.Read(user)!.AgentIdentityId);
+    }
+
     private static Claim Claim(string type, string value) => new(type, value);
 
     private static ClaimsPrincipal Authenticated(params Claim[] claims) =>

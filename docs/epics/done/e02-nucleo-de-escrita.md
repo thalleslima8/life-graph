@@ -2,7 +2,7 @@
 
 - **Ordem:** 2
 - **Depende de:** E1
-- **Última revisão:** 2026-10-05
+- **Última revisão:** 2026-10-06
 
 ## Pendências herdadas do E1 (discutir no próximo `/flow` antes de implementar)
 
@@ -495,7 +495,10 @@ v2).
   ficam num lugar só, para o E5 reusar com a chave da AgentIdentity. Os
   contadores ficam em memória, o que vale enquanto houver uma única instância.
   Testes: N+1 requisições → 429 com `Retry-After` e `code`; duas Accounts não
-  dividem a cota.
+  dividem a cota. Os limites que rodam antes de qualquer principal
+  (`/connect/authorize`, `/connect/token`, `/connect/login`), por IP real do
+  cliente, ficam na DA-123 (E3); a cota de agente por AgentIdentity, com teto
+  agregado por Account, na DA-121.
 - **DA-117 — Contrato de versão do Node: `version` no corpo ou na query e 409
   no conflito** (consenso, Q12; desvio justificado da API-084, DEVERIA). O
   PATCH leva `version` no corpo e o DELETE na query, e o conflito é 409

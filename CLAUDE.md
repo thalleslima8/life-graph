@@ -180,7 +180,9 @@ slices num único deployable. O deployable contém:
 - workers `BackgroundService` sobre uma fila em Postgres.
 
 Módulos: Accounts/Identity, Graph, Agents, Resources, Semantic, Sharing,
-Collections. O Graph é dono de GraphChangeSet, Undo, Delete/Purge e dos feeds
+Collections. O Accounts é dono do emissor OAuth e da AgentIdentity (a conexão
+de agente); o Agents tem só o adapter MCP, que depende de
+`LifeGraph.Accounts.Contracts` (DA-121). O Graph é dono de GraphChangeSet, Undo, Delete/Purge e dos feeds
 de mudanças (DA-112); um módulo só depende de `LifeGraph.<Módulo>.Contracts` de
 outro. Um único `LifeGraphDbContext` recebe o modelo de cada módulo por
 `IModelContributor`, e as migrations ficam em `LifeGraph.Migrations` (DA-111).
@@ -230,7 +232,8 @@ spike no E6.
 
 **Ambiente:** só dev até o E13. Usa devcontainer/compose com Postgres+pgvector e
 Mailpit. O perfil `public` (Cloudflare Tunnel) expõe apenas MCP/OAuth/login
-para testar com ChatGPT/Claude.ai (DA-027/028).
+para testar com ChatGPT/Claude.ai (DA-027/028): `.devcontainer/compose.public.yml`,
+`scripts/public-host.sh` e o runbook `docs/runbooks/tunel-de-dev.md`.
 
 **Comandos (confirmados no E0; rodam dentro do devcontainer):**
 
@@ -260,7 +263,8 @@ npx vitest run <arquivo> -t "<nome>"   # um único teste
   `app.current_account_id()`. O valor vem do `AccountRlsInterceptor`, só dentro
   de transação: use `InAccountTransactionAsync` também em leituras, ou a RLS
   devolve zero linhas. Exceção: as tabelas do diretório de credenciais (`users`,
-  `user_claims`, `user_logins`, `user_tokens`), pela DA-098.
+  `user_claims`, `user_logins`, `user_tokens`), pela DA-098, e as `oidc_*` do
+  emissor, pela DA-119.
 - Testes de integração: Testcontainers no CI e no host; no devcontainer, banco
   descartável no serviço `postgres` via `LIFEGRAPH_TEST_DB_ADMIN` (DA-093).
 - Parâmetros de log com dado pessoal ou segredo levam `[PersonalData]` ou

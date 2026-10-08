@@ -243,7 +243,12 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
             scope.ServiceProvider.GetRequiredService<TestAccountContext>().ActAs(_account);
             var db = scope.ServiceProvider.GetRequiredService<LifeGraphDbContext>();
             var participants = scope.ServiceProvider.GetServices<IAccountPurgeParticipant>().ToList();
-            Assert.Equal(2, participants.Count);
+
+            // DA-124: by type, not by count; AccountPurgeTests checks every table with account_id.
+            var participantTypes = participants.Select(participant => participant.GetType().Name).ToList();
+            Assert.Contains("GraphAccountPurge", participantTypes);
+            Assert.Contains("JobsAccountPurgeParticipant", participantTypes);
+            Assert.Contains("AgentIdentitiesAccountPurge", participantTypes);
             await db.InAccountTransactionAsync(
                 async token =>
                 {

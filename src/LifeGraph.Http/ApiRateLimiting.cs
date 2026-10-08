@@ -28,7 +28,16 @@ public static class ApiRateLimiting
     /// <summary>Unsafe methods, Undo and archive included: tighter, still beyond what a person reaches in the UI.</summary>
     public const string WritePolicy = "api.write";
 
+    /// <summary>
+    /// Every MCP request of a connected agent: its own budget per AgentIdentity, under a ceiling
+    /// shared by all the agents of the Account, so connecting more agents never multiplies the
+    /// quota (DA-121).
+    /// </summary>
+    public const string AgentPolicy = "api.agent";
+
     public const string TooManyRequestsMessage = "Too many requests. Wait and try again.";
+
+    private const string AgentAccountCeilingPartition = "api.agent-account";
 
     private const string UnknownClient = "unknown";
 
@@ -46,6 +55,14 @@ public static class ApiRateLimiting
             limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             limiter.AddPolicy(ReadPolicy, context => Partition(context, ReadPolicy, limits.Value.ReadPermitLimit, window));
             limiter.AddPolicy(WritePolicy, context => Partition(context, WritePolicy, limits.Value.WritePermitLimit, window));
+            limiter.AddPolicy(AgentPolicy, context => Partition(context, AgentPolicy, limits.Value.AgentPermitLimit, window));
+
+            // The endpoint policy is per AgentIdentity; the Account's ceiling runs beside it, as
+            // the global limiter, and only on endpoints that ask for it.
+            limiter.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                AgentAccountKeyOf(context) is { } accountKey
+                    ? FixedWindow($"{AgentAccountCeilingPartition}:{accountKey}", limits.Value.AgentAccountPermitLimit, window)
+                    : RateLimitPartition.GetNoLimiter(string.Empty));
             limiter.OnRejected = (rejected, _) => WriteRefusalAsync(rejected, window);
         });
 
@@ -68,22 +85,66 @@ public static class ApiRateLimiting
     }
 
     /// <summary>
-    /// The principal the budget belongs to. Without one, the client address, although the
-    /// session challenge answers 401 before (DA-109).
+    /// Puts the endpoints under the agent budgets (DA-121): one per AgentIdentity and a ceiling
+    /// per Account across all its agents.
+    /// </summary>
+    public static TBuilder RequireAgentRateLimits<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.Add(endpoint =>
+        {
+            endpoint.Metadata.Add(new EnableRateLimitingAttribute(AgentPolicy));
+            endpoint.Metadata.Add(AgentAccountCeiling.Instance);
+        });
+        return builder;
+    }
+
+    /// <summary>
+    /// The Account whose agents' shared ceiling a request takes from: only an agent's request to
+    /// an endpoint under <see cref="RequireAgentRateLimits"/>; <c>null</c> for anything else.
+    /// </summary>
+    public static string? AgentAccountKeyOf(HttpContext httpContext)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        if (httpContext.GetEndpoint()?.Metadata.GetMetadata<AgentAccountCeiling>() is null)
+        {
+            return null;
+        }
+
+        return httpContext.RequestServices.GetService<ICurrentPrincipal>()?.Authenticated is { AgentIdentityId: not null } agent
+            ? agent.AccountId.ToString()
+            : null;
+    }
+
+    /// <summary>
+    /// The principal the budget belongs to: the AgentIdentity for an agent, the Account for
+    /// the person. Without one, the client address, although the session challenge answers
+    /// 401 before (DA-109).
     /// </summary>
     public static string PartitionKeyOf(HttpContext httpContext)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
         var principal = httpContext.RequestServices.GetService<ICurrentPrincipal>()?.Authenticated;
-        return principal is null
-            ? $"client:{httpContext.Connection.RemoteIpAddress?.ToString() ?? UnknownClient}"
-            : $"{principal.Type}:{principal.AccountId}";
+        return principal switch
+        {
+            null => $"client:{httpContext.Connection.RemoteIpAddress?.ToString() ?? UnknownClient}",
+
+            // Each connected agent has its own budget, apart from the person's (DA-116, DA-030).
+            { AgentIdentityId: { } agentIdentityId } => $"{principal.Type}:{agentIdentityId}",
+            _ => $"{principal.Type}:{principal.AccountId}",
+        };
     }
 
     private static RateLimitPartition<string> Partition(HttpContext context, string policy, int permitLimit, TimeSpan window) =>
+        FixedWindow($"{policy}:{PartitionKeyOf(context)}", permitLimit, window);
+
+    private static RateLimitPartition<string> FixedWindow(string key, int permitLimit, TimeSpan window) =>
         RateLimitPartition.GetFixedWindowLimiter(
-            $"{policy}:{PartitionKeyOf(context)}",
+            key,
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = permitLimit,
@@ -119,6 +180,24 @@ public sealed class ApiRateLimitOptions
     [Range(1, 100_000)]
     public int WritePermitLimit { get; set; } = 120;
 
+    /// <summary>MCP requests per AgentIdentity in each window: a busy chat, not a script in a loop.</summary>
+    [Range(1, 100_000)]
+    public int AgentPermitLimit { get; set; } = 300;
+
+    /// <summary>MCP requests of all the agents of one Account in each window (DA-121).</summary>
+    [Range(1, 100_000)]
+    public int AgentAccountPermitLimit { get; set; } = 600;
+
     [Range(1, 3_600)]
     public int WindowSeconds { get; set; } = 60;
+}
+
+/// <summary>Marks an endpoint whose agent requests also take from the Account's agent ceiling.</summary>
+internal sealed class AgentAccountCeiling
+{
+    public static readonly AgentAccountCeiling Instance = new();
+
+    private AgentAccountCeiling()
+    {
+    }
 }

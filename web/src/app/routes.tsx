@@ -33,6 +33,11 @@ export const routes: RouteObject[] = [
       { path: "nodes/:nodeId", loader: requireSession, element: <NodeInspectorPage /> },
       { path: "changes", loader: requireSession, element: <RecentChangesPage /> },
       { path: "types", loader: requireSession, element: <OntologyPage /> },
+      {
+        path: "agentes",
+        loader: requireSession,
+        lazy: async () => ({ Component: (await import("@/features/agents/AgentsPage")).AgentsPage }),
+      },
       { path: "login", loader: redirectIfAuthenticated, element: <LoginPage /> },
       { path: "forgot-password", loader: redirectIfAuthenticated, element: <ForgotPasswordPage /> },
       {

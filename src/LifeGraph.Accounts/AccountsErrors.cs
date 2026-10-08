@@ -19,6 +19,12 @@ public static class AccountsErrors
     /// <summary>The owner's CLI refused an e-mail over the edge limit (DA-095).</summary>
     public static readonly ErrorCode EmailTooLong = ErrorCode.Validation("accounts.email_too_long");
 
+    /// <summary>An unknown or revoked AgentIdentity and another Account's alike (DA-104).</summary>
+    public static readonly ErrorCode AgentIdentityNotFound = ErrorCode.NotFound("accounts.agent_identity_not_found");
+
+    /// <summary>The AgentIdentity kept changing under a rename, a revoke or a consent (API-030); sending it again works.</summary>
+    public static readonly ErrorCode AgentIdentityConflict = ErrorCode.Conflict("accounts.agent_identity_conflict");
+
     public static IReadOnlyList<ErrorCode> All { get; } =
-        [InvalidCredentials, PasswordRejected, InvalidOrExpiredToken, TooManyAttempts, EmailTooLong];
+        [InvalidCredentials, PasswordRejected, InvalidOrExpiredToken, TooManyAttempts, EmailTooLong, AgentIdentityNotFound, AgentIdentityConflict];
 }

@@ -12,4 +12,4 @@ arquitetura garantem isso. Um salto HTTP interno só acrescentaria latência,
 serialização dupla e um segundo ponto de autenticação, sem ganho de
 isolamento.
 
-Origem: DA-032, épico `docs/epics/backlog/e03-conexao-de-agentes.md`.
+Origem: DA-032, épico `docs/epics/in-progress/e03-conexao-de-agentes.md`.

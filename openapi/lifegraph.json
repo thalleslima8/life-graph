@@ -298,6 +298,170 @@
         }
       }
     },
+    "/api/agent-identities": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "operationId": "ListAgentIdentities",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentIdentityPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-identities/{agentIdentityId}": {
+      "patch": {
+        "tags": [
+          "Agents"
+        ],
+        "operationId": "RenameAgentIdentity",
+        "parameters": [
+          {
+            "name": "agentIdentityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameAgentIdentityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentIdentityView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Agents"
+        ],
+        "operationId": "RevokeAgentIdentity",
+        "parameters": [
+          {
+            "name": "agentIdentityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/nodes": {
       "get": {
         "tags": [
@@ -1568,6 +1732,92 @@
   },
   "components": {
     "schemas": {
+      "AgentIdentityPage": {
+        "required": [
+          "data",
+          "page"
+        ],
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentIdentityView"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/AgentIdentityPageInfo"
+          }
+        }
+      },
+      "AgentIdentityPageInfo": {
+        "required": [
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AgentIdentityStatus": {
+        "enum": [
+          "active",
+          "discontinued"
+        ]
+      },
+      "AgentIdentityView": {
+        "required": [
+          "id",
+          "name",
+          "clientName",
+          "clientId",
+          "scopes",
+          "status",
+          "connectedAt",
+          "lastUsedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentIdentityStatus"
+          },
+          "connectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastUsedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "ChangeActorKind": {
         "enum": [
           "human",
@@ -2452,6 +2702,20 @@
           "import"
         ]
       },
+      "RenameAgentIdentityRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "RequestPasswordResetRequest": {
         "required": [
           "email"
@@ -2682,6 +2946,9 @@
       "name": "Account"
     },
     {
+      "name": "Agents"
+    },
+    {
       "name": "Nodes"
     },
     {
@@ -2692,6 +2959,16 @@
     }
   ],
   "x-error-codes": [
+    {
+      "code": "accounts.agent_identity_conflict",
+      "status": 409,
+      "recovery": "fix_input"
+    },
+    {
+      "code": "accounts.agent_identity_not_found",
+      "status": 404,
+      "recovery": "not_recoverable"
+    },
     {
       "code": "accounts.email_too_long",
       "status": 400,

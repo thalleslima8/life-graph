@@ -25,4 +25,4 @@ o guard de SSRF no fetch de CIMD e uma revisão de segurança antes do beta são
 obrigatórios.
 
 Origem: DA-009 (`docs/epics/done/e01-contas-e-login.md`), DA-029 e DA-034
-(`docs/epics/backlog/e03-conexao-de-agentes.md`).
+(`docs/epics/in-progress/e03-conexao-de-agentes.md`).

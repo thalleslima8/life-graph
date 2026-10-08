@@ -6,12 +6,17 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 
 namespace LifeGraph.IntegrationTests.Infrastructure;
 
 public sealed class LifeGraphApiFactory : WebApplicationFactory<Program>
 {
     public const string SpaBaseUrl = "https://spa.lifegraph.test";
+
+    /// <summary>Where the test server answers, and so the issuer and the MCP resource's origin.</summary>
+    public static readonly Uri Origin = new("https://localhost/");
 
     /// <summary>Not Development, so nothing from appsettings.Development.json leaks into the tests.</summary>
     private const string TestingEnvironment = "Testing";
@@ -20,11 +25,17 @@ public sealed class LifeGraphApiFactory : WebApplicationFactory<Program>
     private readonly IReadOnlyDictionary<string, string> _settings;
     private readonly bool _isProvisioningHost;
     private LifeGraphApiFactory? _provisioning;
+    private readonly Action<IServiceCollection>? _configureServices;
 
     /// <param name="settings">Configuration overrides for this host (e.g. rate limits).</param>
-    public LifeGraphApiFactory(PostgresDatabase database, IReadOnlyDictionary<string, string>? settings = null)
+    /// <param name="configureServices">Test doubles for this host (e.g. the CIMD fetcher, which would need the network).</param>
+    public LifeGraphApiFactory(
+        PostgresDatabase database,
+        IReadOnlyDictionary<string, string>? settings = null,
+        Action<IServiceCollection>? configureServices = null)
         : this(database, settings, new CapturingAccountMailer(), isProvisioningHost: false)
     {
+        _configureServices = configureServices;
     }
 
     private LifeGraphApiFactory(
@@ -38,7 +49,7 @@ public sealed class LifeGraphApiFactory : WebApplicationFactory<Program>
         _isProvisioningHost = isProvisioningHost;
         Mailer = mailer;
         // The session and CSRF cookies are Secure (__Host-); a cookie jar only returns them over HTTPS.
-        ClientOptions.BaseAddress = new Uri("https://localhost");
+        ClientOptions.BaseAddress = Origin;
     }
 
     public CapturingAccountMailer Mailer { get; }
@@ -67,8 +78,9 @@ public sealed class LifeGraphApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(TestingEnvironment);
-        // Throwaway issuer keys; cookies and transport keep their secure defaults.
+        // Throwaway issuer keys, at the test server's origin; cookies and transport keep their secure defaults.
         builder.UseSetting($"{IssuerOptions.SectionName}:{nameof(IssuerOptions.UseEphemeralKeys)}", "true");
+        builder.UseSetting($"{IssuerOptions.SectionName}:{nameof(IssuerOptions.Issuer)}", Origin.AbsoluteUri);
         // The Host picks the connection by its arguments (AccountsCommandLine.ConnectionStringNameFor);
         // a test host has none, so the provisioning host gets the provisioning role here.
         builder.UseSetting(
@@ -92,6 +104,13 @@ public sealed class LifeGraphApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<TimeProvider>(Clock);
             services.AddScoped<TestAccountContext>();
             services.AddScoped<IAccountContext>(provider => provider.GetRequiredService<TestAccountContext>());
+            _configureServices?.Invoke(services);
+
+            // The owner's CLI builds the host but never runs it, so no hosted service starts there.
+            if (_isProvisioningHost)
+            {
+                services.RemoveAll<IHostedService>();
+            }
         });
     }
 }

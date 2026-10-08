@@ -1,5 +1,6 @@
 using ArchUnitNET.Domain;
 using ArchUnitNET.Loader;
+using LifeGraph.ArchitectureTests.Canary.Agents.Application;
 
 namespace LifeGraph.ArchitectureTests.Canary;
 
@@ -13,7 +14,10 @@ public sealed class ArchitectureRulesCanaryTests
 
     private static readonly Architecture Canary = new ArchLoader()
         // Limaj.Framework.Core is loaded so the rules can see the members its types declare.
-        .LoadAssemblies(typeof(ArchitectureRulesCanaryTests).Assembly, typeof(Limaj.Framework.Core.Error).Assembly)
+        .LoadAssemblies(
+            typeof(ArchitectureRulesCanaryTests).Assembly,
+            typeof(Limaj.Framework.Core.Error).Assembly,
+            typeof(OpenIddict.Abstractions.IOpenIddictAuthorizationManager).Assembly)
         .Build();
 
     [Fact]
@@ -43,6 +47,16 @@ public sealed class ArchitectureRulesCanaryTests
     [Fact]
     public void Credential_directory_rule_flags_a_module_that_uses_openiddict() =>
         Assert.False(ArchitectureRules.OnlyAccountsUsesIdentityAndOpenIddict(CanaryRoot).HasNoViolations(Canary));
+
+    [Fact]
+    public void Grant_listing_rule_flags_a_type_that_lists_every_grant() =>
+        Assert.False(ArchitectureRules.GrantsAreReadOnlyBySubjectOrId(CanaryRoot).HasNoViolations(Canary));
+
+    [Fact]
+    public void Raw_sql_rule_flags_a_literal_over_an_issuer_table() =>
+        Assert.Contains(
+            ArchitectureRules.CredentialTableLiterals([typeof(ArchitectureRulesCanaryTests).Assembly]),
+            literal => literal.Contains(BrokenGrantAccess.RawSql, StringComparison.Ordinal));
 
     [Fact]
     public void User_entity_rule_flags_a_module_that_uses_the_user_entity() =>

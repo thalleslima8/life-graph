@@ -27,6 +27,7 @@ public static class BuildTimeDocumentGeneration
         [$"{SmtpOptions.SectionName}:{nameof(SmtpOptions.From)}"] = "openapi@build.invalid",
         [$"{SpaOptions.SectionName}:{nameof(SpaOptions.BaseUrl)}"] = "https://spa.build.invalid",
         [$"{IssuerOptions.SectionName}:{nameof(IssuerOptions.UseEphemeralKeys)}"] = "true",
+        [$"{IssuerOptions.SectionName}:{nameof(IssuerOptions.Issuer)}"] = "https://issuer.build.invalid/",
     };
 
     public static bool IsRunningUnder(Assembly? entryAssembly) =>
