@@ -196,6 +196,32 @@ public sealed class IssuerHardeningTests(PostgresDatabase database) : IAsyncLife
         Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallMcpAsync(agent, second.AccessToken)).StatusCode);
     }
 
+    // E4: read tool calls have their own budget per AgentIdentity, inside the MCP one.
+    [Fact]
+    public async Task Each_agent_identity_has_its_own_read_budget()
+    {
+        await using var factory = new LifeGraphApiFactory(database, new Dictionary<string, string>(AgentAuthorization.Settings())
+        {
+            [$"{IssuerOptions.SectionName}:Clients:1:ClientId"] = "second-agent",
+            [$"{IssuerOptions.SectionName}:Clients:1:RedirectUris:0"] = AgentAuthorization.RedirectUri,
+            ["Api:RateLimits:AgentReadPermitLimit"] = "2",
+        });
+        await TestAccounts.ProvisionConfirmedAsync(factory, "ada@example.test");
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(factory, "ada@example.test");
+        var first = await AgentAuthorization.ConnectAsync(factory, browser);
+        var second = await AgentAuthorization.ConnectAsync(factory, browser, clientId: "second-agent");
+        using var agent = factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, first.AccessToken, "list_types")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, first.AccessToken, "list_types")).StatusCode);
+        var overBudget = await AgentAuthorization.CallToolAsync(agent, first.AccessToken, "list_types");
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, overBudget.StatusCode);
+        Assert.NotNull(overBudget.Headers.RetryAfter);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallMcpAsync(agent, first.AccessToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, second.AccessToken, "list_types")).StatusCode);
+    }
+
     [Fact]
     public async Task The_agents_of_an_account_share_one_ceiling()
     {

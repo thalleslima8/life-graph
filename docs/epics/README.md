@@ -14,7 +14,7 @@ menor. Ao adicionar ou alterar um épico, verifique esta tabela.
 | E1 | [Contas e login](done/e01-contas-e-login.md) | Identity + OpenIddict como emissor, cookie BFF | E0 |
 | E2 | [Núcleo de escrita](done/e02-nucleo-de-escrita.md) | Nodes/Relations/Types, ChangeSet + Provenance, Undo, Delete/Purge, Inbox, UI mínima | E1 |
 | E3 | [Conexão de agentes](in-progress/e03-conexao-de-agentes.md) | OAuth 2.1, consentimento, túnel de dev, primeira conexão com ChatGPT/Claude.ai | E1, E2 |
-| E4 | [MCP leitura](backlog/e04-mcp-leitura.md) | `get_context`, busca, oculto para agentes, auditoria | E3 |
+| E4 | [MCP leitura](in-progress/e04-mcp-leitura.md) | `get_context`, busca, oculto para agentes, auditoria | E3 |
 | E5 | [MCP escrita + Agent Changes](backlog/e05-mcp-escrita-agent-changes.md) | Escrita de agentes com proteções; **fecha o fluxo da §63** | E4 |
 | E6 | [Grafo 2.5D](backlog/e06-grafo-2-5d.md) | Grafo local, Semantic Zoom básico | E2 |
 | E7 | [Resources e captura](backlog/e07-resources-e-captura.md) | Resource como Node, fetch protegido contra SSRF, `capture_resource` | E2, E5 |
@@ -40,4 +40,4 @@ E3–E5.
 - Toda exceção a uma regra **DEVE** de `docs/standards/` vira um `DA-###` no
   épico, citando o ID da regra.
 - **Numeração de decisões:** os `DA-###` são sequenciais e **globais** entre
-  os épicos (DA-001 a DA-126 nesta versão do roadmap). O próximo é o DA-127.
+  os épicos (DA-001 a DA-129 nesta versão do roadmap). O próximo é o DA-130.

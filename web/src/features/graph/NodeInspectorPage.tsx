@@ -221,7 +221,12 @@ function NodeActions({ node }: { node: NodeDetail }) {
   );
 }
 
-type EditValues = { title: string; body: string; typeId: string; properties: Record<string, PropertyValue> };
+const HIDDEN_NODE_HINT = "Nenhum agente conectado vê este Node: ele fica fora de busca, contexto e relações.";
+const HIDDEN_BY_TYPE_MESSAGE = "O Type deste Node já o oculta para agentes.";
+const BECOMES_VISIBLE_MESSAGE =
+  "Atenção: o Type atual oculta este Node para agentes e o novo Type não. Ao salvar, ele fica visível para os agentes conectados. Marque “Oculto para agentes” para mantê-lo oculto.";
+
+type EditValues = { title: string; body: string; typeId: string; hiddenFromAgents: boolean; properties: Record<string, PropertyValue> };
 
 function fieldOf(property: NodePropertyValue, definitionsById: Map<string, PropertyDefinitionItem>): PropertyField {
   return { name: property.name, valueKind: property.valueKind, options: definitionsById.get(property.propertyDefinitionId)?.options };
@@ -232,6 +237,7 @@ function editValuesOf(node: NodeDetail): EditValues {
     title: node.title,
     body: node.body,
     typeId: node.typeId ?? NO_TYPE,
+    hiddenFromAgents: node.hiddenFromAgents,
     properties: Object.fromEntries(node.properties.map((property) => [property.propertyDefinitionId, fromWire(property.valueKind, property.value)])),
   };
 }
@@ -241,6 +247,7 @@ function editSchemaOf(node: NodeDetail, definitionsById: Map<string, PropertyDef
     title: z.string().trim().min(1, "Informe um título.").max(TITLE_MAX_LENGTH, `Use no máximo ${TITLE_MAX_LENGTH} caracteres.`),
     body: z.string().max(BODY_MAX_LENGTH, `Use no máximo ${BODY_MAX_LENGTH} caracteres.`),
     typeId: z.string(),
+    hiddenFromAgents: z.boolean(),
     properties: z.object(
       Object.fromEntries(
         node.properties.map((property) => [
@@ -283,7 +290,13 @@ function NodeEditForm({
     }
   }, [base.baseVersion, node, reset]);
 
-  const typeChanged = useWatch({ control, name: "typeId" }) !== (node.typeId ?? NO_TYPE);
+  const selectedTypeId = useWatch({ control, name: "typeId" });
+  const typeChanged = selectedTypeId !== (node.typeId ?? NO_TYPE);
+  const hiddenOnItsOwn = useWatch({ control, name: "hiddenFromAgents" });
+  const isTypeHidden = (typeId: string | null) => types.some((type) => type.id === typeId && type.hiddenFromAgents);
+  const selectedTypeHides = isTypeHidden(selectedTypeId);
+  // DA-035: leaving a Type that hid the Node, for one that does not, shows it to agents.
+  const becomesVisible = typeChanged && isTypeHidden(node.typeId) && !selectedTypeHides && !hiddenOnItsOwn;
 
   const onSubmit = handleSubmit((values) => {
     if (update.isPending || base.baseVersion === undefined) {
@@ -297,6 +310,10 @@ function NodeEditForm({
 
     if (dirtyFields.body) {
       input.body = values.body;
+    }
+
+    if (dirtyFields.hiddenFromAgents) {
+      input.hiddenFromAgents = values.hiddenFromAgents;
     }
 
     if (typeChanged) {
@@ -400,6 +417,21 @@ function NodeEditForm({
             Ao trocar o Type, os valores que o novo Type não tem ficam em Outras propriedades e voltam se o Node voltar a um Type que os tenha.
           </p>
         )}
+        {becomesVisible && (
+          <p role="status" className="text-sm font-medium">
+            {BECOMES_VISIBLE_MESSAGE}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-1">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" aria-describedby="node-hidden-hint" {...register("hiddenFromAgents")} />
+          Oculto para agentes
+        </label>
+        <p id="node-hidden-hint" className="text-xs text-muted-foreground">
+          {selectedTypeHides ? HIDDEN_BY_TYPE_MESSAGE : HIDDEN_NODE_HINT}
+        </p>
       </div>
 
       {!typeChanged && node.properties.length > 0 && (

@@ -20,7 +20,10 @@ public static class GraphModule
 
         services.AddSingleton<IModelContributor, GraphModelContributor>();
         services.AddScoped<IGraphWriter, GraphWriter>();
+        services.AddScoped<GraphReadFilter>();
         services.AddScoped<GraphReads>();
+        services.AddScoped<NodeViews>();
+        services.AddScoped<IGraphReader, GraphContextReads>();
         services.AddScoped<GraphWrites>();
         services.AddScoped<IJobHandler, GraphPurge>();
         services.AddScoped<IAccountPurgeParticipant, GraphAccountPurge>();

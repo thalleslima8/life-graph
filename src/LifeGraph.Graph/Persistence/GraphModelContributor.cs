@@ -15,5 +15,6 @@ public sealed class GraphModelContributor : IModelContributor
         modelBuilder.ApplyConfiguration(new RelationConfiguration());
         modelBuilder.ApplyConfiguration(new GraphChangeSetConfiguration());
         modelBuilder.ApplyConfiguration(new ChangeEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new AgentReadConfiguration());
     }
 }

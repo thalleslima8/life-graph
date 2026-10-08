@@ -122,6 +122,7 @@ internal static class NodeEndpoints
             Body = request.Body,
             Type = request.Type is null ? null : new TypeAssignment(request.Type.Id),
             Properties = request.Properties,
+            HiddenFromAgents = request.HiddenFromAgents,
         };
         return writes.WriteAsync(update, cancellationToken);
     }
@@ -166,6 +167,9 @@ public sealed record UpdateNodeRequest
 
     /// <summary>Values to set by Property Definition id; <c>null</c> removes the value.</summary>
     public Dictionary<Guid, JsonElement>? Properties { get; init; }
+
+    /// <summary>Oculto para agentes on the Node itself (DA-035); absent keeps it.</summary>
+    public bool? HiddenFromAgents { get; init; }
 }
 
 public sealed record TypeAssignmentRequest
@@ -189,4 +193,10 @@ internal static class RequestLimits
         Infrastructure.Errors.CommonErrors.ValidationFailed.ToError(
             Infrastructure.Errors.CommonErrors.ValidationFailedMessage,
             new Dictionary<string, string[]> { [field] = [message] });
+
+    /// <summary>A body that sends none of the fields it needs at least one of: the error names each of them.</summary>
+    public static Limaj.Framework.Core.Error InvalidAnyOf(IReadOnlyList<string> fields, string message) =>
+        Infrastructure.Errors.CommonErrors.ValidationFailed.ToError(
+            Infrastructure.Errors.CommonErrors.ValidationFailedMessage,
+            fields.ToDictionary(field => field, _ => new[] { message }, StringComparer.Ordinal));
 }

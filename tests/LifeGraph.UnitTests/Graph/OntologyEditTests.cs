@@ -59,7 +59,7 @@ public sealed class OntologyEditTests
         book.Attach(_author, Now);
         book.Rename("Livro", Now);
 
-        book.Revert("Book", [_author.Id], Later);
+        book.Revert("Book", [_author.Id], hiddenFromAgents: false, Later);
 
         Assert.Equal("Book", book.Name);
         Assert.Equal([(_author.Id, 0)], book.Properties.Select(property => (property.PropertyDefinitionId, property.Position)));

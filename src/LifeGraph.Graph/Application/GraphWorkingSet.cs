@@ -214,6 +214,7 @@ internal sealed class GraphWorkingSet
         CreateNode create => create.TypeId,
         UpdateNode update => update.Type?.TypeId,
         RenameType rename => rename.TypeId,
+        SetTypeHiddenFromAgents setHidden => setHidden.TypeId,
         AttachProperty attach => attach.TypeId,
         DetachProperty detach => detach.TypeId,
         DeleteType delete => delete.TypeId,

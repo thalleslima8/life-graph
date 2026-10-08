@@ -6,8 +6,8 @@ using Microsoft.EntityFrameworkCore;
 namespace LifeGraph.Graph.Persistence;
 
 /// <summary>
-/// The Graph's part of deleting an Account (DA-012): the whole graph, its history and the
-/// sources, at once (DA-114). Not a graph write, so no GraphChangeSet: there is no one left
+/// The Graph's part of deleting an Account (DA-012): the whole graph, its history, the
+/// agents' read audit (DA-037) and the sources, at once (DA-114). Not a graph write, so no GraphChangeSet: there is no one left
 /// to undo it for. Runs inside the Account's transaction, as every participant, and RLS
 /// keeps each statement to that Account.
 /// </summary>
@@ -15,6 +15,7 @@ internal sealed class GraphAccountPurge(LifeGraphDbContext db) : IAccountPurgePa
 {
     public async Task PurgeAsync(Guid accountId, CancellationToken cancellationToken)
     {
+        await db.Set<AgentRead>().Where(read => read.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<ChangeEntry>().Where(entry => entry.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
 
         // An Undo points at the GraphChangeSet it undoes; unlink them before deleting.

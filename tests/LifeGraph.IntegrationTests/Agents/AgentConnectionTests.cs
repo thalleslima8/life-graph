@@ -89,8 +89,8 @@ public sealed class AgentConnectionTests(PostgresDatabase database) : IAsyncLife
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         var whoami = await client.CallToolAsync("whoami", cancellationToken: TestContext.Current.CancellationToken);
 
-        var tool = Assert.Single(tools);
-        Assert.Equal("whoami", tool.Name);
+        // E4 added the read tools beside it; GraphReadToolsTests pins the whole list.
+        var tool = Assert.Single(tools, listed => listed.Name == "whoami");
         Assert.True(tool.ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.NotEqual(true, whoami.IsError);
         using var result = JsonDocument.Parse(Assert.IsType<TextContentBlock>(whoami.Content[0]).Text);

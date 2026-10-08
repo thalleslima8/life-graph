@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using LifeGraph.Graph.Application;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Infrastructure.Errors;
 using LifeGraph.IntegrationTests.Infrastructure;
@@ -252,6 +253,26 @@ public sealed class GraphOntologyTests(PostgresDatabase database) : IAsyncLifeti
         Assert.Equal(book, await _graph.ScalarAsync<Guid>("SELECT type_id FROM nodes WHERE id = @id", new NpgsqlParameter("id", node)));
     }
 
+    // DA-035: undoing the delete of a hidden Type brings it back hidden, so its Nodes stay out of agents' reach.
+    [Fact]
+    public async Task Undoing_the_delete_of_a_hidden_type_brings_it_back_hidden_from_agents()
+    {
+        var health = await CreateTypeAsync("Health");
+        await _graph.WrittenAsync(_account, new SetTypeHiddenFromAgents(health, true));
+        var node = Guid.CreateVersion7();
+        await _graph.WrittenAsync(_account, new CreateNode(node, "Diary", TypeId: health));
+
+        var deleted = await _graph.WrittenAsync(
+            _account,
+            new UpdateNode(node, 1) { Type = new TypeAssignment(null) },
+            new DeleteType(health));
+        Assert.Equal(1, await VisibleToAgentsAsync(node));
+
+        Assert.True((await _graph.UndoAsync(_account, deleted)).IsSuccess);
+        Assert.True(await _graph.ScalarAsync<bool>("SELECT hidden_from_agents FROM types WHERE id = @id", new NpgsqlParameter("id", health)));
+        Assert.Equal(0, await VisibleToAgentsAsync(node));
+    }
+
     [Fact]
     public async Task A_property_in_use_cannot_be_deleted_and_a_free_one_is_deleted_and_undone()
     {
@@ -411,4 +432,11 @@ public sealed class GraphOntologyTests(PostgresDatabase database) : IAsyncLifeti
 
     private static Dictionary<Guid, JsonElement> Values(params (Guid PropertyId, object? Value)[] values) =>
         values.ToDictionary(value => value.PropertyId, value => JsonSerializer.SerializeToElement(value.Value));
+
+    // The central read filter's own predicate, as an AgentIdentity reads (DA-035).
+    private Task<long> VisibleToAgentsAsync(Guid node) =>
+        _graph.ScalarAsync<long>(
+            $"SELECT count(*) FROM nodes n WHERE n.id = @id AND {GraphReadFilter.VisibleNodeSql}",
+            new NpgsqlParameter("id", node),
+            new NpgsqlParameter("for_agents", true));
 }

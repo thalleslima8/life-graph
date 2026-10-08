@@ -27,7 +27,7 @@ internal static class OntologyEndpoints
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
-        types.MapPatch("/{typeId:guid}", RenameTypeAsync)
+        types.MapPatch("/{typeId:guid}", UpdateTypeAsync)
             .WithName("UpdateType")
             .Produces<GraphWriteReceipt>()
             .ProducesValidationProblem()
@@ -107,10 +107,24 @@ internal static class OntologyEndpoints
             cancellationToken);
     }
 
-    private static Task<IResult> RenameTypeAsync(Guid typeId, UpdateTypeRequest request, GraphWrites writes, CancellationToken cancellationToken) =>
-        request.Name is null
-            ? Task.FromResult(writes.Responder.Fail(RequestLimits.Invalid("name", "Required.")))
-            : writes.WriteAsync(new RenameType(typeId, request.Name), cancellationToken);
+    // Renaming and hiding from agents (DA-035) are separate operations, in one GraphChangeSet.
+    private static Task<IResult> UpdateTypeAsync(Guid typeId, UpdateTypeRequest request, GraphWrites writes, CancellationToken cancellationToken)
+    {
+        List<GraphOperation> operations = [];
+        if (request.Name is not null)
+        {
+            operations.Add(new RenameType(typeId, request.Name));
+        }
+
+        if (request.HiddenFromAgents is { } hidden)
+        {
+            operations.Add(new SetTypeHiddenFromAgents(typeId, hidden));
+        }
+
+        return operations.Count == 0
+            ? Task.FromResult(writes.Responder.Fail(RequestLimits.InvalidAnyOf(["name", "hiddenFromAgents"], "Send a name or hiddenFromAgents.")))
+            : writes.WriteAsync(operations, receipt => TypedResults.Ok(receipt), cancellationToken);
+    }
 
     private static Task<IResult> DeleteTypeAsync(Guid typeId, GraphWrites writes, CancellationToken cancellationToken) =>
         writes.WriteAsync(new DeleteType(typeId), cancellationToken);
@@ -195,6 +209,9 @@ public sealed record CreateTypeRequest
 public sealed record UpdateTypeRequest
 {
     public string? Name { get; init; }
+
+    /// <summary>Oculto para agentes (DA-035): hides every Node of the Type from agents.</summary>
+    public bool? HiddenFromAgents { get; init; }
 }
 
 public sealed record CreatePropertyDefinitionRequest

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using LifeGraph.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LifeGraph.Migrations.Migrations
 {
     [DbContext(typeof(LifeGraphDbContext))]
-    partial class LifeGraphDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261008100859_HiddenFromAgents")]
+    partial class HiddenFromAgents
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -95,58 +98,6 @@ namespace LifeGraph.Migrations.Migrations
                         .HasDatabaseName("uq_agent_identities_account_id_client_id");
 
                     b.ToTable("agent_identities", (string)null);
-                });
-
-            modelBuilder.Entity("LifeGraph.Graph.Domain.AgentRead", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("account_id");
-
-                    b.Property<Guid>("AgentIdentityId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("agent_identity_id");
-
-                    b.Property<string>("Arguments")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("arguments");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Operation")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("operation");
-
-                    b.PrimitiveCollection<List<Guid>>("ReturnedNodeIds")
-                        .IsRequired()
-                        .HasColumnType("uuid[]")
-                        .HasColumnName("returned_node_ids");
-
-                    b.HasKey("Id")
-                        .HasName("pk_agent_reads");
-
-                    b.HasIndex("AccountId")
-                        .HasDatabaseName("ix_agent_reads_account_id");
-
-                    b.HasIndex("CreatedAt")
-                        .HasDatabaseName("ix_agent_reads_created_at");
-
-                    b.HasIndex("AgentIdentityId", "CreatedAt")
-                        .HasDatabaseName("ix_agent_reads_agent_identity_id_created_at");
-
-                    b.ToTable("agent_reads", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_agent_reads_operation", "operation IN ('get_context', 'get_node', 'list_types', 'search_graph')");
-                        });
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.ChangeEntry", b =>
@@ -1155,16 +1106,6 @@ namespace LifeGraph.Migrations.Migrations
                         .HasForeignKey("AuthorizationId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_agent_identities_authorization_id");
-                });
-
-            modelBuilder.Entity("LifeGraph.Graph.Domain.AgentRead", b =>
-                {
-                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
-                        .WithMany()
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_agent_reads_account_id");
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.ChangeEntry", b =>

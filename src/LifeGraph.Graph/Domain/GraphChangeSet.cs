@@ -181,11 +181,5 @@ public enum ChangeSetStatus
     Reverted,
 }
 
-public enum ChangeActorKind
-{
-    Human,
-    AgentIdentity,
-}
-
 /// <summary>What one entry records: the entity, the operation and its states before and after, as JSON.</summary>
 internal sealed record RecordedChange(GraphEntityKind EntityKind, Guid EntityId, GraphChangeOperation Operation, string? Before, string? After);

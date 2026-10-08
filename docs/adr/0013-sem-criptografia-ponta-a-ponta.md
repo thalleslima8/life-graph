@@ -12,4 +12,4 @@ vem do isolamento por conta (RLS), do filtro "oculto para agentes", da
 auditoria de leitura e de não enviar Nodes ocultos a provedores de embeddings
 de terceiros.
 
-Origem: DA-092, épico `docs/epics/backlog/e04-mcp-leitura.md`.
+Origem: DA-092, épico `docs/epics/in-progress/e04-mcp-leitura.md`.

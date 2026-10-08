@@ -156,14 +156,24 @@ public static class ApiRateLimiting
     private static bool IsSafeMethod(string method) =>
         HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
 
-    // The same contract as every error (DA-102): the code, the V3 body and Retry-After.
+    /// <summary>
+    /// The 429 of a budget (DA-116), with the same contract as every error (DA-102): the code,
+    /// the V3 body and <c>Retry-After</c> in whole seconds, at least one.
+    /// </summary>
+    public static Task RefuseAsync(HttpContext httpContext, TimeSpan retryAfter)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        var wholeSecondsAtLeastOne = TimeSpan.FromSeconds(Math.Max(1, Math.Ceiling(retryAfter.TotalSeconds)));
+        var responder = httpContext.RequestServices.GetRequiredService<IHttpResultResponder>();
+        var refusal = responder.Fail(CommonErrors.TooManyRequests.ToError(TooManyRequestsMessage, retryAfter: wholeSecondsAtLeastOne));
+        return refusal.ExecuteAsync(httpContext);
+    }
+
     private static async ValueTask WriteRefusalAsync(OnRejectedContext rejected, TimeSpan window)
     {
         var retryAfter = rejected.Lease.TryGetMetadata(MetadataName.RetryAfter, out var leaseRetryAfter) ? leaseRetryAfter : window;
-        var wholeSecondsAtLeastOne = TimeSpan.FromSeconds(Math.Max(1, Math.Ceiling(retryAfter.TotalSeconds)));
-        var responder = rejected.HttpContext.RequestServices.GetRequiredService<IHttpResultResponder>();
-        var refusal = responder.Fail(CommonErrors.TooManyRequests.ToError(TooManyRequestsMessage, retryAfter: wholeSecondsAtLeastOne));
-        await refusal.ExecuteAsync(rejected.HttpContext);
+        await RefuseAsync(rejected.HttpContext, retryAfter);
     }
 }
 
@@ -183,6 +193,13 @@ public sealed class ApiRateLimitOptions
     /// <summary>MCP requests per AgentIdentity in each window: a busy chat, not a script in a loop.</summary>
     [Range(1, 100_000)]
     public int AgentPermitLimit { get; set; } = 300;
+
+    /// <summary>
+    /// Calls of read tools per AgentIdentity in each window, inside its MCP budget: a read is
+    /// when data leaves for a third-party model, and get_context is the costliest call (E4).
+    /// </summary>
+    [Range(1, 100_000)]
+    public int AgentReadPermitLimit { get; set; } = 120;
 
     /// <summary>MCP requests of all the agents of one Account in each window (DA-121).</summary>
     [Range(1, 100_000)]

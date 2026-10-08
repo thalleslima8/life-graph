@@ -12,6 +12,7 @@
     <ProjectReference Include="..\LifeGraph.Infrastructure\LifeGraph.Infrastructure.csproj" />
     <ProjectReference Include="..\LifeGraph.Http\LifeGraph.Http.csproj" />
     <ProjectReference Include="..\LifeGraph.Accounts\LifeGraph.Accounts.csproj" />
+    <ProjectReference Include="..\LifeGraph.Graph\LifeGraph.Graph.csproj" />
   </ItemGroup>
 
   <ItemGroup>

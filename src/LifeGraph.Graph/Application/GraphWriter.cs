@@ -143,6 +143,7 @@ internal sealed class GraphWriter(
                 UpdatePropertyDefinition update => write.Apply(update),
                 DeletePropertyDefinition delete => write.Apply(delete),
                 RenameType rename => write.Apply(rename),
+                SetTypeHiddenFromAgents setHidden => write.Apply(setHidden),
                 AttachProperty attach => write.Apply(attach),
                 DetachProperty detach => write.Apply(detach),
                 DeleteType delete => write.Apply(delete),

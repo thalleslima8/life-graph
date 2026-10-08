@@ -449,6 +449,7 @@
         "type": "Project",
         "dependencies": {
           "LifeGraph.Accounts": "[1.0.0, )",
+          "LifeGraph.Graph": "[1.0.0, )",
           "LifeGraph.Http": "[1.0.0, )",
           "LifeGraph.Infrastructure": "[1.0.0, )",
           "ModelContextProtocol.AspNetCore": "[1.4.1, )"

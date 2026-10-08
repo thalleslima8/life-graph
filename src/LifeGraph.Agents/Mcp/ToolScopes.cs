@@ -1,5 +1,7 @@
 using System.Text.Json;
 using LifeGraph.Accounts.Contracts;
+using LifeGraph.Http;
+using LifeGraph.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +18,8 @@ namespace LifeGraph.Agents.Mcp;
 /// <c>WWW-Authenticate: Bearer error="insufficient_scope", scope="lifegraph.write"</c>, so the
 /// client can ask the person for more. Read-only tools need <c>lifegraph.read</c>, which every
 /// grant has. The check runs before the SDK sees the request, on the JSON-RPC message itself.
+/// The read-only calls then take from the agent's read budget (<see cref="AgentReadBudget"/>):
+/// over it, the agent gets 429 with <c>Retry-After</c>, and the tools do not run.
 /// </summary>
 internal static class ToolScopes
 {
@@ -36,9 +40,20 @@ internal static class ToolScopes
 
             endpoint.RequestDelegate = async httpContext =>
             {
-                if (await MissingScopeOfAsync(httpContext) is { } missingScope)
+                var toolNames = await ToolsCalledByRequestAsync(httpContext);
+                var requiredScopes = RequiredScopes(httpContext.RequestServices.GetServices<McpServerTool>());
+                if (MissingScopeOf(httpContext, toolNames, requiredScopes) is { } missingScope)
                 {
                     await RefuseAsync(httpContext, missingScope);
+                    return;
+                }
+
+                var reads = toolNames.Count(toolName => requiredScopes.GetValueOrDefault(toolName) == AgentAccess.ReadScope);
+                if (reads > 0
+                    && PrincipalClaims.Read(httpContext.User) is { AgentIdentityId: { } agentIdentityId }
+                    && httpContext.RequestServices.GetRequiredService<AgentReadBudget>().Take(agentIdentityId, reads) is { } retryAfter)
+                {
+                    await ApiRateLimiting.RefuseAsync(httpContext, retryAfter);
                     return;
                 }
 
@@ -77,12 +92,12 @@ internal static class ToolScopes
             ? name.GetString()
             : null;
 
-    private static async Task<string?> MissingScopeOfAsync(HttpContext httpContext)
+    private static async Task<IReadOnlyList<string>> ToolsCalledByRequestAsync(HttpContext httpContext)
     {
         var request = httpContext.Request;
         if (!HttpMethods.IsPost(request.Method) || request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) != true)
         {
-            return null;
+            return [];
         }
 
         // The SDK reads the body again after this check.
@@ -103,16 +118,13 @@ internal static class ToolScopes
             request.Body.Position = 0;
         }
 
-        if (toolNames.Count == 0)
-        {
-            return null;
-        }
+        return toolNames;
+    }
 
-        var requiredScopes = RequiredScopes(httpContext.RequestServices.GetServices<McpServerTool>());
-        return toolNames
+    private static string? MissingScopeOf(HttpContext httpContext, IReadOnlyList<string> toolNames, Dictionary<string, string> requiredScopes) =>
+        toolNames
             .Select(toolName => requiredScopes.GetValueOrDefault(toolName))
             .FirstOrDefault(requiredScope => requiredScope is not null && !AgentAccess.HasScope(httpContext.User, requiredScope));
-    }
 
     private static Task RefuseAsync(HttpContext httpContext, string missingScope)
     {

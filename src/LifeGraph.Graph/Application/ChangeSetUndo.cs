@@ -348,6 +348,7 @@ internal sealed class ChangeSetUndo
         }
 
         var type = NodeType.Create(entry.EntityId, _undone.AccountId, snapshot.Name, attached, _now).Value!;
+        type.SetHiddenFromAgents(snapshot.HiddenFromAgents, _now);
         _types[type.Id] = type;
         _removed.Remove(type.Id);
         _db.Add(type);
@@ -371,7 +372,7 @@ internal sealed class ChangeSetUndo
         }
 
         Touch(GraphEntityKind.Type, type.Id, ChangeSnapshots.Of(type), GraphChangeOperation.Updated);
-        type.Revert(snapshot.Name, snapshot.PropertyDefinitionIds, _now);
+        type.Revert(snapshot.Name, snapshot.PropertyDefinitionIds, snapshot.HiddenFromAgents, _now);
     }
 
     // The values Nodes hold now are checked against the definition as it was, once the walk is over.

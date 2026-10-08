@@ -34,6 +34,9 @@ public sealed record UpdateNode(Guid NodeId, int ExpectedVersion) : GraphOperati
 
     /// <summary>Values to set, keyed by Property Definition id; a JSON <c>null</c> removes the value.</summary>
     public IReadOnlyDictionary<Guid, JsonElement>? Properties { get; init; }
+
+    /// <summary>Oculto para agentes on the Node itself (DA-035); <c>null</c> leaves it as it is.</summary>
+    public bool? HiddenFromAgents { get; init; }
 }
 
 public sealed record TypeAssignment(Guid? TypeId);
@@ -84,6 +87,13 @@ public sealed record DeletePropertyDefinition(Guid PropertyDefinitionId) : Graph
 
 public sealed record RenameType(Guid TypeId, string Name) : GraphOperation;
 
+/// <summary>
+/// Sets Oculto para agentes on the Type (DA-035): <c>true</c> hides every Node of the Type from
+/// agents, <c>false</c> stops hiding them; a Node hidden on its own stays hidden. Setting the
+/// flag it already has changes nothing.
+/// </summary>
+public sealed record SetTypeHiddenFromAgents(Guid TypeId, bool HiddenFromAgents) : GraphOperation;
+
 /// <summary>Attaches a Property Definition at the end of the Type; attaching it again changes nothing.</summary>
 public sealed record AttachProperty(Guid TypeId, Guid PropertyDefinitionId) : GraphOperation;
 
@@ -95,6 +105,22 @@ public sealed record DetachProperty(Guid TypeId, Guid PropertyDefinitionId) : Gr
 
 /// <summary>Removes a Type no Node, deleted ones included, has.</summary>
 public sealed record DeleteType(Guid TypeId) : GraphOperation;
+
+/// <summary>Whether a Relation was asserted (Hard) or inferred by the system (Soft), DA-014.</summary>
+public enum RelationAssertion
+{
+    Hard,
+    Soft,
+}
+
+/// <summary>Who originated a graph object (Origin, in the glossary).</summary>
+public enum RelationOrigin
+{
+    User,
+    Agent,
+    System,
+    Import,
+}
 
 /// <summary>The eight kinds of Property value (DA-023).</summary>
 public enum PropertyValueKind

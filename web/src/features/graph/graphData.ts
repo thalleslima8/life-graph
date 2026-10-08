@@ -252,8 +252,11 @@ export function useCreateType() {
   return useGraphWrite(async (input: CreateTypeInput) => unwrap(await api.POST("/api/types", { body: input })));
 }
 
+/** Renames the Type and/or hides its Nodes from agents (DA-035); the same PATCH, one GraphChangeSet. */
+export type UpdateTypeInput = { name?: string; hiddenFromAgents?: boolean };
+
 export function useUpdateType(id: string) {
-  return useGraphWrite(async (input: { name: string }) =>
+  return useGraphWrite(async (input: UpdateTypeInput) =>
     unwrap(await api.PATCH("/api/types/{typeId}", { params: { path: { typeId: id } }, body: input })),
   );
 }

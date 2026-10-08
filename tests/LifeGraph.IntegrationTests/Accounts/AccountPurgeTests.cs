@@ -1,3 +1,4 @@
+using LifeGraph.Agents.Mcp;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Infrastructure.Accounts;
 using LifeGraph.Infrastructure.Persistence;
@@ -33,12 +34,15 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         var purged = await AccountWithDataAsync(Email);
         var other = await AccountWithDataAsync(OtherEmail);
 
+        Assert.True(await CountAsync("agent_reads", purged) > 0);
+
         await RunAllParticipantsAsync(purged);
 
         var tables = await AccountTablesAsync();
         Assert.Contains("agent_identities", tables);
         Assert.Contains("nodes", tables);
         Assert.Contains("jobs", tables);
+        Assert.Contains("agent_reads", tables);
         foreach (var table in tables.Except(RemovedWithTheAccount))
         {
             Assert.True(0 == await CountAsync(table, purged), $"{table} still has rows of the purged Account.");
@@ -47,6 +51,7 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         Assert.True(await CountAsync("nodes", other) > 0);
         Assert.True(await CountAsync("jobs", other) > 0);
         Assert.True(await CountAsync("agent_identities", other) > 0);
+        Assert.True(await CountAsync("agent_reads", other) > 0);
     }
 
     // DA-119: the grants are removed in the Account's transaction, so a later participant's failure brings them back.
@@ -73,7 +78,13 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
     {
         var account = (await TestAccounts.ProvisionConfirmedAsync(_factory, email)).AccountId;
         using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, email);
-        await AgentAuthorization.ConnectAsync(_factory, browser);
+        var tokens = await AgentAuthorization.ConnectAsync(_factory, browser);
+
+        // A read leaves an audit row that points at the connection (DB-004), whatever the participants' order.
+        await using (var agent = await AgentMcp.ConnectAsync(_factory, tokens.AccessToken))
+        {
+            await AgentMcp.CallAsync(agent, GraphReadTools.ListTypesName);
+        }
 
         var graph = new GraphWriteHarness(database, _factory);
         var node = Guid.CreateVersion7();

@@ -92,7 +92,7 @@ internal sealed class WriteInProgress(
         }
 
         var before = ChangeSnapshots.Of(node);
-        var edited = node.Edit(new NodeEdit(update.Title, update.Body, schema, update.Properties), now);
+        var edited = node.Edit(new NodeEdit(update.Title, update.Body, schema, update.Properties, update.HiddenFromAgents), now);
         if (!edited.IsSuccess)
         {
             return Result.Fail(edited.Error!);
@@ -342,6 +342,22 @@ internal sealed class WriteInProgress(
         }
 
         Record(GraphEntityKind.Type, type.Id, GraphChangeOperation.Updated, before, ChangeSnapshots.Of(type));
+        return Result.Ok();
+    }
+
+    public Result Apply(SetTypeHiddenFromAgents setHidden)
+    {
+        if (workingSet.FindType(setHidden.TypeId) is not { } type)
+        {
+            return Result.Fail(GraphErrors.TypeNotFound.ToError(TypeNotFoundMessage));
+        }
+
+        var before = ChangeSnapshots.Of(type);
+        if (type.SetHiddenFromAgents(setHidden.HiddenFromAgents, now))
+        {
+            Record(GraphEntityKind.Type, type.Id, GraphChangeOperation.Updated, before, ChangeSnapshots.Of(type));
+        }
+
         return Result.Ok();
     }
 

@@ -1,3 +1,4 @@
+using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;

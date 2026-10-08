@@ -11,11 +11,11 @@ namespace LifeGraph.Graph.Application;
 
 /// <summary>
 /// The reads of the graph for the person's own views (Lista, Inspector, Types). They run in
-/// a transaction of the current Account, so RLS only shows its rows, and never show
-/// tombstones: a deleted Node or one of another Account reads as not found (DA-104). The
-/// central read filter for agents and visitors arrives with them (E4, E10).
+/// a transaction of the current Account, so RLS only shows its rows, and start from the
+/// central read filter (<see cref="GraphReadFilter"/>), which never shows tombstones: a
+/// deleted Node or one of another Account reads as not found (DA-104).
 /// </summary>
-internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountContext)
+internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountContext, GraphReadFilter filter)
 {
     public const int DefaultNodePageSize = 50;
 
@@ -33,7 +33,7 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
 
         return RunAsync(errors, async token =>
         {
-            var nodes = db.Set<Node>().AsNoTracking().Where(node => node.DeletedAt == null);
+            var nodes = filter.Nodes();
             if (query.WithoutType)
             {
                 nodes = nodes.Where(node => node.TypeId == null);
@@ -65,14 +65,14 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
     public Task<Result<NodeDetail>> GetNodeAsync(Guid nodeId, CancellationToken cancellationToken) =>
         RunAsync(NoErrors(), async token =>
         {
-            var node = await db.Set<Node>().AsNoTracking().SingleOrDefaultAsync(node => node.Id == nodeId && node.DeletedAt == null, token);
+            var node = await filter.Nodes().SingleOrDefaultAsync(node => node.Id == nodeId, token);
             if (node is null)
             {
                 return Result<NodeDetail>.Fail(GraphErrors.NodeNotFound.ToError("The node was not found."));
             }
 
             var type = node.TypeId is { } typeId
-                ? await db.Set<NodeType>().AsNoTracking().Include(type => type.Properties).SingleAsync(type => type.Id == typeId, token)
+                ? await filter.Types().Include(type => type.Properties).SingleAsync(type => type.Id == typeId, token)
                 : null;
             var attachedIds = type?.Properties.OrderBy(property => property.Position).Select(property => property.PropertyDefinitionId).ToList() ?? [];
             var definitionIds = attachedIds.Concat(node.Properties.Values.Keys).Distinct().ToList();
@@ -106,7 +106,8 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
                 node.CreatedAt,
                 node.UpdatedAt,
                 properties,
-                otherProperties));
+                otherProperties,
+                node.HiddenFromAgents));
         }, cancellationToken);
 
     /// <summary>The live Relations of a live Node, either direction, newest first.</summary>
@@ -118,13 +119,14 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
 
         return RunAsync(errors, async token =>
         {
-            if (!await db.Set<Node>().AnyAsync(node => node.Id == nodeId && node.DeletedAt == null, token))
+            var nodes = filter.Nodes();
+            if (!await nodes.AnyAsync(node => node.Id == nodeId, token))
             {
                 return Result<PagedList<RelationItem>>.Fail(GraphErrors.NodeNotFound.ToError("The node was not found."));
             }
 
-            var relations = db.Set<Relation>().AsNoTracking()
-                .Where(relation => relation.DeletedAt == null && (relation.SourceNodeId == nodeId || relation.TargetNodeId == nodeId));
+            var relations = filter.Relations()
+                .Where(relation => relation.SourceNodeId == nodeId || relation.TargetNodeId == nodeId);
             if (after is { } last)
             {
                 relations = relations.Where(relation => relation.Id.CompareTo(last) < 0);
@@ -132,8 +134,8 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
 
             var rows = await (
                 from relation in relations
-                join source in db.Set<Node>() on relation.SourceNodeId equals source.Id
-                join target in db.Set<Node>() on relation.TargetNodeId equals target.Id
+                join source in nodes on relation.SourceNodeId equals source.Id
+                join target in nodes on relation.TargetNodeId equals target.Id
                 orderby relation.Id descending
                 select new RelationItem(
                     relation.Id,
@@ -161,7 +163,7 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
 
         return RunAsync(errors, async token =>
         {
-            var types = db.Set<NodeType>().AsNoTracking().Include(type => type.Properties).AsQueryable();
+            var types = filter.Types().Include(type => type.Properties).AsQueryable();
             if (after is { } last)
             {
                 types = types.Where(type => type.Id.CompareTo(last) > 0);
@@ -176,7 +178,7 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
     public Task<Result<TypeItem>> GetTypeAsync(Guid typeId, CancellationToken cancellationToken) =>
         RunAsync(NoErrors(), async token =>
         {
-            var type = await db.Set<NodeType>().AsNoTracking().Include(type => type.Properties).SingleOrDefaultAsync(type => type.Id == typeId, token);
+            var type = await filter.Types().Include(type => type.Properties).SingleOrDefaultAsync(type => type.Id == typeId, token);
             return type is null
                 ? Result<TypeItem>.Fail(GraphErrors.TypeNotFound.ToError("The type was not found."))
                 : Result<TypeItem>.Ok((await ToItemsAsync([type], token))[0]);
@@ -228,7 +230,7 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
 
         return RunAsync(errors, async token =>
         {
-            var changeSets = db.Set<GraphChangeSet>().AsNoTracking().Include(changeSet => changeSet.Entries);
+            var changeSets = filter.ChangeSets().Include(changeSet => changeSet.Entries);
             List<GraphChangeSet> rows;
             if (after is { } sinceId)
             {
@@ -249,7 +251,7 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
 
             var page = PageOf(rows, pageSize, changeSet => changeSet.Id).Value!;
             var ids = page.Data.Select(changeSet => changeSet.Id).ToList();
-            var undoneBy = await db.Set<GraphChangeSet>().AsNoTracking()
+            var undoneBy = await filter.ChangeSets()
                 .Where(changeSet => changeSet.RevertsChangeSetId != null && ids.Contains(changeSet.RevertsChangeSetId.Value))
                 .Select(changeSet => new { changeSet.Id, Reverts = changeSet.RevertsChangeSetId!.Value })
                 .ToDictionaryAsync(undo => undo.Reverts, undo => undo.Id, token);
@@ -292,7 +294,8 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
                 return new TypePropertyItem(definition.Id, definition.Name, definition.ValueKind);
             })],
             type.CreatedAt,
-            type.UpdatedAt))];
+            type.UpdatedAt,
+            type.HiddenFromAgents))];
     }
 
     // The newest GraphChangeSet this read returned, never one it did not: resuming from it
@@ -386,20 +389,34 @@ internal static class PageCursor
 
     public static string Write(Guid lastId) => Base64Url.EncodeToString(lastId.ToByteArray(bigEndian: true));
 
+    public const string UnknownCursorMessage = "Unknown cursor. Start again from the first page.";
+
     public static Guid? Read(Dictionary<string, string[]> errors, string? cursor)
     {
+        if (!TryRead(cursor, out var lastId))
+        {
+            errors["cursor"] = [UnknownCursorMessage];
+        }
+
+        return lastId;
+    }
+
+    /// <summary>The last id a cursor names; <c>null</c> with no cursor. False for a cursor this did not write.</summary>
+    public static bool TryRead(string? cursor, out Guid? lastId)
+    {
+        lastId = null;
         if (cursor is null)
         {
-            return null;
+            return true;
         }
 
         var bytes = new byte[GuidByteCount];
         if (cursor.Length > EncodedLength || !Base64Url.TryDecodeFromChars(cursor, bytes, out var written) || written != GuidByteCount)
         {
-            errors["cursor"] = ["Unknown cursor. Start again from the first page."];
-            return null;
+            return false;
         }
 
-        return new Guid(bytes, bigEndian: true);
+        lastId = new Guid(bytes, bigEndian: true);
+        return true;
     }
 }

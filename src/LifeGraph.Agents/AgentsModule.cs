@@ -35,7 +35,7 @@ public static class AgentsModule
     public const string McpServerName = "life-graph";
 
     /// <summary>The MCP server's version in the handshake; it moves with the tool surface.</summary>
-    public const string McpServerVersion = "0.1.0";
+    public const string McpServerVersion = "0.2.0";
 
     /// <summary>The Protected Resource Metadata of the MCP endpoint (RFC 9728: the well-known prefix, then the resource's path).</summary>
     public const string ResourceMetadataPath = "/.well-known/oauth-protected-resource" + AgentAccess.McpPath;
@@ -64,11 +64,14 @@ public static class AgentsModule
             .AddAuthenticationSchemes(AgentScheme)
             .RequireAuthenticatedUser());
 
+        services.AddSingleton<AgentReadBudget>();
+
         services.AddMcpServer(options => options.ServerInfo = new() { Name = McpServerName, Title = ResourceName, Version = McpServerVersion })
             // Stateless: every call carries its token and runs in its own request scope, so the
             // principal is the caller's and nothing ties a session to one instance.
             .WithHttpTransport(transport => transport.Stateless = true)
-            .WithTools<WhoAmITool>();
+            .WithTools<WhoAmITool>()
+            .WithTools<GraphReadTools>();
 
         return services;
     }

@@ -104,6 +104,63 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
         Assert.Equal(CommonErrors.ValidationFailed.Code, await ProblemCode.ReadAsync(response));
     }
 
+    // DA-035 and DA-013: hiding is a change like any other, in a GraphChangeSet the person can undo.
+    [Fact]
+    public async Task Hiding_a_node_and_a_type_from_agents_goes_through_changesets_and_undoes()
+    {
+        var health = await CreatedIdAsync("/api/types", new { name = "Health" });
+        var node = await CreatedIdAsync("/api/nodes", new { title = "Diary" });
+
+        var hidden = await SendAsync(HttpMethod.Patch, $"/api/nodes/{node}", new { version = 1, hiddenFromAgents = true });
+        var nodeChange = await ChangeSetIdAsync(hidden);
+        using (var inspected = await JsonAsync($"/api/nodes/{node}"))
+        {
+            Assert.True(inspected.RootElement.GetProperty("hiddenFromAgents").GetBoolean());
+            Assert.Equal(2, inspected.RootElement.GetProperty("version").GetInt32());
+        }
+
+        var typeChange = await ChangeSetIdAsync(await SendAsync(HttpMethod.Patch, $"/api/types/{health}", new { name = "Saúde", hiddenFromAgents = true }));
+        using (var type = await JsonAsync($"/api/types/{health}"))
+        {
+            Assert.Equal(("Saúde", true), (type.RootElement.GetProperty("name").GetString(), type.RootElement.GetProperty("hiddenFromAgents").GetBoolean()));
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await _spa.PostAsync($"/api/changesets/{typeChange}/undo", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _spa.PostAsync($"/api/changesets/{nodeChange}/undo", new { })).StatusCode);
+        using var restoredType = await JsonAsync($"/api/types/{health}");
+        using var restoredNode = await JsonAsync($"/api/nodes/{node}");
+        Assert.Equal(("Health", false), (restoredType.RootElement.GetProperty("name").GetString(), restoredType.RootElement.GetProperty("hiddenFromAgents").GetBoolean()));
+        Assert.False(restoredNode.RootElement.GetProperty("hiddenFromAgents").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Updating_a_type_needs_a_name_or_the_hidden_flag()
+    {
+        var health = await CreatedIdAsync("/api/types", new { name = "Health" });
+
+        var response = await SendAsync(HttpMethod.Patch, $"/api/types/{health}", new { });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var problem = await ProblemAsync(response);
+        Assert.Equal(CommonErrors.ValidationFailed.Code, problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(["hiddenFromAgents", "name"], problem.RootElement.GetProperty("errors").EnumerateObject().Select(field => field.Name).Order(StringComparer.Ordinal));
+    }
+
+    // One request, two operations in one GraphChangeSet: the error names the request field, not operations[n].
+    [Fact]
+    public async Task Renaming_and_hiding_a_type_names_the_invalid_field_and_writes_nothing()
+    {
+        var health = await CreatedIdAsync("/api/types", new { name = "Health" });
+
+        var response = await SendAsync(HttpMethod.Patch, $"/api/types/{health}", new { name = "  ", hiddenFromAgents = true });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var problem = await ProblemAsync(response);
+        Assert.Equal(["name"], problem.RootElement.GetProperty("errors").EnumerateObject().Select(field => field.Name));
+        using var type = await JsonAsync($"/api/types/{health}");
+        Assert.Equal(("Health", false), (type.RootElement.GetProperty("name").GetString(), type.RootElement.GetProperty("hiddenFromAgents").GetBoolean()));
+    }
+
     [Fact]
     public async Task Deleting_and_undoing_brings_the_node_back_with_its_relations()
     {

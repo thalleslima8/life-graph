@@ -49,8 +49,14 @@ public sealed class Node
 
     public bool IsInInbox => InboxEnteredAt is not null;
 
+    /// <summary>
+    /// Oculto para agentes, set on the Node itself (DA-035). The Node is also hidden when its
+    /// Type is; the central read filter combines both.
+    /// </summary>
+    public bool HiddenFromAgents { get; private set; }
+
     /// <summary>The state the history records and Undo puts back (DA-020).</summary>
-    public NodeState State => new(Title, Body, TypeId, Properties, DeletedAt, InboxEnteredAt);
+    public NodeState State => new(Title, Body, TypeId, Properties, DeletedAt, InboxEnteredAt, HiddenFromAgents);
 
     /// <summary>A Node outside the Inbox.</summary>
     public static Result<Node> Create(NodeDraft draft, DateTimeOffset now) => Start(draft, now, inboxEnteredAt: null);
@@ -98,13 +104,19 @@ public sealed class Node
         }
 
         var newTypeId = edit.Schema?.Type.Id;
-        var changed = newTitle != Title || newBody != Body || newTypeId != TypeId || !newProperties.Equals(Properties);
+        var newHiddenFromAgents = edit.HiddenFromAgents ?? HiddenFromAgents;
+        var changed = newTitle != Title
+            || newBody != Body
+            || newTypeId != TypeId
+            || !newProperties.Equals(Properties)
+            || newHiddenFromAgents != HiddenFromAgents;
         if (changed)
         {
             Title = newTitle;
             Body = newBody;
             TypeId = newTypeId;
             Properties = newProperties;
+            HiddenFromAgents = newHiddenFromAgents;
             Changed(now);
         }
 
@@ -155,6 +167,7 @@ public sealed class Node
         Properties = state.Properties;
         DeletedAt = state.DeletedAt;
         InboxEnteredAt = state.InboxEnteredAt;
+        HiddenFromAgents = state.HiddenFromAgents;
         Changed(now);
     }
 
@@ -238,10 +251,9 @@ public sealed record NodeState(
     Guid? TypeId,
     PropertyValues Properties,
     DateTimeOffset? DeletedAt,
-    DateTimeOffset? InboxEnteredAt);
+    DateTimeOffset? InboxEnteredAt,
+    bool HiddenFromAgents);
 
-/// <summary>What an edit changes; <c>null</c> fields stay as they are.</summary>
-/// <param name="Schema">The Type the Node has after the edit (the current one when the edit does not change it).</param>
 /// <summary>What a new Node starts with.</summary>
 /// <param name="Schema">The Node's Type with its definitions; <c>null</c> for a Node without Type.</param>
 /// <param name="Values">Values by Property Definition id; each must be attached to the Type.</param>
@@ -253,4 +265,12 @@ public sealed record NodeDraft(
     TypeSchema? Schema = null,
     IReadOnlyDictionary<Guid, JsonElement>? Values = null);
 
-public sealed record NodeEdit(string? Title, string? Body, TypeSchema? Schema, IReadOnlyDictionary<Guid, JsonElement>? Values);
+/// <summary>What an edit changes; <c>null</c> fields stay as they are.</summary>
+/// <param name="Schema">The Type the Node has after the edit (the current one when the edit does not change it).</param>
+/// <param name="HiddenFromAgents">Oculto para agentes on the Node itself (DA-035).</param>
+public sealed record NodeEdit(
+    string? Title,
+    string? Body,
+    TypeSchema? Schema,
+    IReadOnlyDictionary<Guid, JsonElement>? Values,
+    bool? HiddenFromAgents = null);

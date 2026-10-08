@@ -60,6 +60,15 @@ describe("types and properties", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("o tipo de valor não muda");
   });
 
+  it("hides a Type's Nodes from agents", async () => {
+    const sent = ontologyApi();
+    renderRoute("/types");
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Oculto para agentes" }));
+
+    await waitFor(() => expect(sent).toContainEqual({ method: "PATCH", path: `/api/types/${TYPE_ID}`, body: { hiddenFromAgents: true } }));
+  });
+
   it("creates a Select property with one option per line", async () => {
     const sent = ontologyApi();
     renderRoute("/types");

@@ -51,13 +51,13 @@ const book = aNode({
 });
 
 /** One Node served from `current`, which a test may replace to simulate a change made elsewhere. */
-function inspectorApi(initial: NodeDetail | null) {
+function inspectorApi(initial: NodeDetail | null, types = [aType()]) {
   const state = { current: initial, patches: [] as unknown[], deletes: [] as string[] };
   server.use(
     sessionHandler(() => ({ email: "ada@example.test" })),
     csrfTokenHandler().handler,
     ...ontologyHandlers({
-      types: [aType()],
+      types,
       definitions: [aDefinition({ valueKind: "select", options: OPTIONS }), aDefinition({ id: PAGES_ID, name: "Páginas", valueKind: "number" })],
     }),
     http.get("/api/nodes", () => HttpResponse.json({ data: [], page: { nextCursor: null } })),
@@ -159,6 +159,36 @@ describe("node inspector", () => {
 
     await screen.findByRole("button", { name: "Salvar" });
     expect(sent).toEqual([{ method: "PATCH", path: `/api/nodes/${NODE_ID}`, body: { version: 1, type: { id: TYPE_ID } } }]);
+  });
+
+  it("hides the Node from agents, sending only the flag", async () => {
+    inspectorApi(aNode());
+    const sent = recordWrites();
+    renderRoute(`/nodes/${NODE_ID}`);
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Oculto para agentes" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await screen.findByRole("button", { name: "Salvar" });
+    expect(sent).toEqual([{ method: "PATCH", path: `/api/nodes/${NODE_ID}`, body: { version: 1, hiddenFromAgents: true } }]);
+  });
+
+  // DA-035: leaving a Type that hides the Node, for one that does not, shows it to agents.
+  it("warns when a new Type makes the Node visible to agents, until the Node is hidden on its own", async () => {
+    const OPEN_TYPE_ID = "01920000-0000-7000-8000-0000000000a2";
+    inspectorApi(aNode({ typeId: TYPE_ID, typeName: "Diário" }), [
+      aType({ name: "Diário", hiddenFromAgents: true }),
+      aType({ id: OPEN_TYPE_ID, name: "Livro" }),
+    ]);
+    renderRoute(`/nodes/${NODE_ID}`);
+
+    expect(await screen.findByText("O Type deste Node já o oculta para agentes.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "Type" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Livro" }));
+
+    expect(screen.getByText(/Ao salvar, ele fica visível para os agentes conectados/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Oculto para agentes" }));
+    expect(screen.queryByText(/Ao salvar, ele fica visível para os agentes conectados/)).not.toBeInTheDocument();
   });
 
   it("relates the Node to another one, loading more candidates on request", async () => {

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Http;
 using LifeGraph.Infrastructure.Errors;
@@ -14,15 +15,25 @@ namespace LifeGraph.Graph.Http;
 /// </summary>
 internal sealed class GraphWrites(IGraphWriter writer, ICurrentPrincipal currentPrincipal, IHttpResultResponder responder)
 {
-    private const string OnlyOperation = "operations[0].";
+    private static readonly Regex OperationPrefix = new(@"^operations\[\d+\]\.", RegexOptions.CultureInvariant);
 
     public IHttpResultResponder Responder => responder;
 
     public Task<IResult> WriteAsync(GraphOperation operation, CancellationToken cancellationToken) =>
         WriteAsync(operation, receipt => TypedResults.Ok(receipt), cancellationToken);
 
-    public async Task<IResult> WriteAsync(
+    public Task<IResult> WriteAsync(
         GraphOperation operation,
+        Func<GraphWriteReceipt, IResult> onWritten,
+        CancellationToken cancellationToken) =>
+        WriteAsync([operation], onWritten, cancellationToken);
+
+    /// <summary>
+    /// The operations of one request, in one GraphChangeSet. Each request field maps to a
+    /// single operation, so the errors are named as the request names them.
+    /// </summary>
+    public async Task<IResult> WriteAsync(
+        IReadOnlyList<GraphOperation> operations,
         Func<GraphWriteReceipt, IResult> onWritten,
         CancellationToken cancellationToken)
     {
@@ -31,7 +42,7 @@ internal sealed class GraphWrites(IGraphWriter writer, ICurrentPrincipal current
             return responder.Fail(NotThePerson());
         }
 
-        var written = await writer.WriteAsync(provenance, [operation], cancellationToken);
+        var written = await writer.WriteAsync(provenance, operations, cancellationToken);
         return responder.ToHttpResult(WithoutOperationPrefix(written), onWritten);
     }
 
@@ -55,7 +66,6 @@ internal sealed class GraphWrites(IGraphWriter writer, ICurrentPrincipal current
 
     private static Error NotThePerson() => CommonErrors.Forbidden.ToError("Only the person who owns the Account writes here.");
 
-    // A request carries one operation, so its fields are named as the request names them.
     private static Result<GraphWriteReceipt> WithoutOperationPrefix(Result<GraphWriteReceipt> written)
     {
         if (written.IsSuccess || written.Error!.Details is not { Count: > 0 } details)
@@ -64,7 +74,7 @@ internal sealed class GraphWrites(IGraphWriter writer, ICurrentPrincipal current
         }
 
         var renamed = details.ToDictionary(
-            pair => pair.Key.StartsWith(OnlyOperation, StringComparison.Ordinal) ? pair.Key[OnlyOperation.Length..] : pair.Key,
+            pair => OperationPrefix.Replace(pair.Key, string.Empty),
             pair => pair.Value,
             StringComparer.Ordinal);
         var error = written.Error;

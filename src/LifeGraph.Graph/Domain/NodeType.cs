@@ -24,6 +24,12 @@ public sealed class NodeType
     /// <summary>The attached Property Definitions, in display order.</summary>
     public IReadOnlyList<TypeProperty> Properties => _properties;
 
+    /// <summary>
+    /// Oculto para agentes (DA-035): every Node of this Type is hidden from agents, whatever
+    /// its own flag says.
+    /// </summary>
+    public bool HiddenFromAgents { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -76,6 +82,19 @@ public sealed class NodeType
         return Result<bool>.Ok(true);
     }
 
+    /// <returns><c>true</c> when the flag changed.</returns>
+    public bool SetHiddenFromAgents(bool hiddenFromAgents, DateTimeOffset now)
+    {
+        if (hiddenFromAgents == HiddenFromAgents)
+        {
+            return false;
+        }
+
+        HiddenFromAgents = hiddenFromAgents;
+        UpdatedAt = now;
+        return true;
+    }
+
     /// <summary>
     /// Attaches a Property Definition at the end. The values Nodes already hold for it stop
     /// being Outras propriedades (DA-016).
@@ -121,12 +140,13 @@ public sealed class NodeType
         _properties.Any(property => property.PropertyDefinitionId == propertyDefinitionId);
 
     /// <summary>
-    /// Puts back a name and attachments the history recorded (Undo, DA-020). An attachment
-    /// that stays keeps its row, so only its position changes.
+    /// Puts back a name, attachments and the hidden flag the history recorded (Undo, DA-020).
+    /// An attachment that stays keeps its row, so only its position changes.
     /// </summary>
-    public void Revert(string name, IReadOnlyList<Guid> propertyDefinitionIds, DateTimeOffset now)
+    public void Revert(string name, IReadOnlyList<Guid> propertyDefinitionIds, bool hiddenFromAgents, DateTimeOffset now)
     {
         Name = name;
+        HiddenFromAgents = hiddenFromAgents;
         _properties.RemoveAll(property => !propertyDefinitionIds.Contains(property.PropertyDefinitionId));
         for (var position = 0; position < propertyDefinitionIds.Count; position++)
         {

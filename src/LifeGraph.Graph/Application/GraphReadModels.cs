@@ -24,6 +24,7 @@ public sealed record NodeSummary(
 /// A Node as the Inspector shows it. <see cref="Properties"/> follows the Type's attachments,
 /// in order, with or without a value; <see cref="OtherProperties"/> holds the values whose
 /// definition the Type does not attach: Outras propriedades (DA-016).
+/// <see cref="HiddenFromAgents"/> is the Node's own flag; its Type may hide it too (DA-035).
 /// </summary>
 public sealed record NodeDetail(
     Guid Id,
@@ -37,7 +38,8 @@ public sealed record NodeDetail(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<NodePropertyValue> Properties,
-    IReadOnlyList<NodePropertyValue> OtherProperties);
+    IReadOnlyList<NodePropertyValue> OtherProperties,
+    bool HiddenFromAgents);
 
 /// <param name="Value">The stored value; <c>null</c> when the Node has none.</param>
 public sealed record NodePropertyValue(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind, JsonElement? Value);
@@ -56,12 +58,14 @@ public sealed record RelationItem(
     double Strength,
     DateTimeOffset CreatedAt);
 
+/// <param name="HiddenFromAgents">Oculto para agentes: every Node of the Type is hidden from agents (DA-035).</param>
 public sealed record TypeItem(
     Guid Id,
     string Name,
     IReadOnlyList<TypePropertyItem> Properties,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    bool HiddenFromAgents);
 
 public sealed record TypePropertyItem(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind);
 

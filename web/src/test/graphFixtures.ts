@@ -26,12 +26,13 @@ export function aNode(overrides: Partial<NodeDetail> = {}): NodeDetail {
     updatedAt: INSTANT,
     properties: [],
     otherProperties: [],
+    hiddenFromAgents: false,
     ...overrides,
   };
 }
 
 export function aType(overrides: Partial<TypeItem> = {}): TypeItem {
-  return { id: TYPE_ID, name: "Livro", properties: [], createdAt: INSTANT, updatedAt: INSTANT, ...overrides };
+  return { id: TYPE_ID, name: "Livro", properties: [], createdAt: INSTANT, updatedAt: INSTANT, hiddenFromAgents: false, ...overrides };
 }
 
 export function aDefinition(overrides: Partial<PropertyDefinitionItem> = {}): PropertyDefinitionItem {

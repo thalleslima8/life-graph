@@ -174,11 +174,14 @@ function RefusalOrError({ error }: { error: unknown }) {
   );
 }
 
+const HIDDEN_TYPE_HINT = "Nenhum agente conectado vê os Nodes deste Type: eles ficam fora de busca, contexto e relações.";
+
 function TypeRow({ type, definitions }: { type: TypeItem; definitions: PropertyDefinitionItem[] }) {
   const remove = useDeleteType(type.id);
   const attach = useAttachPropertyToType(type.id);
   const detach = useDetachPropertyFromType(type.id);
   const update = useUpdateType(type.id);
+  const hide = useUpdateType(type.id);
   const [toAttach, setToAttach] = useState("");
   const attachable = definitions.filter((definition) => !type.properties.some((property) => property.propertyDefinitionId === definition.id));
   const attachId = `attach-${type.id}`;
@@ -192,6 +195,23 @@ function TypeRow({ type, definitions }: { type: TypeItem; definitions: PropertyD
         </Button>
       </div>
       <RefusalOrError error={remove.error} />
+
+      <div className="space-y-1">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={type.hiddenFromAgents}
+            disabled={hide.isPending}
+            onChange={(event) => hide.mutate({ hiddenFromAgents: event.target.checked })}
+            aria-describedby={`hidden-${type.id}-hint`}
+          />
+          Oculto para agentes
+        </label>
+        <p id={`hidden-${type.id}-hint`} className="text-xs text-muted-foreground">
+          {HIDDEN_TYPE_HINT}
+        </p>
+        <RefusalOrError error={hide.error} />
+      </div>
 
       <NameForm
         label={`Renomear ${type.name}`}

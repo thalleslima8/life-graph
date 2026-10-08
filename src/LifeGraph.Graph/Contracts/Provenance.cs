@@ -24,6 +24,13 @@ public abstract record GraphActor
     public sealed record AgentIdentity(Guid AgentIdentityId) : GraphActor;
 }
 
+/// <summary>The kind of <see cref="GraphActor"/> a GraphChangeSet records.</summary>
+public enum ChangeActorKind
+{
+    Human,
+    AgentIdentity,
+}
+
 /// <summary>The way the write came in.</summary>
 public enum WriteChannel
 {

@@ -19,7 +19,8 @@ internal static class ChangeSnapshots
         node.Properties.Values,
         node.Version,
         node.DeletedAt,
-        node.InboxEnteredAt));
+        node.InboxEnteredAt,
+        node.HiddenFromAgents));
 
     public static string Of(Relation relation) => Serialize(new RelationSnapshot(
         relation.SourceNodeId,
@@ -33,7 +34,8 @@ internal static class ChangeSnapshots
 
     public static string Of(NodeType type) => Serialize(new TypeSnapshot(
         type.Name,
-        [.. type.Properties.OrderBy(property => property.Position).Select(property => property.PropertyDefinitionId)]));
+        [.. type.Properties.OrderBy(property => property.Position).Select(property => property.PropertyDefinitionId)],
+        type.HiddenFromAgents));
 
     public static string Of(PropertyDefinition definition) => Serialize(new PropertyDefinitionSnapshot(
         definition.Name,
@@ -75,6 +77,8 @@ internal static class ChangeSnapshots
     };
 }
 
+// The hidden flag (DA-035) is written only when set: the states recorded before it existed
+// stay equal to the current ones, so their Undo still finds no later change.
 internal sealed record NodeSnapshot(
     string Title,
     string Body,
@@ -82,9 +86,10 @@ internal sealed record NodeSnapshot(
     IReadOnlyDictionary<Guid, JsonElement> Properties,
     int Version,
     DateTimeOffset? DeletedAt,
-    DateTimeOffset? InboxEnteredAt)
+    DateTimeOffset? InboxEnteredAt,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HiddenFromAgents = false)
 {
-    public NodeState ToState() => new(Title, Body, TypeId, PropertyValues.From(Properties), DeletedAt, InboxEnteredAt);
+    public NodeState ToState() => new(Title, Body, TypeId, PropertyValues.From(Properties), DeletedAt, InboxEnteredAt, HiddenFromAgents);
 }
 
 internal sealed record RelationSnapshot(
@@ -97,6 +102,9 @@ internal sealed record RelationSnapshot(
     double Strength,
     DateTimeOffset? DeletedAt);
 
-internal sealed record TypeSnapshot(string Name, IReadOnlyList<Guid> PropertyDefinitionIds);
+internal sealed record TypeSnapshot(
+    string Name,
+    IReadOnlyList<Guid> PropertyDefinitionIds,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HiddenFromAgents = false);
 
 internal sealed record PropertyDefinitionSnapshot(string Name, PropertyValueKind ValueKind, IReadOnlyList<SelectOption> Options);

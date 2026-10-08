@@ -1,3 +1,4 @@
+using LifeGraph.Graph.Contracts;
 using Limaj.Framework.Core;
 
 namespace LifeGraph.Graph.Domain;
@@ -98,21 +99,6 @@ public sealed class Relation
         DeletedAt = deletedAt;
         UpdatedAt = now;
     }
-}
-
-public enum RelationAssertion
-{
-    Hard,
-    Soft,
-}
-
-/// <summary>Who originated a graph object (Origin, in the glossary).</summary>
-public enum RelationOrigin
-{
-    User,
-    Agent,
-    System,
-    Import,
 }
 
 /// <summary>What a new Relation asserts: its two Nodes, its kind and who asserted it.</summary>
