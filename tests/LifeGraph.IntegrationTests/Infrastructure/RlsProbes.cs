@@ -39,16 +39,21 @@ public static class RlsProbes
             new NpgsqlParameter("label", label));
 
     /// <summary>
-    /// Mirrors the shape of a real read slice: application filter by Account, inside an
-    /// Account transaction. <c>?skipAppFilter=true</c> drops the application filter to
-    /// show RLS alone still hides other Accounts' rows.
+    /// Mirrors the shape of a real read slice: authenticated, application filter by the
+    /// principal's Account, inside an Account transaction. <c>?skipAppFilter=true</c> drops
+    /// the application filter to show RLS alone still hides other Accounts' rows.
     /// </summary>
     public sealed class Endpoints : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {
+            // A branch ahead of the app pipeline: it needs its own status code pages (the coded
+            // Problem Details of a 401), authentication and authorization.
             app.Map(RoutePrefix, branch => branch
+                .UseStatusCodePages()
+                .UseAuthentication()
                 .UseRouting()
+                .UseAuthorization()
                 .UseEndpoints(endpoints => endpoints.MapGet("/{id:guid}", GetProbeAsync)));
             next(app);
         };

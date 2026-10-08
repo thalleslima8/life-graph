@@ -1,0 +1,105 @@
+@* The person's decision on an agent connection (DA-029/030): who asks (declared, not verified), where the browser goes back to, and what the agent may do. *@
+<IssuerPageLayout Title="Conectar um agente ao seu Life Graph" IssuerHost="@IssuerHost">
+    <p><strong>@ClientName</strong> quer acesso ao Life Graph de <strong>@SignedInEmail</strong>.</p>
+    <p class="muted">O nome acima foi declarado pelo próprio cliente e não é verificado.@if (ClientIdHost is not null)
+        {
+            <text> O cliente é identificado pelo domínio <strong class="host">@ClientIdHost</strong>.</text>
+        }</p>
+    <p>Depois de autorizar, você volta para <strong class="host">@RedirectHost</strong>. Confira se é o endereço do agente que você está conectando.</p>
+
+    <form method="post" action="@Action">
+        <fieldset>
+            <legend>Se você autorizar, o agente poderá:</legend>
+            <div class="scope">
+                @* Required: shown checked, posted by the hidden field (a disabled box is never posted). *@
+                <input type="hidden" name="@GrantedScopeField" value="@ReadScope" />
+                <input id="scope-read" type="checkbox" checked disabled />
+                <label for="scope-read">@ReadDescription <span class="muted">(obrigatório)</span></label>
+            </div>
+            @if (WriteScope is not null)
+            {
+                <div class="scope">
+                    <input id="scope-write" type="checkbox" name="@GrantedScopeField" value="@WriteScope" checked />
+                    <label for="scope-write">@WriteDescription <span class="muted">Desmarque para conectar só com leitura.</span></label>
+                </div>
+                <p class="warning">Se a escrita ficar marcada, o agente poderá alterar o seu grafo. Toda alteração dele fica registrada, visível para você, e pode ser desfeita (Undo).</p>
+            }
+            <p class="muted">O agente fica conectado até você revogar a conexão em Agentes conectados.</p>
+        </fieldset>
+
+        @if (LoopbackOnly)
+        {
+            <p class="warning">Este cliente só volta para um endereço deste computador (loopback): qualquer programa rodando aqui pode se apresentar com o mesmo nome. Só autorize se foi você quem iniciou esta conexão agora.</p>
+        }
+
+        <input type="hidden" name="@AntiforgeryFieldName" value="@AntiforgeryToken" />
+        @foreach (var (name, value) in RequestParameters)
+        {
+            <input type="hidden" name="@name" value="@value" />
+        }
+        <div class="actions">
+            <button class="primary" type="submit" name="@DecisionField" value="@AllowDecision">Autorizar</button>
+            <button type="submit" name="@DecisionField" value="@DenyDecision">Recusar</button>
+        </div>
+    </form>
+</IssuerPageLayout>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Action { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string ClientName { get; set; } = string.Empty;
+
+    /// <summary>The host of a CIMD client's id (its metadata document URL); null for a pre-registered client.</summary>
+    [Parameter]
+    public string? ClientIdHost { get; set; }
+
+    [Parameter, EditorRequired]
+    public string SignedInEmail { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string RedirectHost { get; set; } = string.Empty;
+
+    /// <summary>The issuer's own host: where the person is typing, to check against phishing.</summary>
+    [Parameter, EditorRequired]
+    public string IssuerHost { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string ReadScope { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string ReadDescription { get; set; } = string.Empty;
+
+    /// <summary>Offered only when the client asked for it (or for nothing known); null otherwise.</summary>
+    [Parameter]
+    public string? WriteScope { get; set; }
+
+    [Parameter, EditorRequired]
+    public string WriteDescription { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string GrantedScopeField { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool LoopbackOnly { get; set; }
+
+    /// <summary>The authorization request, posted back with the decision.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<(string Name, string Value)> RequestParameters { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public string AntiforgeryFieldName { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string AntiforgeryToken { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string DecisionField { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string AllowDecision { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string DenyDecision { get; set; } = string.Empty;
+}

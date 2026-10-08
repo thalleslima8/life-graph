@@ -1,0 +1,29 @@
+# Public profile (DA-027/028, ADR 0007): the Cloudflare named tunnel that exposes the dev host to
+# ChatGPT and Claude.ai during an acceptance session. NOT part of the devcontainer: it runs from
+# the host machine, only while a session lasts, and joins the devcontainer's network to reach
+# the app at lifegraph-app-dev:5000. Runbook: docs/runbooks/tunel-de-dev.md
+#
+#   docker compose -f .devcontainer/compose.public.yml --profile public up -d     # start
+#   docker compose -f .devcontainer/compose.public.yml --profile public down      # stop
+#
+# The tunnel token lives in .devcontainer/.env.public (never versioned; see .env.public.example).
+
+name: lifegraph-public
+
+services:
+  cloudflared:
+    # Pinned by digest, like every image of the dev environment (DA-007).
+    image: cloudflare/cloudflared:2026.9.3@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+    profiles: ["public"]
+    container_name: lifegraph-cloudflared-dev
+    command: ["tunnel", "--no-autoupdate", "run"]
+    env_file:
+      - .env.public   # TUNNEL_TOKEN
+    networks:
+      - lifegraph_devnet
+    restart: "no"
+
+networks:
+  lifegraph_devnet:
+    name: lifegraph_devnet
+    external: true

@@ -1,0 +1,10 @@
+# Gitleaks config for the CI secret scan: the default rules plus this project's own.
+[extend]
+useDefault = true
+
+# The OAuth issuer's persistent keys live in Accounts:Issuer:KeysDirectory, outside the
+# repository (DA-028, DA-123). A file with their names in the repo is a leak, whatever it holds.
+[[rules]]
+id = "lifegraph-issuer-key-file"
+description = "OAuth issuer key file (signing-key.pem / encryption-key.pem) committed to the repository"
+path = '''(^|/)(issuer-keys/.*|(signing|encryption)-key\.pem)$'''

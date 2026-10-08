@@ -23,10 +23,14 @@ On an empty volume, `db/bootstrap/init-dev.sh` creates:
   `dotnet ef` (`ConnectionStrings__Migrations`);
 - `lifegraph_app`: what the API connects as (`ConnectionStrings__Default`); not
   an owner, no DDL, no `BYPASSRLS` (DA-004);
+- `lifegraph_provisioner`: what the owner's `accounts` CLI connects as
+  (`ConnectionStrings__Provisioning`); it inserts Accounts and their users and
+  reads nothing else (DA-107);
 - the `vector` and `unaccent` extensions.
 
-`post-create.sh` then applies the migrations. Both connection strings come from
-`docker-compose.yml`; no config file is generated.
+`post-create.sh` re-runs the idempotent `roles.sql` (so an existing volume gets
+roles added by later epics) and then applies the migrations. The connection
+strings come from `docker-compose.yml`; no config file is generated.
 
 ## Integration tests (DA-093)
 

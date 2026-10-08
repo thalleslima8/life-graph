@@ -4,9 +4,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # A Limaj major is an explicit task in an epic, never an automatic bump (DA-099, DA-100).
+      - dependency-name: "Limaj.*"
+        update-types: ["version-update:semver-major"]
     groups:
+      # Every Limaj.* package moves together: mixed versions fail with TypeLoadException (DA-100).
+      limaj:
+        patterns: ["Limaj.*"]
       dotnet:
         patterns: ["*"]
+        exclude-patterns: ["Limaj.*"]
         update-types: [minor, patch]
 
   - package-ecosystem: npm

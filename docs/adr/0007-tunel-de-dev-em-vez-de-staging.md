@@ -21,4 +21,4 @@ fluxo inteiro no processo, sem túnel.
 - **Staging antecipado:** contradiz a decisão do usuário de deixar infra para o
   fim.
 
-Origem: DA-027 e DA-028, épico `docs/epics/backlog/e03-conexao-de-agentes.md`.
+Origem: DA-027 e DA-028, épico `docs/epics/in-progress/e03-conexao-de-agentes.md`.

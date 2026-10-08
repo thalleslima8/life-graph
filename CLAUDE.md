@@ -179,8 +179,13 @@ slices num único deployable. O deployable contém:
   agentes);
 - workers `BackgroundService` sobre uma fila em Postgres.
 
-Módulos: Accounts/Identity, Graph, Changes, Agents, Resources, Semantic,
-Sharing, Collections.
+Módulos: Accounts/Identity, Graph, Agents, Resources, Semantic, Sharing,
+Collections. O Accounts é dono do emissor OAuth e da AgentIdentity (a conexão
+de agente); o Agents tem só o adapter MCP, que depende de
+`LifeGraph.Accounts.Contracts` (DA-121). O Graph é dono de GraphChangeSet, Undo, Delete/Purge e dos feeds
+de mudanças (DA-112); um módulo só depende de `LifeGraph.<Módulo>.Contracts` de
+outro. Um único `LifeGraphDbContext` recebe o modelo de cada módulo por
+`IModelContributor`, e as migrations ficam em `LifeGraph.Migrations` (DA-111).
 
 **Dados:**
 - PostgreSQL + pgvector;
@@ -192,11 +197,27 @@ Sharing, Collections.
 - RLS com `SET LOCAL` por transação; o papel da app não tem BYPASSRLS;
 - IDs UUIDv7.
 
-**limaj-framework:** reutilize apenas `Abstractions` (Result/Error, exceções,
-`IUserIdentityGateway`) e `Web` (ResultExtensions, RequestRunner), como
-pacotes. **Não** use `Persistence.EFCore`/`BaseEntity`/`BaseRepository` nos
-agregados do grafo: o soft delete por `IsActive` conflita com Delete/Purge e
-ChangeSet (DA-005). Erros de ownership mapeiam para `NotFound`.
+**limaj-framework:** o objetivo é padronizar no framework (DA-099). Quando
+faltar algo, o caminho é pedir ao owner, não fazer um substituto local.
+**Antes de qualquer mudança que toque o limaj, valide o estado do pacote** no
+CHANGELOG do repositório `limajsolutions/limaj-framework` e no nuget.org. Siga
+SemVer: subir de major é uma tarefa explícita. Use só `Limaj.Framework.Core` e
+`Limaj.Framework.Web` 3.0.0, na mesma versão (DA-100). `Abstractions`,
+`Application` e `Persistence.EFCore` não entram. O `Core` (`Result`/`Error`)
+vale em qualquer camada; o `Web` só em `LifeGraph.Http`, Host e `*.Http`, pelo
+`IHttpResultResponder` injetado, nunca pelas fachadas estáticas. Configure
+`Format = V3`, `IncludeExceptionDetails = false` e
+`IncludeDetailsOutsideValidation = false` explícitos, porque os padrões da
+3.0.0 são outros (DA-102). Não use `Error.HttpStatusCode` (obsoleto) nem
+`switch` exaustivo sobre `ErrorType`. Regra de negócio é
+`ErrorType.Validation` com o 422 vindo do catálogo de códigos (DA-101). Falha
+esperada é sempre `Result`, e os módulos não lançam as exceções do limaj
+(DA-104). Código de erro de módulo leva prefixo (`accounts.*`, `graph.*`), e
+código comum não (DA-105). Não use `IUserIdentityGateway` (DA-094, DA-106) nem
+`BaseEntity`/`BaseRepository` nos agregados do grafo: o soft delete por
+`IsActive` conflita com Delete/Purge e ChangeSet (DA-005). Erros de ownership
+mapeiam para `NotFound`. Detalhes no E2, seção "Contrato de resultado e
+erro".
 
 **Frontend:** React 19 + TypeScript strict + Vite (SPA, autenticada por cookie
 BFF), TanStack Query, React Router, Radix/shadcn-ui + Tailwind, React Hook
@@ -211,7 +232,8 @@ spike no E6.
 
 **Ambiente:** só dev até o E13. Usa devcontainer/compose com Postgres+pgvector e
 Mailpit. O perfil `public` (Cloudflare Tunnel) expõe apenas MCP/OAuth/login
-para testar com ChatGPT/Claude.ai (DA-027/028).
+para testar com ChatGPT/Claude.ai (DA-027/028): `.devcontainer/compose.public.yml`,
+`scripts/public-host.sh` e o runbook `docs/runbooks/tunel-de-dev.md`.
 
 **Comandos (confirmados no E0; rodam dentro do devcontainer):**
 
@@ -220,8 +242,8 @@ dotnet build LifeGraph.sln            # também regenera openapi/lifegraph.json 
 dotnet test --solution LifeGraph.sln  # xUnit v3 sobre Microsoft.Testing.Platform (global.json)
 dotnet test --project tests/<Projeto> --filter-method "<Namespace>.<Classe>.<Metodo>"   # um único teste
 dotnet format LifeGraph.sln --verify-no-changes
-dotnet ef migrations add <Nome> --project src/LifeGraph.Infrastructure --startup-project src/LifeGraph.Host --output-dir Persistence/Migrations
-dotnet ef database update --project src/LifeGraph.Infrastructure --startup-project src/LifeGraph.Host
+dotnet ef migrations add <Nome> --project src/LifeGraph.Migrations
+dotnet ef database update --project src/LifeGraph.Migrations
 dotnet run --project src/LifeGraph.Host   # http://localhost:5000
 
 cd web
@@ -234,10 +256,15 @@ npx vitest run <arquivo> -t "<nome>"   # um único teste
 - `dotnet ef` lê `ConnectionStrings__Migrations` (papel `lifegraph_migrator`); a
   API usa `ConnectionStrings__Default` (papel `lifegraph_app`, sem BYPASSRLS).
   Nunca rode migrations com o papel da app.
+- Só a CLI `accounts` (create/resend) usa `ConnectionStrings__Provisioning`
+  (papel `lifegraph_provisioner`, DA-107), o único que insere em `accounts`. O
+  processo web nunca recebe essa connection string.
 - Toda tabela de Account tem `account_id` e uma policy contra
   `app.current_account_id()`. O valor vem do `AccountRlsInterceptor`, só dentro
   de transação: use `InAccountTransactionAsync` também em leituras, ou a RLS
-  devolve zero linhas.
+  devolve zero linhas. Exceção: as tabelas do diretório de credenciais (`users`,
+  `user_claims`, `user_logins`, `user_tokens`), pela DA-098, e as `oidc_*` do
+  emissor, pela DA-119.
 - Testes de integração: Testcontainers no CI e no host; no devcontainer, banco
   descartável no serviço `postgres` via `LIFEGRAPH_TEST_DB_ADMIN` (DA-093).
 - Parâmetros de log com dado pessoal ou segredo levam `[PersonalData]` ou

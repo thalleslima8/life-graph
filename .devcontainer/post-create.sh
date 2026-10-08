@@ -53,13 +53,29 @@ fi
 # postAttachCommand runs the same script on every attach.
 bash "$WORKSPACE/.devcontainer/claude-plugins.sh"
 
+# Roles are created by init-dev.sh on an empty volume only. Re-running the idempotent
+# roles.sql adds the roles of later epics (lifegraph_provisioner, DA-107) to an existing one.
+if [ -n "${LIFEGRAPH_TEST_DB_ADMIN:-}" ] && command -v psql > /dev/null; then
+  log "Ensuring database roles..."
+  # Npgsql "Key=Value;" to libpq "key=value" (same superuser the integration tests use).
+  ADMIN_CONNINFO="$(echo "$LIFEGRAPH_TEST_DB_ADMIN" | sed -E 's/Host=/host=/; s/Port=/port=/; s/Database=/dbname=/; s/Username=/user=/; s/Password=/password=/; s/;/ /g')"
+  for attempt in $(seq 1 10); do
+    if psql "$ADMIN_CONNINFO" -v ON_ERROR_STOP=1 -q -f db/bootstrap/roles.sql; then
+      break
+    fi
+    if [ "$attempt" -eq 10 ]; then
+      log "ERROR: could not apply db/bootstrap/roles.sql."
+      exit 1
+    fi
+    sleep 6
+  done
+fi
+
 # ConnectionStrings__Migrations comes from the compose env; the design-time factory
 # reads it, so migrations run as the owner role, never as the app role.
 log "Applying migrations..."
 for attempt in $(seq 1 10); do
-  if dotnet ef database update \
-      --project src/LifeGraph.Infrastructure \
-      --startup-project src/LifeGraph.Host; then
+  if dotnet ef database update --project src/LifeGraph.Migrations; then
     log "Migrations applied."
     break
   fi

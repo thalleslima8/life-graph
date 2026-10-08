@@ -15,7 +15,7 @@ The goal: **a life graph that almost organizes itself**, letting you navigate
 your own life by context, semantic proximity and time, without having to
 maintain a knowledge base by hand.
 
-> **Status:** development platform in place (epic E0), no product features yet.
+> **Status:** development platform and human login in place (epics E0–E1), no graph features yet.
 > The current product specification (in Portuguese) is in
 > [`docs/global_v2.md`](docs/global_v2.md); the roadmap is in
 > [`docs/epics/README.md`](docs/epics/README.md). See [Development](#development)
@@ -187,6 +187,16 @@ Requirements: Docker and VS Code with the Dev Containers extension.
 Mailpit (captured e-mails) is forwarded from `mailpit:8025`. Details in
 [`.devcontainer/README.md`](.devcontainer/README.md).
 
+4. Create your account. Open sign-up is off; the owner creates accounts from
+   the command line, with no password. The e-mail (in Mailpit) carries the link
+   where the user chooses the password, then signs in at
+   `http://localhost:5173/login`:
+
+   ```bash
+   dotnet run --project src/LifeGraph.Host -- accounts create --email you@example.com
+   dotnet run --project src/LifeGraph.Host -- accounts resend --email you@example.com   # new link, still pending; earlier links stop working
+   ```
+
 ### Tests and checks
 
 ```bash
@@ -205,5 +215,6 @@ The .NET 10 SDK, Node 24 and Docker are enough to build and run every test
 (integration tests use Testcontainers). Running the API itself needs a
 PostgreSQL bootstrapped with [`db/bootstrap/`](db/bootstrap/) (roles, database,
 extensions), which the devcontainer does for you. The application connects as
-`lifegraph_app` (`ConnectionStrings__Default`) and migrations run as
-`lifegraph_migrator` (`ConnectionStrings__Migrations`).
+`lifegraph_app` (`ConnectionStrings__Default`), the owner's `accounts` CLI as
+`lifegraph_provisioner` (`ConnectionStrings__Provisioning`, DA-107) and
+migrations run as `lifegraph_migrator` (`ConnectionStrings__Migrations`).

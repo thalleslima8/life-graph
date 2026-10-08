@@ -13,7 +13,9 @@ _Avoid_: tenant, workspace, usuário (quando se refere ao dono dos dados)
 **AgentIdentity**:
 Uma conexão de agente externo: a concessão OAuth que o usuário autorizou, com
 seus scopes. O usuário pode renomeá-la e revogá-la. O nome e o provedor
-declarados pelo cliente servem só para exibição e não são verificados.
+declarados pelo cliente servem só para exibição e não são verificados. Mora no
+módulo Accounts, junto com o emissor OAuth; o módulo Agents tem só o adapter
+MCP, que a consulta pelos Contracts do Accounts (DA-121).
 _Avoid_: agente (para a conexão), bot, integração
 
 **Oculto para agentes**:

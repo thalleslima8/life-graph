@@ -8,4 +8,7 @@ public static class DatabaseRoles
 {
     public const string Migrator = "lifegraph_migrator";
     public const string Application = "lifegraph_app";
+
+    /// <summary>Creates Accounts for the owner's CLI and reads nothing else (DA-107).</summary>
+    public const string Provisioner = "lifegraph_provisioner";
 }
