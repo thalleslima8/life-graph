@@ -93,6 +93,8 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
     [Theory]
     [InlineData("/api/nodes?limit=0")]
     [InlineData("/api/nodes?cursor=not-a-cursor")]
+    [InlineData("/api/nodes?cursor=not-a-cursor!")]
+    [InlineData("/api/changesets?since=AAAAAAAAAAAAAAAAAAAA*A")]
     [InlineData("/api/nodes?withoutType=true&typeId=0199a7b2-0000-7000-8000-000000000000")]
     [InlineData("/api/changesets?since=AAAAAAAAAAAAAAAAAAAAAA&before=AAAAAAAAAAAAAAAAAAAAAA")]
     [InlineData("/api/changesets?before=not-a-cursor")]
@@ -182,6 +184,24 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
         var again = await _spa.PostAsync($"/api/changesets/{changeSet}/undo", new { });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, again.StatusCode);
         Assert.Equal(GraphErrors.ChangeSetAlreadyReverted.Code, await ProblemCode.ReadAsync(again));
+    }
+
+    [Fact]
+    public async Task Restoring_a_deleted_node_and_relation_answers_with_its_own_change()
+    {
+        var book = await CreatedIdAsync("/api/nodes", new { title = "Letters" });
+        var author = await CreatedIdAsync("/api/nodes", new { title = "Seneca" });
+        var relation = await EntityIdAsync(await _spa.PostAsync("/api/relations", new { sourceNodeId = book, targetNodeId = author, kind = "written_by" }));
+        Assert.Equal(HttpStatusCode.OK, (await _spa.DeleteAsync($"/api/relations/{relation}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _spa.DeleteAsync($"/api/nodes/{author}?version=1")).StatusCode);
+
+        var restoredNode = await _spa.PostAsync($"/api/nodes/{author}/restoration", new { });
+        var restoredRelation = await _spa.PostAsync($"/api/relations/{relation}/restoration", new { });
+
+        Assert.Equal(HttpStatusCode.OK, restoredNode.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, restoredRelation.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _spa.GetAsync($"/api/nodes/{author}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _spa.PostAsync($"/api/nodes/{Guid.CreateVersion7()}/restoration", new { })).StatusCode);
     }
 
     [Fact]

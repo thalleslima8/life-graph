@@ -65,6 +65,10 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
 
+                    b.Property<bool>("RequiresApprovalForWrites")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_approval_for_writes");
+
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("revoked_at");
@@ -230,6 +234,144 @@ namespace LifeGraph.Migrations.Migrations
                         });
                 });
 
+            modelBuilder.Entity("LifeGraph.Graph.Domain.ChangeProposal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("AgentIdentityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_identity_id");
+
+                    b.Property<Guid?>("ChangeSetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("changeset_id");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<int>("OperationCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("operation_count");
+
+                    b.Property<string>("Operations")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("operations");
+
+                    b.Property<DateTimeOffset?>("RedactedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("redacted_at");
+
+                    b.Property<bool>("RequiresUser")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_user");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("_createdNodes")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("created_nodes");
+
+                    b.Property<string[]>("_reasons")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("reasons");
+
+                    b.PrimitiveCollection<List<int>>("_rejectedOperations")
+                        .IsRequired()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("rejected_operations");
+
+                    b.PrimitiveCollection<List<Guid>>("_targetNodeIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("target_node_ids");
+
+                    b.HasKey("Id")
+                        .HasName("pk_change_proposals");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_change_proposals_account_id_id");
+
+                    b.HasIndex("_targetNodeIds")
+                        .HasDatabaseName("ix_change_proposals_target_node_ids");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("_targetNodeIds"), "gin");
+
+                    b.HasIndex("AccountId", "ChangeSetId")
+                        .HasDatabaseName("ix_change_proposals_account_id_changeset_id");
+
+                    b.HasIndex("AccountId", "ContentHash")
+                        .HasDatabaseName("ix_change_proposals_account_id_content_hash_rejected")
+                        .HasFilter("status = 'rejected'");
+
+                    b.HasIndex("AgentIdentityId", "Status", "ContentHash")
+                        .HasDatabaseName("ix_change_proposals_agent_identity_id_status_content_hash");
+
+                    b.ToTable("change_proposals", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_change_proposals_applied_changeset", "changeset_id IS NULL OR status = 'applied'");
+
+                            t.HasCheckConstraint("ck_change_proposals_created_nodes", "jsonb_typeof(created_nodes) = 'object' AND (created_nodes = '{}'::jsonb OR changeset_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_change_proposals_operation_count", "operation_count >= 1");
+
+                            t.HasCheckConstraint("ck_change_proposals_reasons", "reasons <@ ARRAY['approval_required', 'bulk', 'sensitive', 'suggested', 'type_change', 'window']::text[]");
+
+                            t.HasCheckConstraint("ck_change_proposals_redacted_empty", "redacted_at IS NULL OR operations = '[]'::jsonb");
+
+                            t.HasCheckConstraint("ck_change_proposals_rejected_operations", "0 <= ALL(rejected_operations)");
+
+                            t.HasCheckConstraint("ck_change_proposals_status", "status IN ('applied', 'expired', 'proposed', 'rejected', 'withdrawn')");
+                        });
+                });
+
             modelBuilder.Entity("LifeGraph.Graph.Domain.GraphChangeSet", b =>
                 {
                     b.Property<Guid>("Id")
@@ -264,6 +406,10 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("reverts_changeset_id");
 
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -281,16 +427,28 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("status");
 
+                    b.Property<int>("WindowOperations")
+                        .HasColumnType("integer")
+                        .HasColumnName("window_operations");
+
                     b.HasKey("Id")
                         .HasName("pk_changesets");
 
                     b.HasAlternateKey("AccountId", "Id")
                         .HasName("ak_changesets_account_id_id");
 
+                    b.HasIndex("AccountId", "CreatedAt")
+                        .HasDatabaseName("ix_changesets_account_id_created_at_window")
+                        .HasFilter("window_operations > 0");
+
                     b.HasIndex("AccountId", "RevertsChangeSetId")
                         .IsUnique()
                         .HasDatabaseName("uq_changesets_account_id_reverts_changeset_id")
                         .HasFilter("reverts_changeset_id IS NOT NULL");
+
+                    b.HasIndex("AgentIdentityId", "Id")
+                        .HasDatabaseName("ix_changesets_agent_identity_id_id")
+                        .HasFilter("agent_identity_id IS NOT NULL");
 
                     b.ToTable("changesets", null, t =>
                         {
@@ -301,6 +459,8 @@ namespace LifeGraph.Migrations.Migrations
                             t.HasCheckConstraint("ck_changesets_channel", "channel IN ('api', 'import', 'mcp', 'ui')");
 
                             t.HasCheckConstraint("ck_changesets_status", "status IN ('applied', 'reverted')");
+
+                            t.HasCheckConstraint("ck_changesets_window_operations", "window_operations >= 0 AND (window_operations = 0 OR actor_kind = 'agent_identity')");
                         });
                 });
 
@@ -324,6 +484,10 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<Guid?>("CreatedByAgentIdentityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_agent_identity_id");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
@@ -340,6 +504,11 @@ namespace LifeGraph.Migrations.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("properties");
+
+                    b.Property<string>("SuggestedType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("suggested_type");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -365,6 +534,10 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.HasAlternateKey("AccountId", "Id")
                         .HasName("ak_nodes_account_id_id");
+
+                    b.HasIndex("CreatedByAgentIdentityId")
+                        .HasDatabaseName("ix_nodes_created_by_agent_identity_id")
+                        .HasFilter("created_by_agent_identity_id IS NOT NULL");
 
                     b.HasIndex("Properties")
                         .HasDatabaseName("ix_nodes_properties");
@@ -517,6 +690,10 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<Guid?>("CreatedByAgentIdentityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_agent_identity_id");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
@@ -560,6 +737,10 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.HasAlternateKey("AccountId", "Id")
                         .HasName("ak_relations_account_id_id");
+
+                    b.HasIndex("CreatedByAgentIdentityId")
+                        .HasDatabaseName("ix_relations_created_by_agent_identity_id")
+                        .HasFilter("created_by_agent_identity_id IS NOT NULL");
 
                     b.HasIndex("AccountId", "DeletedAt")
                         .HasDatabaseName("ix_relations_account_id_deleted_at")
@@ -1190,6 +1371,23 @@ namespace LifeGraph.Migrations.Migrations
                         .HasPrincipalKey("ChangeSetId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .HasConstraintName("fk_change_entries_cascade_of");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.ChangeProposal", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_change_proposals_account_id");
+
+                    b.HasOne("LifeGraph.Graph.Domain.GraphChangeSet", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "ChangeSetId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_change_proposals_changeset");
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.GraphChangeSet", b =>

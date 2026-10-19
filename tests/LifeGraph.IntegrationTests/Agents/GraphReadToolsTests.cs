@@ -40,15 +40,15 @@ public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifet
         await _factory.DisposeAsync();
     }
 
+    // E5 added the write tools beside them; the reads stay read-only, so lifegraph.read is enough.
     [Fact]
-    public async Task The_agent_lists_the_four_read_tools_and_whoami_all_read_only()
+    public async Task The_read_only_tools_are_the_five_reads_and_whoami()
     {
         var tools = await _agent.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(
-            [GraphReadTools.GetContextName, GraphReadTools.GetNodeName, GraphReadTools.ListTypesName, GraphReadTools.SearchGraphName, WhoAmITool.Name],
-            tools.Select(tool => tool.Name).Order(StringComparer.Ordinal));
-        Assert.All(tools, tool => Assert.True(tool.ProtocolTool.Annotations?.ReadOnlyHint));
+            [GraphReadTools.GetContextName, GraphReadTools.GetNodeName, GraphWriteTools.GetProposalName, GraphReadTools.ListTypesName, GraphReadTools.SearchGraphName, WhoAmITool.Name],
+            tools.Where(tool => tool.ProtocolTool.Annotations?.ReadOnlyHint == true).Select(tool => tool.Name).Order(StringComparer.Ordinal));
     }
 
     // DA-035: a hidden Node does not exist for agents, on any read path, while the person still sees it.
@@ -225,7 +225,7 @@ public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifet
     {
         var mine = Guid.CreateVersion7();
         var theirs = Guid.CreateVersion7();
-        var otherAgent = Guid.CreateVersion7();
+        var otherAgent = await _graph.CreateAgentIdentityAsync(_accountId);
         await _graph.WrittenAsync(_accountId, new CreateNode(mine, "Minha nota", "Escrita por mim"));
         var byAgent = await _graph.WriteAsync(
             _accountId,

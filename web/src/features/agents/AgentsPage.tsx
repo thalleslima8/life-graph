@@ -16,6 +16,7 @@ import {
   SCOPE_LABELS,
   useRenameAgentIdentity,
   useRevokeAgentIdentity,
+  useUpdateAgentIdentity,
   type AgentIdentityView,
 } from "./agentIdentities";
 
@@ -24,10 +25,12 @@ const LOAD_ERROR_MESSAGE = "Não foi possível carregar as conexões.";
 const GONE_MESSAGE = "Esta conexão já não está conectada. A lista foi atualizada.";
 
 const renameSchema = z.object({ name: agentNameSchema });
+const WRITE_SCOPE = "lifegraph.write";
 
 /**
  * "Agentes conectados" (DA-030, DA-125): every connection of the Account that is not revoked,
- * with what it may do and when it was last used; rename and revoke each one. The page owns all
+ * with what it may do and when it was last used; rename, require approval for its writes
+ * (DA-044) and revoke each one. The page owns all
  * its states; a 401 is the app shell's.
  */
 export function AgentsPage() {
@@ -35,25 +38,31 @@ export function AgentsPage() {
   const [announcement, setAnnouncement] = useState("");
   const titleRef = useRef<HTMLHeadingElement>(null);
   const rowButtons = useRef(new Map<string, HTMLButtonElement>());
-  // After a revocation, once the list is read again: the next connection's first button, or the title.
-  const focusAfterRevoke = useRef<string | null | undefined>(undefined);
+  // After a connection leaves the list (revoked here, or found gone by any of its controls), once
+  // the list is read again: the next connection's first button, or the title (FE-032). A row
+  // still listed keeps the focus where it is.
+  const focusAfterRemoval = useRef<{ removedId: string; nextId: string | null } | undefined>(undefined);
   useEffect(() => {
-    if (focusAfterRevoke.current === undefined || connections.isFetching) {
+    if (focusAfterRemoval.current === undefined || connections.isFetching) {
       return;
     }
 
-    const nextId = focusAfterRevoke.current;
-    focusAfterRevoke.current = undefined;
+    const { removedId, nextId } = focusAfterRemoval.current;
+    focusAfterRemoval.current = undefined;
+    if (rowButtons.current.has(removedId)) {
+      return;
+    }
+
     const next = nextId === null ? undefined : rowButtons.current.get(nextId);
     (next ?? titleRef.current)?.focus();
   }, [connections.isFetching, connections.data, announcement]);
 
-  const onRevoked = (agent: AgentIdentityView) => {
+  const onRemoved = (agent: AgentIdentityView, message: string) => {
     const list = connections.data ?? [];
     const index = list.findIndex((item) => item.id === agent.id);
     const next = list[index + 1] ?? list[index - 1];
-    focusAfterRevoke.current = next?.id ?? null;
-    setAnnouncement(`${agent.name} foi desconectado.`);
+    focusAfterRemoval.current = { removedId: agent.id, nextId: next?.id ?? null };
+    setAnnouncement(message);
   };
 
   return (
@@ -92,8 +101,8 @@ export function AgentsPage() {
                     rowButtons.current.delete(agent.id);
                   }
                 }}
-                onRevoked={() => onRevoked(agent)}
-                onGone={() => setAnnouncement(GONE_MESSAGE)}
+                onRevoked={() => onRemoved(agent, `${agent.name} foi desconectado.`)}
+                onGone={() => onRemoved(agent, GONE_MESSAGE)}
               />
             ))}
           </ul>
@@ -201,6 +210,8 @@ function AgentRow({
         <dt className="text-muted-foreground">Último uso</dt>
         <dd>{agent.lastUsedAt ? formatDateTime(agent.lastUsedAt) : "Nunca usado"}</dd>
       </dl>
+
+      {agent.scopes.includes(WRITE_SCOPE) && <ApprovalToggle agent={agent} onGone={onGone} />}
 
       {renaming ? (
         <RenameForm agent={agent} onDone={closeRename} onGone={onGone} />
@@ -315,5 +326,54 @@ function RenameForm({ agent, onDone, onGone }: { agent: AgentIdentityView; onDon
         </p>
       )}
     </form>
+  );
+}
+
+/** "Exigir aprovação para escritas" (DA-044): saved as soon as it changes; proposals made while it was on stay the person's. */
+function ApprovalToggle({ agent, onGone }: { agent: AgentIdentityView; onGone: () => void }) {
+  const update = useUpdateAgentIdentity(agent.id);
+  const fieldId = `require-approval-${agent.id}`;
+
+  const onChange = (requiresApproval: boolean) => {
+    if (update.isPending) {
+      return;
+    }
+
+    update.mutate(
+      { requiresApproval },
+      {
+        onError: (error) => {
+          if (isAgentIdentityGone(error)) {
+            onGone();
+          }
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="space-y-1 text-sm">
+      <div className="flex items-start gap-2">
+        <input
+          id={fieldId}
+          type="checkbox"
+          className="mt-0.5 size-4"
+          checked={update.isPending ? (update.variables?.requiresApproval ?? agent.requiresApproval) : agent.requiresApproval}
+          disabled={update.isPending}
+          aria-describedby={`${fieldId}-help`}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <Label htmlFor={fieldId}>Exigir minha aprovação para cada escrita de {agent.name}</Label>
+      </div>
+      <p id={`${fieldId}-help`} className="text-muted-foreground">
+        O agente só propõe; nada muda no grafo até você aprovar em Agent Changes. Propostas feitas com a opção ligada continuam esperando você
+        mesmo se desligar depois.
+      </p>
+      {update.isError && (
+        <p role="alert" className="text-destructive">
+          {isAgentIdentityGone(update.error) ? GONE_MESSAGE : writeErrorMessage(update.error)}
+        </p>
+      )}
+    </div>
   );
 }

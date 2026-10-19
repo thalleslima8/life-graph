@@ -9,8 +9,8 @@ using Microsoft.AspNetCore.Routing;
 namespace LifeGraph.Accounts.Http;
 
 /// <summary>
-/// "Agentes conectados" (DA-030): the person lists the connections of the Account, renames and
-/// revokes them. Revoking ends the grant at once, refresh tokens included (DA-031). The
+/// "Agentes conectados" (DA-030): the person lists the connections of the Account, renames them,
+/// turns "exigir aprovação para escritas" on or off (DA-044) and revokes them. Revoking ends the grant at once, refresh tokens included (DA-031). The
 /// AgentIdentity row stays, so what the agent did is still attributed to it.
 /// </summary>
 internal static class AgentIdentityEndpoints
@@ -24,8 +24,8 @@ internal static class AgentIdentityEndpoints
             .Produces<AgentIdentityPage>()
             .ProducesValidationProblem();
 
-        agentIdentities.MapPatch("/{agentIdentityId:guid}", RenameAsync)
-            .WithName("RenameAgentIdentity")
+        agentIdentities.MapPatch("/{agentIdentityId:guid}", UpdateAsync)
+            .WithName("UpdateAgentIdentity")
             .Produces<AgentIdentityView>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -48,13 +48,16 @@ internal static class AgentIdentityEndpoints
         CancellationToken cancellationToken) =>
         responder.ToHttpResult(await connections.ListAsync(cursor, limit, cancellationToken), page => TypedResults.Ok(page));
 
-    private static async Task<IResult> RenameAsync(
+    // A rename, the "exigir aprovação para escritas" toggle (DA-044), or both, as one change.
+    private static async Task<IResult> UpdateAsync(
         Guid agentIdentityId,
-        RenameAgentIdentityRequest request,
+        UpdateAgentIdentityRequest request,
         AgentConnections connections,
         IHttpResultResponder responder,
         CancellationToken cancellationToken) =>
-        responder.ToHttpResult(await connections.RenameAsync(agentIdentityId, request.Name, cancellationToken), view => TypedResults.Ok(view));
+        responder.ToHttpResult(
+            await connections.UpdateAsync(agentIdentityId, request.Name, request.RequiresApproval, cancellationToken),
+            view => TypedResults.Ok(view));
 
     private static async Task<IResult> RevokeAsync(
         Guid agentIdentityId,
@@ -64,4 +67,6 @@ internal static class AgentIdentityEndpoints
         responder.ToHttpResult(await connections.RevokeAsync(agentIdentityId, cancellationToken), static () => TypedResults.NoContent());
 }
 
-public sealed record RenameAgentIdentityRequest(string? Name);
+/// <param name="Name">The new name. Required unless <paramref name="RequiresApproval"/> is sent; left out then, the name stays.</param>
+/// <param name="RequiresApproval">"Exigir aprovação para escritas" (DA-044).</param>
+public sealed record UpdateAgentIdentityRequest(string? Name = null, bool? RequiresApproval = null);

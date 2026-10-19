@@ -57,6 +57,17 @@ internal sealed class GraphWrites(IGraphWriter writer, ICurrentPrincipal current
         return responder.ToHttpResult(undone, receipt => TypedResults.Ok(receipt));
     }
 
+    public async Task<IResult> RestoreAsync(GraphEntityKind kind, Guid entityId, CancellationToken cancellationToken)
+    {
+        if (ProvenanceOfCaller() is not { } provenance)
+        {
+            return responder.Fail(NotThePerson());
+        }
+
+        var restored = await writer.RestoreAsync(provenance, kind, entityId, cancellationToken);
+        return responder.ToHttpResult(restored, receipt => TypedResults.Ok(receipt));
+    }
+
     // The session is the person in the SPA. Agents write through MCP, with their own
     // Provenance, from E3 on.
     private Provenance? ProvenanceOfCaller() =>

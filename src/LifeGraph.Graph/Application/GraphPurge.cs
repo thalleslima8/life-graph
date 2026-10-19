@@ -120,6 +120,18 @@ internal sealed class GraphPurge(LifeGraphDbContext db, TimeProvider clock) : IJ
         {
             changeSet.ForgetSourceIfFullyPurged();
         }
+
+        // A proposal whose operations hold content of a purged Node (one it names, or one it
+        // created) loses them too (DA-048), and forgets the name it gave a Node it created; one
+        // emptied by an earlier Purge still forgets that name. A pending one (purged right away,
+        // with no delete window) is withdrawn, so it cannot be applied.
+        var proposals = await db.Set<ChangeProposal>()
+            .Where(proposal => EF.Property<List<Guid>>(proposal, ChangeProposal.TargetNodeIdsField).Any(id => entityIds.Contains(id)))
+            .ToListAsync(cancellationToken);
+        foreach (var proposal in proposals)
+        {
+            proposal.Redact(entityIds, now);
+        }
     }
 
     private sealed record PurgePayload(GraphEntityKind EntityKind, Guid EntityId, DateTimeOffset DeletedAt);

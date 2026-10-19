@@ -222,6 +222,80 @@ public sealed class IssuerHardeningTests(PostgresDatabase database) : IAsyncLife
         Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, second.AccessToken, "list_types")).StatusCode);
     }
 
+    // DA-051: write tool calls have their own budget per AgentIdentity, apart from reads.
+    [Fact]
+    public async Task Each_agent_identity_has_its_own_write_budget_apart_from_reads()
+    {
+        await using var factory = new LifeGraphApiFactory(database, new Dictionary<string, string>(AgentAuthorization.Settings())
+        {
+            [$"{IssuerOptions.SectionName}:Clients:1:ClientId"] = "second-agent",
+            [$"{IssuerOptions.SectionName}:Clients:1:RedirectUris:0"] = AgentAuthorization.RedirectUri,
+            ["Api:RateLimits:AgentWritePermitLimit"] = "2",
+        });
+        await TestAccounts.ProvisionConfirmedAsync(factory, "ada@example.test");
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(factory, "ada@example.test");
+        var first = await AgentAuthorization.ConnectAsync(factory, browser);
+        var second = await AgentAuthorization.ConnectAsync(factory, browser, clientId: "second-agent");
+        using var agent = factory.CreateClient();
+        var create = new { title = "Note" };
+
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, first.AccessToken, "create_node", create)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, first.AccessToken, "create_node", create)).StatusCode);
+        var overBudget = await AgentAuthorization.CallToolAsync(agent, first.AccessToken, "create_node", create);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, overBudget.StatusCode);
+        Assert.NotNull(overBudget.Headers.RetryAfter);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, first.AccessToken, "list_types")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, second.AccessToken, "create_node", create)).StatusCode);
+    }
+
+    // DA-051: get_proposal is a read tool, so it neither spends the write budget nor is held back by it.
+    [Fact]
+    public async Task Proposal_status_reads_stay_outside_the_write_budget()
+    {
+        await using var factory = new LifeGraphApiFactory(database, new Dictionary<string, string>(AgentAuthorization.Settings())
+        {
+            ["Api:RateLimits:AgentWritePermitLimit"] = "1",
+        });
+        await TestAccounts.ProvisionConfirmedAsync(factory, "ada@example.test");
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(factory, "ada@example.test");
+        var tokens = await AgentAuthorization.ConnectAsync(factory, browser);
+        using var agent = factory.CreateClient();
+        var proposal = new { proposalId = Guid.CreateVersion7() };
+
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, tokens.AccessToken, "get_proposal", proposal)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, tokens.AccessToken, "get_proposal", proposal)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, tokens.AccessToken, "create_node", new { title = "Note" })).StatusCode);
+        var overBudget = await AgentAuthorization.CallToolAsync(agent, tokens.AccessToken, "create_node", new { title = "Note" });
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, overBudget.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, tokens.AccessToken, "get_proposal", proposal)).StatusCode);
+    }
+
+    // DA-051: past the daily ceiling of write calls the agent waits for the next day, though
+    // the short window still has room.
+    [Fact]
+    public async Task An_agent_identity_over_its_daily_write_limit_gets_429_until_the_next_day()
+    {
+        await using var factory = new LifeGraphApiFactory(database, new Dictionary<string, string>(AgentAuthorization.Settings())
+        {
+            ["Api:RateLimits:AgentWriteDailyLimit"] = "2",
+        });
+        await TestAccounts.ProvisionConfirmedAsync(factory, "ada@example.test");
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(factory, "ada@example.test");
+        var tokens = await AgentAuthorization.ConnectAsync(factory, browser);
+        using var agent = factory.CreateClient();
+        var create = new { title = "Note" };
+
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, tokens.AccessToken, "create_node", create)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, tokens.AccessToken, "create_node", create)).StatusCode);
+        var overDailyLimit = await AgentAuthorization.CallToolAsync(agent, tokens.AccessToken, "create_node", create);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, overDailyLimit.StatusCode);
+        Assert.True(overDailyLimit.Headers.RetryAfter?.Delta > TimeSpan.FromHours(1), $"Retry-After: {overDailyLimit.Headers.RetryAfter}");
+        Assert.Equal(HttpStatusCode.OK, (await AgentAuthorization.CallToolAsync(agent, tokens.AccessToken, "list_types")).StatusCode);
+    }
+
     [Fact]
     public async Task The_agents_of_an_account_share_one_ceiling()
     {

@@ -2,6 +2,7 @@ using System.Buffers.Text;
 using LifeGraph.Accounts.Contracts;
 using LifeGraph.Accounts.Domain;
 using LifeGraph.Accounts.Issuer;
+using LifeGraph.Infrastructure.Agents;
 using LifeGraph.Infrastructure.Errors;
 using LifeGraph.Infrastructure.Identity;
 using LifeGraph.Infrastructure.Persistence;
@@ -26,6 +27,7 @@ internal sealed class AgentConnections(
     IOpenIddictAuthorizationManager authorizations,
     IOpenIddictTokenManager tokens,
     ClientDiscontinuation discontinuation,
+    IEnumerable<IAgentRevocationParticipant> revocationParticipants,
     TimeProvider clock) : IAgentIdentities
 {
     public const int DefaultPageSize = 50;
@@ -49,18 +51,15 @@ internal sealed class AgentConnections(
     private const int MaxRaceAttempts = 3;
 
     /// <summary>
-    /// The signed-in person's consent to <paramref name="clientId"/>: a new grant behind the
-    /// client's AgentIdentity, created on first use, with the scopes the person checked among
-    /// those offered for <paramref name="requestedScopes"/> (DA-122). A checked scope that was
-    /// not offered is a validation failure and grants nothing.
+    /// The signed-in person's consent to the client: a new grant behind the client's
+    /// AgentIdentity, created on first use, with the scopes the person checked among those
+    /// offered for the requested ones (DA-122). A checked scope that was not offered is a
+    /// validation failure and grants nothing.
     /// </summary>
-    public async Task<Result<AgentGrant>> ConnectAsync(
-        Guid userId,
-        string clientId,
-        IEnumerable<string> requestedScopes,
-        IEnumerable<string?> checkedScopes,
-        CancellationToken cancellationToken)
+    public async Task<Result<AgentGrant>> ConnectAsync(AgentConsent consent, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(consent);
+        var (userId, clientId, requestedScopes, checkedScopes, requiresApprovalForWrites) = consent;
         if (currentPrincipal.Authenticated is not { Type: PrincipalType.Human } human)
         {
             return Result<AgentGrant>.Fail(CommonErrors.Unauthorized.ToError("Sign in to connect an agent."));
@@ -99,7 +98,10 @@ internal sealed class AgentConnections(
             var authorization = await authorizations.CreateAsync(descriptor, token);
             var authorizationId = Guid.Parse((await authorizations.GetIdAsync(authorization, token))!);
 
-            var identity = await AttachGrantAsync(human.AccountId, clientId, declaredName, scopes, authorizationId, now, token);
+            var identity = await AttachGrantAsync(
+                new ClientGrant(human.AccountId, clientId, declaredName, scopes, authorizationId, requiresApprovalForWrites),
+                now,
+                token);
             if (identity is null)
             {
                 return Result<AgentGrant>.Fail(AccountsErrors.AgentIdentityConflict.ToError(ConflictMessage));
@@ -107,6 +109,26 @@ internal sealed class AgentConnections(
 
             return Result<AgentGrant>.Ok(new AgentGrant(identity.Id, authorizationId, [.. identity.Scopes]));
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// "Exigir aprovação para escritas" of the signed-in person's connection to
+    /// <paramref name="clientId"/>, revoked or not, as the consent page shows it (DA-044):
+    /// a reconnect starts from the current choice. <c>false</c> for a client never connected.
+    /// </summary>
+    public async Task<bool> RequiresApprovalForWritesAsync(string clientId, CancellationToken cancellationToken)
+    {
+        if (currentPrincipal.Authenticated is not { Type: PrincipalType.Human } human)
+        {
+            return false;
+        }
+
+        return await db.InAccountTransactionAsync(
+            token => db.Set<AgentIdentity>().AsNoTracking()
+                .Where(entity => entity.AccountId == human.AccountId && entity.ClientId == clientId)
+                .Select(entity => entity.RequiresApprovalForWrites)
+                .SingleOrDefaultAsync(token),
+            cancellationToken);
     }
 
     /// <summary>The active connections, newest first, by cursor (API-060).</summary>
@@ -161,23 +183,60 @@ internal sealed class AgentConnections(
             return identity is null ? NotFound<AgentIdentityView>() : Result<AgentIdentityView>.Ok(await ViewOfAsync(identity, token));
         }, cancellationToken);
 
-    public Task<Result<AgentIdentityView>> RenameAsync(Guid agentIdentityId, string? name, CancellationToken cancellationToken) =>
-        db.InAccountTransactionAsync(async token =>
+    /// <summary>
+    /// Renames the connection, turns "exigir aprovação para escritas" on or off (DA-044), or both,
+    /// in one transaction: nothing is saved unless every part is valid. Proposals made while the
+    /// toggle was on stay the person's to approve. The name is required unless only the toggle
+    /// changes.
+    /// </summary>
+    public Task<Result<AgentIdentityView>> UpdateAsync(Guid agentIdentityId, string? name, bool? requiresApproval, CancellationToken cancellationToken) =>
+        db.InAccountResultTransactionAsync(async token =>
         {
-            var renamed = await ChangeActiveAsync(agentIdentityId, identity => identity.Rename(name, clock.GetUtcNow()), token);
-            return renamed.IsSuccess
-                ? Result<AgentIdentityView>.Ok(await ViewOfAsync(renamed.Value!.Identity, token))
-                : Result<AgentIdentityView>.Fail(renamed.Error!);
+            var now = clock.GetUtcNow();
+            var changed = await ChangeActiveAsync(
+                agentIdentityId,
+                identity =>
+                {
+                    if (name is not null || requiresApproval is null)
+                    {
+                        var renamed = identity.Rename(name, now);
+                        if (!renamed.IsSuccess)
+                        {
+                            return renamed;
+                        }
+                    }
+
+                    if (requiresApproval is { } required)
+                    {
+                        identity.RequireApprovalForWrites(required, now);
+                    }
+
+                    return Result<bool>.Ok(true);
+                },
+                token);
+            return changed.IsSuccess
+                ? Result<AgentIdentityView>.Ok(await ViewOfAsync(changed.Value!.Identity, token))
+                : Result<AgentIdentityView>.Fail(changed.Error!);
         }, cancellationToken);
 
-    /// <summary>Ends the connection now: its grant, its refresh tokens and its access tokens (DA-031).</summary>
+    /// <summary>
+    /// Ends the connection now: its grant, its refresh tokens and its access tokens (DA-031),
+    /// and withdraws what it left pending, in the same transaction (DA-135).
+    /// </summary>
     public Task<Result> RevokeAsync(Guid agentIdentityId, CancellationToken cancellationToken) =>
         db.InAccountTransactionAsync(async token =>
         {
-            var revoked = await ChangeActiveAsync(agentIdentityId, identity => Result<Guid?>.Ok(identity.Revoke(clock.GetUtcNow())), token);
+            var now = clock.GetUtcNow();
+            var revoked = await ChangeActiveAsync(agentIdentityId, identity => Result<Guid?>.Ok(identity.Revoke(now)), token);
             if (!revoked.IsSuccess)
             {
                 return Result.Fail(revoked.Error!);
+            }
+
+            // What the agent left pending is settled in this same transaction (DA-135).
+            foreach (var participant in revocationParticipants)
+            {
+                await participant.AgentRevokedAsync(revoked.Value!.Identity.AccountId, agentIdentityId, now, token);
             }
 
             if (revoked.Value!.Outcome is { } authorizationId)
@@ -225,28 +284,21 @@ internal sealed class AgentConnections(
     /// the later consent wins, as if they had come one after the other.
     /// </summary>
     /// <returns><c>null</c> when other writers kept winning the race.</returns>
-    private async Task<AgentIdentity?> AttachGrantAsync(
-        Guid accountId,
-        string clientId,
-        string? declaredName,
-        IReadOnlyCollection<string> scopes,
-        Guid authorizationId,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
+    private async Task<AgentIdentity?> AttachGrantAsync(ClientGrant grant, DateTimeOffset now, CancellationToken cancellationToken)
     {
         for (var attempt = 1; attempt <= MaxRaceAttempts; attempt++)
         {
             var identity = await db.Set<AgentIdentity>()
-                .SingleOrDefaultAsync(entity => entity.AccountId == accountId && entity.ClientId == clientId, cancellationToken);
+                .SingleOrDefaultAsync(entity => entity.AccountId == grant.AccountId && entity.ClientId == grant.ClientId, cancellationToken);
             Guid? replaced = null;
             if (identity is null)
             {
-                identity = AgentIdentity.Connect(Guid.CreateVersion7(), accountId, clientId, declaredName, scopes, authorizationId, now);
+                identity = AgentIdentity.Connect(Guid.CreateVersion7(), grant, now);
                 db.Add(identity);
             }
             else
             {
-                replaced = identity.Reconnect(declaredName, scopes, authorizationId, now);
+                replaced = identity.Reconnect(grant, now);
             }
 
             try
@@ -343,7 +395,8 @@ internal sealed class AgentConnections(
             [.. identity.Scopes.Where(AgentAccess.Scopes.Contains)],
             isDiscontinued ? AgentIdentityStatus.Discontinued : AgentIdentityStatus.Active,
             identity.CreatedAt,
-            identity.LastUsedAt);
+            identity.LastUsedAt,
+            identity.RequiresApprovalForWrites);
 
     private Task<bool> IsDiscontinuedAsync(string clientId, CancellationToken cancellationToken) =>
         discontinuation.IsDiscontinuedAsync(clientId, cancellationToken);
@@ -370,6 +423,18 @@ internal sealed class AgentConnections(
         }
     }
 }
+
+/// <summary>The person's decision on the consent page.</summary>
+/// <param name="UserId">The signed-in person.</param>
+/// <param name="RequestedScopes">What the client asked for; only the product's scopes among them are offered.</param>
+/// <param name="CheckedScopes">The scopes the person checked.</param>
+/// <param name="RequiresApprovalForWrites">"Exigir aprovação para escritas" (DA-044); <c>null</c> when the page did not offer it, which keeps the connection's current choice.</param>
+public sealed record AgentConsent(
+    Guid UserId,
+    string ClientId,
+    IEnumerable<string> RequestedScopes,
+    IEnumerable<string?> CheckedScopes,
+    bool? RequiresApprovalForWrites);
 
 /// <summary>What a consent produced: the AgentIdentity, the grant behind it and its scopes.</summary>
 public sealed record AgentGrant(Guid AgentIdentityId, Guid AuthorizationId, IReadOnlyList<string> Scopes);

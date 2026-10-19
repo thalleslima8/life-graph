@@ -165,10 +165,7 @@ public sealed class ErrorContractTests(PostgresDatabase database) : IAsyncLifeti
     [Fact]
     public async Task The_openapi_document_publishes_the_catalog()
     {
-        var document = await File.ReadAllTextAsync(
-            Path.Combine(RepositoryRoot(), "openapi", "lifegraph.json"),
-            TestContext.Current.CancellationToken);
-        using var json = JsonDocument.Parse(document);
+        using var json = await CommittedOpenApi.ReadAsync(TestContext.Current.CancellationToken);
 
         var published = json.RootElement.GetProperty("x-error-codes").EnumerateArray()
             .Select(entry => entry.GetProperty("code").GetString()!)
@@ -178,17 +175,6 @@ public sealed class ErrorContractTests(PostgresDatabase database) : IAsyncLifeti
     }
 
     private ErrorCatalog Catalog => _factory.Services.GetRequiredService<ErrorCatalog>();
-
-    private static string RepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "LifeGraph.sln")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName ?? throw new InvalidOperationException("LifeGraph.sln not found above the test output.");
-    }
 
     /// <summary>
     /// Appended after the app's own pipeline, so the exception goes through the real exception

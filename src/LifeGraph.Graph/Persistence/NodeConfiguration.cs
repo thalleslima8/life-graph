@@ -16,6 +16,13 @@ internal sealed class NodeConfiguration : IEntityTypeConfiguration<Node>
         node.Property(entity => entity.Id).ValueGeneratedNever();
         node.Property(entity => entity.Title).HasMaxLength(GraphLimits.TitleMaxLength);
         node.Property(entity => entity.Body).HasMaxLength(GraphLimits.BodyMaxLength);
+        node.Property(entity => entity.SuggestedType).HasMaxLength(GraphLimits.NameMaxLength);
+
+        // The agent's own creation (DA-133); the foreign key to agent_identities is in the
+        // migration only, as the Graph's model cannot name the Accounts' entity (DA-121).
+        node.HasIndex(entity => entity.CreatedByAgentIdentityId)
+            .HasFilter("created_by_agent_identity_id IS NOT NULL")
+            .HasDatabaseName("ix_nodes_created_by_agent_identity_id");
 
         // Optimistic concurrency (DA-022): an update only matches the version it read.
         node.Property(entity => entity.Version).IsConcurrencyToken();
@@ -74,6 +81,9 @@ internal sealed class RelationConfiguration : IEntityTypeConfiguration<Relation>
         relation.HasAccountKeys(entity => entity.Id, entity => new { entity.AccountId, entity.Id });
         relation.Property(entity => entity.Id).ValueGeneratedNever();
         relation.Property(entity => entity.Kind).HasMaxLength(GraphLimits.RelationKindMaxLength);
+        relation.HasIndex(entity => entity.CreatedByAgentIdentityId)
+            .HasFilter("created_by_agent_identity_id IS NOT NULL")
+            .HasDatabaseName("ix_relations_created_by_agent_identity_id");
         relation.Property(entity => entity.Assertion).StoredAsSnakeCase();
         relation.Property(entity => entity.Origin).StoredAsSnakeCase();
         relation.HasRowVersion();

@@ -2,6 +2,7 @@ using System.Buffers.Text;
 using System.Text.Json;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
+using LifeGraph.Infrastructure.Agents;
 using LifeGraph.Infrastructure.Errors;
 using LifeGraph.Infrastructure.Persistence;
 using Limaj.Framework.Core;
@@ -15,7 +16,11 @@ namespace LifeGraph.Graph.Application;
 /// central read filter (<see cref="GraphReadFilter"/>), which never shows tombstones: a
 /// deleted Node or one of another Account reads as not found (DA-104).
 /// </summary>
-internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountContext, GraphReadFilter filter)
+internal sealed class GraphReads(
+    LifeGraphDbContext db,
+    IAccountContext accountContext,
+    GraphReadFilter filter,
+    IAgentIdentityDirectory agentDirectory)
 {
     public const int DefaultNodePageSize = 50;
 
@@ -56,7 +61,7 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
             // Newest first: ids are UUIDv7, so they follow the creation time.
             var rows = await nodes.OrderByDescending(node => node.Id)
                 .Take(limit + 1)
-                .Select(node => new NodeSummary(node.Id, node.Title, node.TypeId, node.Version, node.InboxEnteredAt != null, node.CreatedAt, node.UpdatedAt))
+                .Select(node => new NodeSummary(node.Id, node.Title, node.TypeId, node.Version, node.InboxEnteredAt != null, node.CreatedAt, node.UpdatedAt, Node.SuggestedTypeOf(node.TypeId, node.SuggestedType)))
                 .ToListAsync(token);
             return PageOf(rows, limit, summary => summary.Id);
         }, cancellationToken);
@@ -107,7 +112,8 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
                 node.UpdatedAt,
                 properties,
                 otherProperties,
-                node.HiddenFromAgents));
+                node.HiddenFromAgents,
+                Node.SuggestedTypeOf(node.TypeId, node.SuggestedType)));
         }, cancellationToken);
 
     /// <summary>The live Relations of a live Node, either direction, newest first.</summary>
@@ -215,9 +221,14 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
     /// <summary>
     /// The feed of GraphChangeSets (DA-024). With <paramref name="since"/>, the ones after it,
     /// oldest first, to catch up; otherwise the history, newest first, older pages through
-    /// <paramref name="before"/>.
+    /// <paramref name="before"/>. Filtered for Agent Changes (v2 §65): by agent, and the ones not reviewed yet.
     /// </summary>
-    public Task<Result<ChangeSetFeed>> ListChangeSetsAsync(string? since, string? before, int? limit, CancellationToken cancellationToken)
+    public Task<Result<ChangeSetFeed>> ListChangeSetsAsync(
+        string? since,
+        string? before,
+        int? limit,
+        ChangeSetFeedFilter feedFilter,
+        CancellationToken cancellationToken)
     {
         var errors = NoErrors();
         var after = PageCursor.Read(errors, since);
@@ -230,7 +241,7 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
 
         return RunAsync(errors, async token =>
         {
-            var changeSets = filter.ChangeSets().Include(changeSet => changeSet.Entries);
+            var changeSets = Filtered(filter.ChangeSets(), feedFilter).Include(changeSet => changeSet.Entries);
             List<GraphChangeSet> rows;
             if (after is { } sinceId)
             {
@@ -255,9 +266,36 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
                 .Where(changeSet => changeSet.RevertsChangeSetId != null && ids.Contains(changeSet.RevertsChangeSetId.Value))
                 .Select(changeSet => new { changeSet.Id, Reverts = changeSet.RevertsChangeSetId!.Value })
                 .ToDictionaryAsync(undo => undo.Reverts, undo => undo.Id, token);
-            var items = page.Data.Select(changeSet => ToItem(changeSet, undoneBy.TryGetValue(changeSet.Id, out var undo) ? undo : null)).ToList();
+            var proposals = await filter.Proposals()
+                .Where(proposal => proposal.ChangeSetId != null && ids.Contains(proposal.ChangeSetId.Value))
+                .Select(proposal => new { proposal.Id, ChangeSetId = proposal.ChangeSetId!.Value })
+                .ToDictionaryAsync(proposal => proposal.ChangeSetId, proposal => proposal.Id, token);
+            var agents = await AgentRefs.OfAsync(
+                agentDirectory,
+                [.. page.Data.Where(changeSet => changeSet.AgentIdentityId is not null).Select(changeSet => changeSet.AgentIdentityId!.Value)],
+                token);
+            var items = page.Data.Select(changeSet => ToItem(
+                changeSet,
+                undoneBy.TryGetValue(changeSet.Id, out var undo) ? undo : null,
+                proposals.TryGetValue(changeSet.Id, out var proposal) ? proposal : null,
+                agents)).ToList();
             return Result<ChangeSetFeed>.Ok(new ChangeSetFeed(items, page.Page, LatestCursor(items, since, before)));
         }, cancellationToken);
+    }
+
+    private static IQueryable<GraphChangeSet> Filtered(IQueryable<GraphChangeSet> changeSets, ChangeSetFeedFilter feedFilter)
+    {
+        if (feedFilter.AgentsOnly || feedFilter.Unreviewed)
+        {
+            changeSets = changeSets.Where(changeSet => changeSet.ActorKind == ChangeActorKind.AgentIdentity);
+        }
+
+        if (feedFilter.AgentIdentityId is { } agentIdentityId)
+        {
+            changeSets = changeSets.Where(changeSet => changeSet.AgentIdentityId == agentIdentityId);
+        }
+
+        return feedFilter.Unreviewed ? changeSets.Where(changeSet => changeSet.ReviewedAt == null) : changeSets;
     }
 
     private async Task<Result<T>> RunAsync<T>(
@@ -309,9 +347,24 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
             _ => null,
         };
 
-    private static ChangeSetItem ToItem(GraphChangeSet changeSet, Guid? undoneBy)
+    /// <param name="agents">The agents of the page, by id; an agent's change missing from it reads as "Agente removido".</param>
+    internal static ChangeSetItem ToItem(
+        GraphChangeSet changeSet,
+        Guid? undoneBy,
+        Guid? proposalId,
+        IReadOnlyDictionary<Guid, AgentRef> agents)
     {
         var sequenceOf = changeSet.Entries.ToDictionary(entry => entry.Id, entry => entry.Sequence);
+        var agent = changeSet.ActorKind != ChangeActorKind.AgentIdentity
+            ? null
+            : changeSet.AgentIdentityId is { } agentIdentityId
+                ? agents.GetValueOrDefault(agentIdentityId) ?? new AgentRef(agentIdentityId, null, Revoked: false)
+                : new AgentRef(null, null, Revoked: false);
+        var undo = changeSet.Status != ChangeSetStatus.Applied
+            ? ChangeSetUndoState.Undone(undoneBy)
+            : ChangeSetUndo.PurgedReason(changeSet) is { } reason
+                ? ChangeSetUndoState.Unavailable(reason)
+                : ChangeSetUndoState.Available;
         return new ChangeSetItem(
             changeSet.Id,
             changeSet.Status,
@@ -322,6 +375,10 @@ internal sealed class GraphReads(LifeGraphDbContext db, IAccountContext accountC
             changeSet.CreatedAt,
             changeSet.RevertsChangeSetId,
             undoneBy,
+            proposalId,
+            changeSet.ReviewedAt,
+            agent,
+            undo,
             [.. changeSet.Entries.OrderBy(entry => entry.Sequence).Select(entry => new ChangeEntryItem(
                 entry.Sequence,
                 entry.EntityKind,
@@ -410,8 +467,13 @@ internal static class PageCursor
             return true;
         }
 
+        // TryDecodeFromChars throws on a character outside Base64Url: check the text first.
         var bytes = new byte[GuidByteCount];
-        if (cursor.Length > EncodedLength || !Base64Url.TryDecodeFromChars(cursor, bytes, out var written) || written != GuidByteCount)
+        if (cursor.Length > EncodedLength
+            || !Base64Url.IsValid(cursor, out var decodedLength)
+            || decodedLength != GuidByteCount
+            || !Base64Url.TryDecodeFromChars(cursor, bytes, out var written)
+            || written != GuidByteCount)
         {
             return false;
         }

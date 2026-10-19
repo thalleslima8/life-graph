@@ -1,9 +1,14 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, expect } from "vitest";
 import * as axeMatchers from "vitest-axe/matchers";
 import { resetCsrfToken, setUnauthorizedHandler } from "@/api/client";
 import { server } from "./msw/server";
+
+// The first render of a test file also loads its lazy route's modules, which takes over a
+// second on a busy runner; the 1 s default made those first queries flaky (GEN-072).
+const ASYNC_QUERY_TIMEOUT_MS = 3000;
+configure({ asyncUtilTimeout: ASYNC_QUERY_TIMEOUT_MS });
 
 expect.extend(axeMatchers);
 

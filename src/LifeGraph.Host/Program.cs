@@ -34,6 +34,7 @@ builder.Services.AddLifeGraphHttpJson();
 builder.Services.AddLifeGraphApiRateLimiting();
 builder.Services.AddOpenApi(options => options
     .AddOperationTransformer<RetryAfterHeaderTransformer>()
+    .AddOperationTransformer<QueryEnumParameterTransformer>()
     .AddDocumentTransformer<ErrorCatalogDocumentTransformer>());
 
 // The owner's CLI connects as the provisioning role, the web process never does (DA-107).

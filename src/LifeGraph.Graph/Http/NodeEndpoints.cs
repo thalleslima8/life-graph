@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Routing;
 
 namespace LifeGraph.Graph.Http;
 
-/// <summary>Nodes: list (with the "Sem Type" and Inbox filters), Inspector, create, edit, delete and archive.</summary>
+/// <summary>Nodes: list (with the "Sem Type" and Inbox filters), Inspector, create, edit, delete, archive and restore.</summary>
 internal static class NodeEndpoints
 {
     public static IEndpointRouteBuilder MapNodeEndpoints(this IEndpointRouteBuilder endpoints)
@@ -58,6 +58,16 @@ internal static class NodeEndpoints
             .WithName("ArchiveNode")
             .Produces<GraphWriteReceipt>()
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // Restoring one deleted Node with its cascaded Relations, apart from the change that
+        // deleted it (DA-115).
+        nodes.MapPost("/{nodeId:guid}/restoration", (Guid nodeId, GraphWrites writes, CancellationToken cancellationToken) =>
+                writes.RestoreAsync(GraphEntityKind.Node, nodeId, cancellationToken))
+            .WithName("RestoreNode")
+            .Produces<GraphWriteReceipt>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         return endpoints;
     }

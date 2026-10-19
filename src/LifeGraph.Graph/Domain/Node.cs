@@ -55,8 +55,43 @@ public sealed class Node
     /// </summary>
     public bool HiddenFromAgents { get; private set; }
 
+    /// <summary>
+    /// The AgentIdentity that created the Node, while no other principal has written to it
+    /// since (DA-133), read by the one "criação própria do agente" predicate (AgentWritePolicy.IsAgentOwned). Once another principal
+    /// writes, it is the person's for good; undoing that write does not give it back. It is
+    /// not part of the recorded state, so Undo never moves it.
+    /// </summary>
+    public Guid? CreatedByAgentIdentityId { get; private set; }
+
+    /// <summary>
+    /// The Type an agent suggested for a Node it created without one (DA-049). It stays stored,
+    /// so Undo puts it back, but it only means something while the Node has no Type: read it
+    /// through <see cref="SuggestedTypeOf"/>.
+    /// </summary>
+    public string? SuggestedType { get; private set; }
+
+    /// <summary>
+    /// The one rule of the hint (DA-049): an agent's suggested Type exists only for a Node
+    /// without Type; with one, there is nothing to suggest. A plain function of the two columns,
+    /// so a query's final projection can call it.
+    /// </summary>
+    public static string? SuggestedTypeOf(Guid? typeId, string? suggestedType) => typeId is null ? suggestedType : null;
+
     /// <summary>The state the history records and Undo puts back (DA-020).</summary>
-    public NodeState State => new(Title, Body, TypeId, Properties, DeletedAt, InboxEnteredAt, HiddenFromAgents);
+    public NodeState State => new(Title, Body, TypeId, Properties, DeletedAt, InboxEnteredAt, HiddenFromAgents, SuggestedType);
+
+    /// <summary>
+    /// Records that a principal wrote to the Node: anyone but the AgentIdentity that created it
+    /// makes it the person's for good (DA-133). The single write pipeline calls it.
+    /// </summary>
+    /// <param name="writerAgentIdentityId">The writing AgentIdentity; <c>null</c> for the person.</param>
+    public void WrittenBy(Guid? writerAgentIdentityId)
+    {
+        if (CreatedByAgentIdentityId is { } creator && creator != writerAgentIdentityId)
+        {
+            CreatedByAgentIdentityId = null;
+        }
+    }
 
     /// <summary>A Node outside the Inbox.</summary>
     public static Result<Node> Create(NodeDraft draft, DateTimeOffset now) => Start(draft, now, inboxEnteredAt: null);
@@ -66,9 +101,10 @@ public sealed class Node
 
     private static Result<Node> Start(NodeDraft draft, DateTimeOffset now, DateTimeOffset? inboxEnteredAt)
     {
-        var (id, accountId, title, body, schema, values) = draft;
+        var (id, accountId, title, body, schema, values, _, _) = draft;
         var errors = new FieldErrors();
         var trimmedTitle = TextInput.RequireName(errors, "title", title, GraphLimits.TitleMaxLength);
+        var suggestedType = CheckSuggestedType(errors, draft.SuggestedType, schema);
         var checkedBody = CheckBody(errors, body ?? string.Empty);
         var properties = ApplyValues(errors, PropertyValues.Empty, schema, values);
 
@@ -84,7 +120,26 @@ public sealed class Node
             CreatedAt = now,
             UpdatedAt = now,
             InboxEnteredAt = inboxEnteredAt,
+            CreatedByAgentIdentityId = draft.CreatedByAgentIdentityId,
+            SuggestedType = suggestedType,
         });
+    }
+
+    // A hint only for a Node without Type (DA-049).
+    private static string? CheckSuggestedType(FieldErrors errors, string? suggestedType, TypeSchema? schema)
+    {
+        var trimmed = SuggestedTypeOf(schema?.Type.Id, suggestedType?.Trim());
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return null;
+        }
+
+        if (trimmed.Length > GraphLimits.NameMaxLength)
+        {
+            errors.Add("suggestedType", $"Must be at most {GraphLimits.NameMaxLength} characters.");
+        }
+
+        return trimmed;
     }
 
     /// <summary>
@@ -168,6 +223,7 @@ public sealed class Node
         DeletedAt = state.DeletedAt;
         InboxEnteredAt = state.InboxEnteredAt;
         HiddenFromAgents = state.HiddenFromAgents;
+        SuggestedType = state.SuggestedType;
         Changed(now);
     }
 
@@ -252,18 +308,23 @@ public sealed record NodeState(
     PropertyValues Properties,
     DateTimeOffset? DeletedAt,
     DateTimeOffset? InboxEnteredAt,
-    bool HiddenFromAgents);
+    bool HiddenFromAgents,
+    string? SuggestedType = null);
 
 /// <summary>What a new Node starts with.</summary>
 /// <param name="Schema">The Node's Type with its definitions; <c>null</c> for a Node without Type.</param>
 /// <param name="Values">Values by Property Definition id; each must be attached to the Type.</param>
+/// <param name="CreatedByAgentIdentityId">The AgentIdentity creating it, when an agent does (DA-133).</param>
+/// <param name="SuggestedType">An agent's hint for a Node without Type (DA-049); ignored with a Type.</param>
 public sealed record NodeDraft(
     Guid Id,
     Guid AccountId,
     string? Title,
     string? Body = null,
     TypeSchema? Schema = null,
-    IReadOnlyDictionary<Guid, JsonElement>? Values = null);
+    IReadOnlyDictionary<Guid, JsonElement>? Values = null,
+    Guid? CreatedByAgentIdentityId = null,
+    string? SuggestedType = null);
 
 /// <summary>What an edit changes; <c>null</c> fields stay as they are.</summary>
 /// <param name="Schema">The Type the Node has after the edit (the current one when the edit does not change it).</param>

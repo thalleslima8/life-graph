@@ -33,6 +33,7 @@ public enum AgentIdentityStatus
 /// <param name="Name">What the person calls it; starts as the client's declared name.</param>
 /// <param name="ClientName">The name the client declared: display only, not verified.</param>
 /// <param name="ClientId">The OAuth client: a pre-registered id or the URL of its metadata document.</param>
+/// <param name="RequiresApproval">"Exigir aprovação para escritas" (DA-044): every write of the agent waits for the person.</param>
 public sealed record AgentIdentityView(
     Guid Id,
     string Name,
@@ -41,4 +42,5 @@ public sealed record AgentIdentityView(
     IReadOnlyList<string> Scopes,
     AgentIdentityStatus Status,
     DateTimeOffset ConnectedAt,
-    DateTimeOffset? LastUsedAt);
+    DateTimeOffset? LastUsedAt,
+    bool RequiresApproval = false);

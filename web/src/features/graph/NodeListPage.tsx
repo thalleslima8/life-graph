@@ -135,6 +135,7 @@ function NodeRow({ node, typeLabel }: { node: NodeSummary; typeLabel: string }) 
         </Link>
         <span className="text-sm text-muted-foreground">{typeLabel}</span>
         {node.inInbox && <span className="rounded border px-1.5 text-xs">Inbox</span>}
+        {node.suggestedType && <span className="text-sm text-muted-foreground">Sugestão do agente: {node.suggestedType}</span>}
       </div>
       {node.inInbox && (
         <div className="flex items-center gap-2">

@@ -1,3 +1,4 @@
+using LifeGraph.Graph.Contracts;
 using LifeGraph.Infrastructure.Errors;
 using Limaj.Framework.Core;
 
@@ -12,16 +13,15 @@ internal sealed class OperationErrors
 
     public void Add(int operationIndex, Error error)
     {
-        var prefix = $"operations[{operationIndex}]";
         if (error.Details is not { Count: > 0 } details)
         {
-            _details[prefix] = [error.Message];
+            _details[OperationKeys.Of(operationIndex)] = [error.Message];
             return;
         }
 
         foreach (var (field, messages) in details)
         {
-            _details[$"{prefix}.{field}"] = messages;
+            _details[OperationKeys.Of(operationIndex, field)] = messages;
         }
     }
 
@@ -33,7 +33,7 @@ internal sealed class OperationErrors
             return error;
         }
 
-        var keyed = details.ToDictionary(pair => $"operations[{operationIndex}].{pair.Key}", pair => pair.Value, StringComparer.Ordinal);
+        var keyed = details.ToDictionary(pair => OperationKeys.Of(operationIndex, pair.Key), pair => pair.Value, StringComparer.Ordinal);
         return new Error(error.Code, error.Message, error.Type, keyed) { RetryAfter = error.RetryAfter };
     }
 

@@ -43,6 +43,7 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         Assert.Contains("nodes", tables);
         Assert.Contains("jobs", tables);
         Assert.Contains("agent_reads", tables);
+        Assert.Contains("change_proposals", tables);
         foreach (var table in tables.Except(RemovedWithTheAccount))
         {
             Assert.True(0 == await CountAsync(table, purged), $"{table} still has rows of the purged Account.");
@@ -52,6 +53,7 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         Assert.True(await CountAsync("jobs", other) > 0);
         Assert.True(await CountAsync("agent_identities", other) > 0);
         Assert.True(await CountAsync("agent_reads", other) > 0);
+        Assert.True(await CountAsync("change_proposals", other) > 0);
     }
 
     // DA-119: the grants are removed in the Account's transaction, so a later participant's failure brings them back.
@@ -81,9 +83,12 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         var tokens = await AgentAuthorization.ConnectAsync(_factory, browser);
 
         // A read leaves an audit row that points at the connection (DB-004), whatever the participants' order.
+        // So does an agent's Node (DA-133) and its proposal (E5).
         await using (var agent = await AgentMcp.ConnectAsync(_factory, tokens.AccessToken))
         {
             await AgentMcp.CallAsync(agent, GraphReadTools.ListTypesName);
+            await AgentMcp.CallAsync(agent, GraphWriteTools.CreateNodeName, new { title = "By the agent" });
+            await AgentMcp.CallAsync(agent, GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Proposed" } } });
         }
 
         var graph = new GraphWriteHarness(database, _factory);

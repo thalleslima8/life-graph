@@ -18,8 +18,11 @@ namespace LifeGraph.Agents.Mcp;
 /// <c>WWW-Authenticate: Bearer error="insufficient_scope", scope="lifegraph.write"</c>, so the
 /// client can ask the person for more. Read-only tools need <c>lifegraph.read</c>, which every
 /// grant has. The check runs before the SDK sees the request, on the JSON-RPC message itself.
-/// The read-only calls then take from the agent's read budget (<see cref="AgentReadBudget"/>):
-/// over it, the agent gets 429 with <c>Retry-After</c>, and the tools do not run.
+/// The read-only calls then take from the agent's read budget (<see cref="AgentReadBudget"/>),
+/// the others from its write budget (<see cref="AgentWriteBudget"/>, DA-051): over either, the
+/// agent gets 429 with <c>Retry-After</c>, and the tools do not run. The scope depends only on
+/// the tool, so the check runs before any target is read, and its 403 is the same whatever the
+/// target (DA-131).
 /// </summary>
 internal static class ToolScopes
 {
@@ -49,9 +52,9 @@ internal static class ToolScopes
                 }
 
                 var reads = toolNames.Count(toolName => requiredScopes.GetValueOrDefault(toolName) == AgentAccess.ReadScope);
-                if (reads > 0
-                    && PrincipalClaims.Read(httpContext.User) is { AgentIdentityId: { } agentIdentityId }
-                    && httpContext.RequestServices.GetRequiredService<AgentReadBudget>().Take(agentIdentityId, reads) is { } retryAfter)
+                var writes = toolNames.Count(toolName => requiredScopes.GetValueOrDefault(toolName) == AgentAccess.WriteScope);
+                if (PrincipalClaims.Read(httpContext.User) is { AgentIdentityId: { } agentIdentityId }
+                    && Budgeted(httpContext.RequestServices, agentIdentityId, reads, writes) is { } retryAfter)
                 {
                     await ApiRateLimiting.RefuseAsync(httpContext, retryAfter);
                     return;
@@ -61,6 +64,17 @@ internal static class ToolScopes
             };
         });
         return builder;
+    }
+
+    // The read budget (E4) and the write budget (DA-051), each taken only by its own calls.
+    private static TimeSpan? Budgeted(IServiceProvider services, Guid agentIdentityId, int reads, int writes)
+    {
+        if (reads > 0 && services.GetRequiredService<AgentReadBudget>().Take(agentIdentityId, reads) is { } readRetry)
+        {
+            return readRetry;
+        }
+
+        return writes > 0 ? services.GetRequiredService<AgentWriteBudget>().Take(agentIdentityId, writes) : null;
     }
 
     /// <summary>The scope each registered tool needs, by tool name.</summary>

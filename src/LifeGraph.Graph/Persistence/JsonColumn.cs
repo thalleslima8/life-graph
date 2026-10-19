@@ -20,4 +20,16 @@ internal static class JsonColumn
                     (left, right) => JsonSerializer.Serialize(left, JsonSerializerOptions.Web) == JsonSerializer.Serialize(right, JsonSerializerOptions.Web),
                     value => JsonSerializer.Serialize(value, JsonSerializerOptions.Web).GetHashCode(StringComparison.Ordinal),
                     value => value.ToList()));
+
+    /// <summary>A map by name, as a JSON object; the names are kept as they are.</summary>
+    public static PropertyBuilder<Dictionary<string, TValue>> StoredAsJsonMap<TValue>(this PropertyBuilder<Dictionary<string, TValue>> property) =>
+        property
+            .HasColumnType(ColumnType)
+            .HasConversion(
+                value => JsonSerializer.Serialize(value, JsonSerializerOptions.Web),
+                json => JsonSerializer.Deserialize<Dictionary<string, TValue>>(json, JsonSerializerOptions.Web) ?? new Dictionary<string, TValue>(),
+                new ValueComparer<Dictionary<string, TValue>>(
+                    (left, right) => JsonSerializer.Serialize(left, JsonSerializerOptions.Web) == JsonSerializer.Serialize(right, JsonSerializerOptions.Web),
+                    value => JsonSerializer.Serialize(value, JsonSerializerOptions.Web).GetHashCode(StringComparison.Ordinal),
+                    value => new Dictionary<string, TValue>(value, StringComparer.Ordinal)));
 }

@@ -20,7 +20,8 @@ internal static class ChangeSnapshots
         node.Version,
         node.DeletedAt,
         node.InboxEnteredAt,
-        node.HiddenFromAgents));
+        node.HiddenFromAgents,
+        node.SuggestedType));
 
     public static string Of(Relation relation) => Serialize(new RelationSnapshot(
         relation.SourceNodeId,
@@ -41,6 +42,9 @@ internal static class ChangeSnapshots
         definition.Name,
         definition.ValueKind,
         definition.Options));
+
+    /// <summary>The name a member of a snapshot record has in the recorded JSON.</summary>
+    public static string FieldNameOf(string memberName) => Options.PropertyNamingPolicy!.ConvertName(memberName);
 
     public static NodeSnapshot ReadNode(string json) => Deserialize<NodeSnapshot>(json);
 
@@ -87,9 +91,10 @@ internal sealed record NodeSnapshot(
     int Version,
     DateTimeOffset? DeletedAt,
     DateTimeOffset? InboxEnteredAt,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HiddenFromAgents = false)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HiddenFromAgents = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SuggestedType = null)
 {
-    public NodeState ToState() => new(Title, Body, TypeId, PropertyValues.From(Properties), DeletedAt, InboxEnteredAt, HiddenFromAgents);
+    public NodeState ToState() => new(Title, Body, TypeId, PropertyValues.From(Properties), DeletedAt, InboxEnteredAt, HiddenFromAgents, SuggestedType);
 }
 
 internal sealed record RelationSnapshot(

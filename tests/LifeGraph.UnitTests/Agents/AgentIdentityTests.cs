@@ -24,6 +24,36 @@ public sealed class AgentIdentityTests
         Assert.Null(identity.LastUsedAt);
     }
 
+    // DA-044: "exigir aprovação para escritas" is off unless chosen, and a new consent sets it
+    // only when the person chose on the consent page.
+    [Fact]
+    public void The_approval_toggle_starts_off_and_follows_each_choice()
+    {
+        var identity = Connected("claude-ai", "Claude", Guid.CreateVersion7());
+        Assert.False(identity.RequiresApprovalForWrites);
+
+        Assert.True(identity.RequireApprovalForWrites(true, Now));
+        Assert.False(identity.RequireApprovalForWrites(true, Now));
+        identity.Reconnect(GrantOf(identity, "Claude", [AgentAccess.ReadScope, AgentAccess.WriteScope], Guid.CreateVersion7()) with { RequiresApprovalForWrites = false }, Now);
+
+        Assert.False(identity.RequiresApprovalForWrites);
+    }
+
+    // A reconnect never turns the protection off unseen: without a choice on the page (write
+    // not offered), the toggle stays as it was.
+    [Fact]
+    public void A_reconnect_without_a_choice_keeps_the_approval_toggle()
+    {
+        var identity = Connected("claude-ai", "Claude", Guid.CreateVersion7());
+        identity.RequireApprovalForWrites(true, Now);
+        identity.Revoke(Now);
+
+        identity.Reconnect(GrantOf(identity, "Claude", [AgentAccess.ReadScope], Guid.CreateVersion7()), Now.AddHours(1));
+
+        Assert.True(identity.IsActive);
+        Assert.True(identity.RequiresApprovalForWrites);
+    }
+
     [Theory]
     [InlineData(null, "https://claude.ai/oauth/client.json", "claude.ai")]
     [InlineData("  ", "claude-ai", "claude-ai")]
@@ -44,7 +74,7 @@ public sealed class AgentIdentityTests
         identity.Rename("Meu Claude", Now);
         identity.Revoke(Now);
 
-        var replaced = identity.Reconnect("Claude 2", [AgentAccess.ReadScope], second, Now.AddHours(1));
+        var replaced = identity.Reconnect(GrantOf(identity, "Claude 2", [AgentAccess.ReadScope], second), Now.AddHours(1));
 
         Assert.Null(replaced);
         Assert.True(identity.IsActive);
@@ -60,7 +90,18 @@ public sealed class AgentIdentityTests
         var first = Guid.CreateVersion7();
         var identity = Connected("claude-ai", "Claude", first);
 
-        Assert.Equal(first, identity.Reconnect("Claude", [AgentAccess.ReadScope], Guid.CreateVersion7(), Now));
+        Assert.Equal(first, identity.Reconnect(GrantOf(identity, "Claude", [AgentAccess.ReadScope], Guid.CreateVersion7()), Now));
+    }
+
+    // The grant reconnects only the connection of its own client in its own Account.
+    [Fact]
+    public void A_grant_of_another_client_never_reconnects_the_connection()
+    {
+        var identity = Connected("claude-ai", "Claude", Guid.CreateVersion7());
+        var ofAnotherClient = new ClientGrant(AccountId, "other-agent", "Other", [AgentAccess.ReadScope], Guid.CreateVersion7());
+
+        Assert.Throws<ArgumentException>(() => identity.Reconnect(ofAnotherClient, Now));
+        Assert.Throws<ArgumentException>(() => identity.Reconnect(ofAnotherClient with { ClientId = "claude-ai", AccountId = Guid.CreateVersion7() }, Now));
     }
 
     [Fact]
@@ -118,5 +159,11 @@ public sealed class AgentIdentityTests
     }
 
     private static AgentIdentity Connected(string clientId, string clientName, Guid authorizationId) =>
-        AgentIdentity.Connect(Guid.CreateVersion7(), AccountId, clientId, clientName, [AgentAccess.ReadScope, AgentAccess.WriteScope], authorizationId, Now);
+        AgentIdentity.Connect(
+            Guid.CreateVersion7(),
+            new ClientGrant(AccountId, clientId, clientName, [AgentAccess.ReadScope, AgentAccess.WriteScope], authorizationId),
+            Now);
+
+    private static ClientGrant GrantOf(AgentIdentity identity, string clientName, IReadOnlyCollection<string> scopes, Guid authorizationId) =>
+        new(identity.AccountId, identity.ClientId, clientName, scopes, authorizationId);
 }

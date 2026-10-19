@@ -79,16 +79,30 @@ internal sealed class ChangeSetUndo
             return Result<GraphWriteReceipt>.Fail(GraphErrors.ChangeSetAlreadyReverted.ToError("The change was already undone."));
         }
 
-        // A purged cascade only means that Relation cannot come back; any other purged entry
-        // leaves nothing to compare or put back (DA-115).
-        var purged = undone.Entries.Where(entry => entry.IsPurged && !entry.IsCascade).ToList();
-        if (purged.Count > 0)
+        if (PurgedReason(undone) is { } reason)
         {
-            return Result<GraphWriteReceipt>.Fail(purged.Any(BringsBackDeletedContent) ? UndoWindowClosed() : ContentPurged());
+            return Result<GraphWriteReceipt>.Fail(reason == UndoUnavailableReason.WindowClosed ? UndoWindowClosed() : ContentPurged());
         }
 
         var undo = await LoadAsync(db, undone, now, cancellationToken);
         return undo.Run(provenance);
+    }
+
+    /// <summary>
+    /// Why Purge left nothing to undo, before anything is loaded; <c>null</c> when nothing it
+    /// needs was purged. A purged cascade only means that Relation cannot come back; any other
+    /// purged entry leaves nothing to compare or put back (DA-115). The GraphChangeSet screen
+    /// shows the same answer before the click (DA-135).
+    /// </summary>
+    public static UndoUnavailableReason? PurgedReason(GraphChangeSet changeSet)
+    {
+        var purged = changeSet.Entries.Where(entry => entry.IsPurged && !entry.IsCascade).ToList();
+        if (purged.Count == 0)
+        {
+            return null;
+        }
+
+        return purged.Any(BringsBackDeletedContent) ? UndoUnavailableReason.WindowClosed : UndoUnavailableReason.ContentPurged;
     }
 
     private static Error UndoWindowClosed() => GraphErrors.UndoWindowClosed.ToError(

@@ -72,7 +72,7 @@ public sealed class GraphWriterTests(PostgresDatabase database) : IAsyncLifetime
     [InlineData(WriteChannel.Import, "import")]
     public async Task An_agent_write_names_its_agent_identity_and_its_relations_carry_the_origin(WriteChannel channel, string origin)
     {
-        var agentIdentity = Guid.CreateVersion7();
+        var agentIdentity = await _graph.CreateAgentIdentityAsync(_account);
         var first = Guid.CreateVersion7();
         var second = Guid.CreateVersion7();
         var relation = Guid.CreateVersion7();

@@ -65,6 +65,43 @@ public sealed class ConnectedAgentsApiTests(PostgresDatabase database) : IAsyncL
         Assert.Equal(AgentAuthorization.ClientName, body.RootElement.GetProperty("clientName").GetString());
     }
 
+    // DA-044: "exigir aprovação para escritas" starts off and is turned on and off in Agentes conectados.
+    [Fact]
+    public async Task The_approval_toggle_starts_off_and_changes_without_touching_the_name()
+    {
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, Email);
+        await AgentAuthorization.ConnectAsync(_factory, browser);
+        var id = await SingleIdAsync(browser);
+
+        var turnedOn = await browser.SendAsync(HttpMethod.Patch, $"/api/agent-identities/{id}", new { requiresApproval = true });
+
+        Assert.Equal(HttpStatusCode.OK, turnedOn.StatusCode);
+        using var body = JsonDocument.Parse(await turnedOn.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.True(body.RootElement.GetProperty("requiresApproval").GetBoolean());
+        Assert.Equal(AgentAuthorization.ClientName, body.RootElement.GetProperty("name").GetString());
+        using var list = JsonDocument.Parse(await (await browser.GetAsync("/api/agent-identities")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.True(list.RootElement.GetProperty("data")[0].GetProperty("requiresApproval").GetBoolean());
+    }
+
+    // The name and the toggle are one change: an invalid name saves neither, a valid one both.
+    [Fact]
+    public async Task Renaming_and_turning_the_toggle_on_is_one_change()
+    {
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, Email);
+        await AgentAuthorization.ConnectAsync(_factory, browser);
+        var id = await SingleIdAsync(browser);
+
+        var refused = await browser.SendAsync(HttpMethod.Patch, $"/api/agent-identities/{id}", new { name = " ", requiresApproval = true });
+        using var unchanged = JsonDocument.Parse(await (await browser.GetAsync("/api/agent-identities")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var both = await browser.SendAsync(HttpMethod.Patch, $"/api/agent-identities/{id}", new { name = "Pesquisa", requiresApproval = true });
+
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.False(unchanged.RootElement.GetProperty("data")[0].GetProperty("requiresApproval").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, both.StatusCode);
+        using var body = JsonDocument.Parse(await both.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(("Pesquisa", true), (body.RootElement.GetProperty("name").GetString(), body.RootElement.GetProperty("requiresApproval").GetBoolean()));
+    }
+
     [Fact]
     public async Task An_empty_name_is_a_validation_error()
     {

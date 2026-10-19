@@ -21,6 +21,7 @@ function anAgent(overrides: Partial<AgentIdentityView> = {}): AgentIdentityView 
     status: "active",
     connectedAt: "2026-10-01T12:00:00Z",
     lastUsedAt: "2026-10-02T12:00:00Z",
+    requiresApproval: false,
     ...overrides,
   };
 }
@@ -208,5 +209,112 @@ describe("connected agents", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("já não está conectada");
     await waitFor(() => expect(state.listReads).toBeGreaterThan(readsBefore));
     expect(state.revoked).toEqual([CLAUDE_ID]);
+  });
+
+  // FE-032: a row found gone leaves the list on the next read; the focus goes to the next row, not to the page body.
+  it("moves the focus to the next connection when revoking finds the connection gone", async () => {
+    const state = agentsApi([[anAgent(), anAgent({ id: CHATGPT_ID, name: "ChatGPT" })]], {
+      revoke: () => {
+        state.pages = [[anAgent({ id: CHATGPT_ID, name: "ChatGPT" })]];
+        return problem(404, "accounts.agent_identity_not_found");
+      },
+    });
+    renderRoute("/agentes");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Revogar Claude" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar revogação" }));
+
+    await waitFor(() => expect(screen.queryByRole("listitem", { name: "Claude" })).not.toBeInTheDocument());
+    expect(screen.getByRole("status")).toHaveTextContent("Esta conexão já não está conectada. A lista foi atualizada.");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Renomear ChatGPT" })).toHaveFocus());
+  });
+
+  it("moves the focus to the next connection when renaming finds the connection gone", async () => {
+    const state = agentsApi([[anAgent(), anAgent({ id: CHATGPT_ID, name: "ChatGPT" })]], {
+      rename: () => {
+        state.pages = [[anAgent({ id: CHATGPT_ID, name: "ChatGPT" })]];
+        return problem(404, "accounts.agent_identity_not_found");
+      },
+    });
+    renderRoute("/agentes");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Renomear Claude" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(screen.queryByRole("listitem", { name: "Claude" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Renomear ChatGPT" })).toHaveFocus());
+  });
+
+  // DA-044, DA-135: the toggle is saved as soon as it changes.
+  it("turns on approval for the agent's writes", async () => {
+    const user = userEvent.setup();
+    const state = agentsApi([[anAgent()]], { rename: () => HttpResponse.json(anAgent({ requiresApproval: true })) });
+    renderRoute("/agentes");
+
+    const toggle = await screen.findByRole("checkbox", { name: "Exigir minha aprovação para cada escrita de Claude" });
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+
+    await waitFor(() => expect(state.renamed).toEqual([{ id: CLAUDE_ID, body: { name: null, requiresApproval: true } }]));
+  });
+
+  it("offers no approval toggle to an agent that can only read", async () => {
+    agentsApi([[anAgent({ scopes: ["lifegraph.read"] })]]);
+    renderRoute("/agentes");
+
+    await screen.findByRole("listitem", { name: "Claude" });
+    expect(screen.queryByRole("checkbox", { name: /Exigir minha aprovação/ })).not.toBeInTheDocument();
+  });
+
+  // GEN-070: the toggle of a connection revoked elsewhere says so, and the list is read again.
+  it("says a connection revoked elsewhere is no longer connected when its toggle changes", async () => {
+    const user = userEvent.setup();
+    const state = agentsApi([[anAgent()]], {
+      rename: () => {
+        state.pages = [[]];
+        return problem(404, "accounts.agent_identity_not_found");
+      },
+    });
+    renderRoute("/agentes");
+
+    const toggle = await screen.findByRole("checkbox", { name: "Exigir minha aprovação para cada escrita de Claude" });
+    const readsBefore = state.listReads;
+    await user.click(toggle);
+
+    expect(await screen.findByText("Nenhum agente conectado.")).toBeInTheDocument();
+    expect(state.listReads).toBeGreaterThan(readsBefore);
+    expect(screen.getByRole("status")).toHaveTextContent("Esta conexão já não está conectada. A lista foi atualizada.");
+    // FE-032: the row went away with the focus; it moves to the title, not to the page body.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Agentes conectados" })).toHaveFocus());
+  });
+
+  it("moves the focus to the next connection when its toggle finds the connection gone", async () => {
+    const user = userEvent.setup();
+    const state = agentsApi([[anAgent(), anAgent({ id: CHATGPT_ID, name: "ChatGPT" })]], {
+      rename: () => {
+        state.pages = [[anAgent({ id: CHATGPT_ID, name: "ChatGPT" })]];
+        return problem(404, "accounts.agent_identity_not_found");
+      },
+    });
+    renderRoute("/agentes");
+
+    await user.click(await screen.findByRole("checkbox", { name: "Exigir minha aprovação para cada escrita de Claude" }));
+
+    await waitFor(() => expect(screen.queryByRole("listitem", { name: "Claude" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Renomear ChatGPT" })).toHaveFocus());
+  });
+
+  it("says when the toggle could not be saved and keeps it as it was", async () => {
+    const user = userEvent.setup();
+    agentsApi([[anAgent()]], { rename: () => problem(500, "unexpected_error") });
+    renderRoute("/agentes");
+
+    const toggle = await screen.findByRole("checkbox", { name: "Exigir minha aprovação para cada escrita de Claude" });
+    await user.click(toggle);
+
+    // A failure that is not a refusal is tried once more before it is shown.
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível concluir agora. Tente novamente em instantes.");
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toBeEnabled();
   });
 });

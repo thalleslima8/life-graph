@@ -11,6 +11,7 @@ using LifeGraph.Accounts.Provisioning;
 using LifeGraph.Accounts.RateLimiting;
 using LifeGraph.Http;
 using LifeGraph.Infrastructure.Accounts;
+using LifeGraph.Infrastructure.Agents;
 using LifeGraph.Infrastructure.Errors;
 using LifeGraph.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Builder;
@@ -50,6 +51,7 @@ public static class AccountsModule
         services.AddScoped<AgentConnections>();
         services.AddScoped<IAgentIdentities>(provider => provider.GetRequiredService<AgentConnections>());
         services.AddScoped<IAccountPurgeParticipant, AgentIdentitiesAccountPurge>();
+        services.AddScoped<IAgentIdentityDirectory, AgentIdentityDirectory>();
 
         // The issuer's sign-in and consent pages are server-rendered Razor components.
         services.AddRazorComponents();

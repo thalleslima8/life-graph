@@ -56,7 +56,7 @@ public sealed class AuthorizationRulesTests
             new Dictionary<string, string>
             {
                 [AgentAccess.ReadScope] = "Ler o seu grafo: buscar e consultar Nodes, Relations e o contexto que você permitir.",
-                [AgentAccess.WriteScope] = "Criar e alterar Nodes e Relations no seu grafo.",
+                [AgentAccess.WriteScope] = "Criar e alterar Nodes e Relations no seu grafo. Pode propor exclusões, que só você aprova.",
             },
             AuthorizationEndpoints.ScopeDescriptions);
 

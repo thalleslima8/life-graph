@@ -92,9 +92,10 @@ export type UndoResult = {
   relationsLeftDeleted: { id: string; label: string | null }[];
 };
 
+/** Undoes a GraphChangeSet; only its id and entries are needed, so the detail screen can call it too (DA-135). */
 export function useUndoChangeSet() {
   const queryClient = useQueryClient();
-  return useMutation<UndoResult, ApiError, ChangeSetItem>({
+  return useMutation<UndoResult, ApiError, Pick<ChangeSetItem, "id" | "entries">>({
     mutationFn: async (changeSet) => {
       const receipt = unwrap(await api.POST("/api/changesets/{changeSetId}/undo", { params: { path: { changeSetId: changeSet.id } } }));
       const relationsLeftDeleted = (receipt.relationsLeftDeleted ?? []).map((id) => ({

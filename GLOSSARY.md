@@ -86,9 +86,20 @@ _Avoid_: autoria, log, auditoria
 
 **GraphChangeSet**:
 Um grupo de alterações no grafo feitas por um ator em uma interação. É a
-unidade que se inspeciona, aprova e desfaz. Estados: Proposed, Applied,
-Rejected, Reverted, Expired.
+unidade que se inspeciona e desfaz. Só existe aplicado: o que um agente propõe
+e ainda espera decisão é uma ChangeProposal. Estados: Applied, Reverted.
 _Avoid_: lote, transação, commit
+
+**ChangeProposal**:
+As operações que um agente pediu e que ainda não mudaram o grafo, à espera de
+quem decide: a pessoa ou, quando permitido, o próprio agente. Aplicada, vira um
+GraphChangeSet. Estados: Proposed, Applied, Rejected, Expired, Withdrawn.
+_Avoid_: GraphChangeSet proposto, rascunho, sugestão pendente
+
+**Withdrawn**:
+Estado de uma ChangeProposal que saiu da fila sem decisão da pessoa: o agente
+a retirou, a conexão dele foi revogada ou uma Purge removeu o que ela nomeava.
+_Avoid_: cancelada, descartada, Rejected (reservado para a recusa da pessoa)
 
 **Undo**:
 A reversão de um GraphChangeSet aplicado. Ela é registrada como um novo

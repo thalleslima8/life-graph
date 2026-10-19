@@ -23,6 +23,17 @@ public interface IGraphWriter
         Provenance provenance,
         Guid changeSetId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Restores one deleted Node (with the Relations that went with it) or Relation, with a
+    /// compensating GraphChangeSet of its own (DA-115). Only the entity and its cascaded
+    /// Relations are checked for conflicts. A live entity changes nothing.
+    /// </summary>
+    Task<Result<GraphWriteReceipt>> RestoreAsync(
+        Provenance provenance,
+        GraphEntityKind kind,
+        Guid entityId,
+        CancellationToken cancellationToken);
 }
 
 /// <param name="ChangeSetId">The GraphChangeSet of the write; <c>null</c> when the operations changed nothing.</param>

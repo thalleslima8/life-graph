@@ -300,6 +300,36 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
         return source as string;
     }
 
+    // DA-048: a proposal that names a purged Node loses its operations, as the history does.
+    [Fact]
+    public async Task Purge_empties_the_proposals_that_name_the_node()
+    {
+        var node = Guid.CreateVersion7();
+        await _graph.WrittenAsync(_account, new CreateNode(node, "Secret plan"));
+        var agent = await _graph.CreateAgentIdentityAsync(_account);
+        var proposal = Guid.CreateVersion7();
+        await database.ExecuteAsMigratorAsync(
+            """
+            INSERT INTO change_proposals (id, account_id, agent_identity_id, status, operations, operation_count, content_hash, requires_user,
+                source, created_at, updated_at, expires_at, decided_at, reasons, rejected_operations, target_node_ids, created_nodes)
+            VALUES (@id, @account, @agent, 'rejected', jsonb_build_array(jsonb_build_object('op', 'update_node', 'nodeId', @node, 'title', 'Secret')), 1,
+                'hash', false, 'chat', now(), now(), now() + interval '7 days', now(), ARRAY['suggested'], ARRAY[]::integer[], ARRAY[@node]::uuid[], '{}')
+            """,
+            TestContext.Current.CancellationToken,
+            new NpgsqlParameter("id", proposal),
+            new NpgsqlParameter("account", _account),
+            new NpgsqlParameter("agent", agent),
+            new NpgsqlParameter("node", node));
+        await _graph.WrittenAsync(_account, new DeleteNode(node, 1));
+
+        await _graph.MakePurgesDueAsync(node);
+        await _graph.RunDueJobsAsync();
+
+        Assert.Equal("[]|true|", await _graph.ScalarAsync<string>(
+            "SELECT operations::text || '|' || (redacted_at IS NOT NULL) || '|' || coalesce(source, '') FROM change_proposals WHERE id = @id",
+            new NpgsqlParameter("id", proposal)));
+    }
+
     private async Task<List<string>> TextsAsync(string sql)
     {
         await using var connection = new NpgsqlConnection(database.MigratorConnectionString);

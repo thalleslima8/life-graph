@@ -51,6 +51,15 @@ describe("recent changes", () => {
     expect(items[1]).toHaveTextContent("Apagou Relation «cita» (em cascata)");
   });
 
+  // v2 §66: each ChangeSet opens the GraphChangeSet screen.
+  it("links each ChangeSet to its detail screen", async () => {
+    changesApi([aChangeSet()], () => HttpResponse.json({}));
+    renderRoute("/changes");
+
+    const item = within(await screen.findByRole("list", { name: "Alterações" })).getByRole("listitem", { name: /2026/ });
+    expect(within(item).getByRole("link", { name: "Ver detalhes" })).toHaveAttribute("href", `/changesets/${CHANGESET_ID}`);
+  });
+
   it("undoes a ChangeSet and names the Relations that did not come back", async () => {
     const state = changesApi([deletion], () => {
       state.items = [{ ...deletion, status: "reverted", revertedByChangeSetId: "01920000-0000-7000-8000-0000000000c9" }];

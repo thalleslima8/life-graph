@@ -11,7 +11,8 @@ namespace LifeGraph.Graph.Application;
 /// what the principal sees inside it. The person sees every live Node. An AgentIdentity never
 /// sees a Node Oculto para agentes, by its own flag or its Type's (DA-035): the Node does not
 /// exist for it, so a Relation to it is not there either, and a traversal stops at it, as at a
-/// wall. Any other principal, or none, sees nothing (a ShareVisitor arrives with E10).
+/// wall. Any other principal, or none, sees nothing (a ShareVisitor arrives with E10). The
+/// GraphChangeSets and the ChangeProposals are read through it too.
 /// </summary>
 internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal currentPrincipal)
 {
@@ -39,17 +40,7 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
     };
 
     /// <summary>The live Nodes the reader sees.</summary>
-    public IQueryable<Node> Nodes()
-    {
-        var live = db.Set<Node>().AsNoTracking().Where(node => node.DeletedAt == null);
-        return Reader switch
-        {
-            GraphReader.Human => live,
-            GraphReader.AgentIdentity => live.Where(node => !node.HiddenFromAgents
-                && !db.Set<NodeType>().Any(type => type.Id == node.TypeId && type.HiddenFromAgents)),
-            _ => live.Where(_ => false),
-        };
-    }
+    public IQueryable<Node> Nodes() => SeenByReader(db.Set<Node>().AsNoTracking().Where(node => node.DeletedAt == null));
 
     /// <summary>The live Relations whose two Nodes the reader sees.</summary>
     public IQueryable<Relation> Relations()
@@ -58,6 +49,22 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
         return db.Set<Relation>().AsNoTracking().Where(relation => relation.DeletedAt == null
             && visibleNodes.Any(node => node.Id == relation.SourceNodeId)
             && visibleNodes.Any(node => node.Id == relation.TargetNodeId));
+    }
+
+    /// <summary>
+    /// The Nodes the reader sees, tombstones included: for an answer that repeats what a
+    /// GraphChangeSet recorded, where a delete since keeps the entry and hiding from agents
+    /// takes it out (DA-035). A purged Node is gone from it too.
+    /// </summary>
+    public IQueryable<Node> NodesWithTombstones() => SeenByReader(db.Set<Node>().AsNoTracking());
+
+    /// <summary>The Relations, tombstones included, whose two Nodes the reader sees in <see cref="NodesWithTombstones"/>.</summary>
+    public IQueryable<Relation> RelationsWithTombstones()
+    {
+        var seenNodes = NodesWithTombstones();
+        return db.Set<Relation>().AsNoTracking().Where(relation =>
+            seenNodes.Any(node => node.Id == relation.SourceNodeId)
+            && seenNodes.Any(node => node.Id == relation.TargetNodeId));
     }
 
     /// <summary>The Types the reader sees: an agent never sees one that hides its Nodes (DA-039).</summary>
@@ -78,6 +85,36 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
         var changeSets = db.Set<GraphChangeSet>().AsNoTracking();
         return Reader == GraphReader.Human ? changeSets : changeSets.Where(_ => false);
     }
+
+    /// <summary>The entries of the GraphChangeSets the reader sees (<see cref="ChangeSets"/>).</summary>
+    public IQueryable<ChangeEntry> ChangeEntries() => ChangeSets().SelectMany(changeSet => changeSet.Entries);
+
+    /// <summary>
+    /// The ChangeProposals the reader sees: the person sees every one of the Account; an
+    /// AgentIdentity only its own, so another agent's is not found (DA-043 item 1); any other
+    /// principal, or none, sees none. A use case that decides on one asks for it tracked
+    /// (<c>AsTracking</c>).
+    /// </summary>
+    public IQueryable<ChangeProposal> Proposals()
+    {
+        var proposals = db.Set<ChangeProposal>().AsNoTracking();
+        return (Reader, currentPrincipal.Authenticated?.AgentIdentityId) switch
+        {
+            (GraphReader.Human, _) => proposals,
+            (GraphReader.AgentIdentity, { } agentIdentityId) => proposals.Where(proposal => proposal.AgentIdentityId == agentIdentityId),
+            _ => proposals.Where(_ => false),
+        };
+    }
+
+    // What the reader sees among the Nodes: the person all, an agent none Oculto para agentes,
+    // by its own flag or its Type's (DA-035), anyone else nothing.
+    private IQueryable<Node> SeenByReader(IQueryable<Node> nodes) => Reader switch
+    {
+        GraphReader.Human => nodes,
+        GraphReader.AgentIdentity => nodes.Where(node => !node.HiddenFromAgents
+            && !db.Set<NodeType>().Any(type => type.Id == node.TypeId && type.HiddenFromAgents)),
+        _ => nodes.Where(_ => false),
+    };
 }
 
 /// <summary>Who a read is for; the central read filter decides what each one sees.</summary>

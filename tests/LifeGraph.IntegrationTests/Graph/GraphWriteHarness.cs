@@ -1,7 +1,10 @@
+using System.Security.Claims;
 using LifeGraph.Graph.Contracts;
+using LifeGraph.Infrastructure.Identity;
 using LifeGraph.Infrastructure.Jobs;
 using LifeGraph.IntegrationTests.Infrastructure;
 using Limaj.Framework.Core;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
@@ -22,6 +25,56 @@ public sealed class GraphWriteHarness(PostgresDatabase database, LifeGraphApiFac
             new NpgsqlParameter("id", accountId));
         return accountId;
     }
+
+    /// <summary>
+    /// An AgentIdentity row of the Account, as a consent would leave it: what an agent creates
+    /// points at its connection (DA-133), so a write in its name needs one.
+    /// </summary>
+    public async Task<Guid> CreateAgentIdentityAsync(Guid accountId, bool requiresApproval = false)
+    {
+        var agentIdentityId = Guid.CreateVersion7();
+        await database.ExecuteAsMigratorAsync(
+            """
+            INSERT INTO agent_identities (id, account_id, client_id, client_name, name, created_at, updated_at, scopes, requires_approval_for_writes)
+            VALUES (@id, @account_id, @client_id, 'Test agent', 'Test agent', now(), now(), ARRAY['lifegraph.read', 'lifegraph.write'], @requires_approval)
+            """,
+            TestContext.Current.CancellationToken,
+            new NpgsqlParameter("id", agentIdentityId),
+            new NpgsqlParameter("account_id", accountId),
+            new NpgsqlParameter("client_id", $"https://agent-{agentIdentityId:N}.example.test/client.json"),
+            new NpgsqlParameter("requires_approval", requiresApproval));
+        return agentIdentityId;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> in a scope whose current principal is <paramref name="principal"/>,
+    /// as the authentication would leave it, without HTTP. The principal stays inside this call.
+    /// </summary>
+    public async Task<T> AsAsync<T>(AuthenticatedPrincipal principal, Func<IServiceProvider, Task<T>> work)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        List<Claim> claims =
+        [
+            new(LifeGraphClaimTypes.AccountId, principal.AccountId.ToString()),
+            new(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.ToClaimValue(principal.Type)),
+        ];
+        if (principal.AgentIdentityId is { } agentIdentityId)
+        {
+            claims.Add(new(LifeGraphClaimTypes.AgentIdentityId, agentIdentityId.ToString()));
+        }
+
+        scope.ServiceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "test")),
+        };
+        return await work(scope.ServiceProvider);
+    }
+
+    /// <summary>Runs <paramref name="write"/> as the AgentIdentity, through the agent write use cases.</summary>
+    public Task<T> AsAgentAsync<T>(Guid accountId, Guid agentIdentityId, Func<IAgentGraphWriter, Task<T>> write) =>
+        AsAsync(
+            new AuthenticatedPrincipal(accountId, PrincipalType.AgentIdentity, agentIdentityId),
+            services => write(services.GetRequiredService<IAgentGraphWriter>()));
 
     public Task<Result<GraphWriteReceipt>> WriteAsync(Guid accountId, params GraphOperation[] operations) =>
         WriteAsync(accountId, HumanInUi, operations);
@@ -44,6 +97,15 @@ public sealed class GraphWriteHarness(PostgresDatabase database, LifeGraphApiFac
         var writer = scope.ServiceProvider.GetRequiredService<IGraphWriter>();
         return await writer.UndoAsync(provenance, changeSetId, TestContext.Current.CancellationToken);
     }
+
+    /// <summary>Restores as the person, the only one the history is shown to (the central read filter).</summary>
+    public Task<Result<GraphWriteReceipt>> RestoreAsync(Guid accountId, GraphEntityKind kind, Guid entityId) =>
+        RestoreAsync(new AuthenticatedPrincipal(accountId, PrincipalType.Human), HumanInUi, kind, entityId);
+
+    public Task<Result<GraphWriteReceipt>> RestoreAsync(AuthenticatedPrincipal principal, Provenance provenance, GraphEntityKind kind, Guid entityId) =>
+        AsAsync(
+            principal,
+            services => services.GetRequiredService<IGraphWriter>().RestoreAsync(provenance, kind, entityId, TestContext.Current.CancellationToken));
 
     /// <summary>Writes and returns the GraphChangeSet, failing the test when the write is refused.</summary>
     public async Task<Guid> WrittenAsync(Guid accountId, params GraphOperation[] operations)

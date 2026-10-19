@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import { entryDescription, formatDateTime, LOAD_ERROR_MESSAGE, provenanceOf, undoRefusalMessage, writeErrorMessage } from "./graphMessages";
 import { toUndoRefusal, undoChain, useRecentChanges, useUndoChangeSet, type ChangeSetItem } from "./recentChanges";
@@ -101,6 +102,12 @@ function ChangeSetCard({ changeSet, loaded }: { changeSet: ChangeSetItem; loaded
           </li>
         ))}
       </ul>
+
+      <p className="text-sm">
+        <Link to={`/changesets/${changeSet.id}`} className="underline underline-offset-4" aria-describedby={`${titleId}-when`}>
+          Ver detalhes
+        </Link>
+      </p>
 
       {(chain.reverts || chain.revertedBy) && (
         <p className="text-sm text-muted-foreground">

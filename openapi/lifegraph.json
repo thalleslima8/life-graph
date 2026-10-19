@@ -354,7 +354,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "RenameAgentIdentity",
+        "operationId": "UpdateAgentIdentity",
         "parameters": [
           {
             "name": "agentIdentityId",
@@ -370,7 +370,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RenameAgentIdentityRequest"
+                "$ref": "#/components/schemas/UpdateAgentIdentityRequest"
               }
             }
           },
@@ -875,6 +875,67 @@
         }
       }
     },
+    "/api/nodes/{nodeId}/restoration": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "operationId": "RestoreNode",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphWriteReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/relations": {
       "post": {
         "tags": [
@@ -955,6 +1016,67 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/relations/{relationId}/restoration": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "operationId": "RestoreRelation",
+        "parameters": [
+          {
+            "name": "relationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphWriteReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1642,6 +1764,28 @@
               ],
               "format": "int32"
             }
+          },
+          {
+            "name": "agentsOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "agentIdentityId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "unreviewed",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -1718,6 +1862,340 @@
           },
           "422": {
             "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/proposals": {
+      "get": {
+        "tags": [
+          "Changes"
+        ],
+        "operationId": "ListProposals",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ProposalStatus"
+            }
+          },
+          {
+            "name": "agentIdentityId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedListOfProposalItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/proposals/{proposalId}": {
+      "get": {
+        "tags": [
+          "Changes"
+        ],
+        "operationId": "GetProposal",
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/proposals/{proposalId}/approval": {
+      "post": {
+        "tags": [
+          "Changes"
+        ],
+        "operationId": "ApproveProposal",
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphWriteReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/proposals/{proposalId}/rejection": {
+      "post": {
+        "tags": [
+          "Changes"
+        ],
+        "operationId": "RejectProposal",
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalItem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/changesets/{changeSetId}": {
+      "get": {
+        "tags": [
+          "Changes"
+        ],
+        "operationId": "GetChangeSet",
+        "parameters": [
+          {
+            "name": "changeSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSetDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/changesets/{changeSetId}/review": {
+      "post": {
+        "tags": [
+          "Changes"
+        ],
+        "operationId": "MarkChangeSetReviewed",
+        "parameters": [
+          {
+            "name": "changeSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1815,6 +2293,36 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "requiresApproval": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "AgentRef": {
+        "required": [
+          "id",
+          "name",
+          "revoked"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "revoked": {
+            "type": "boolean"
           }
         }
       },
@@ -1823,6 +2331,63 @@
           "human",
           "agent_identity"
         ]
+      },
+      "ChangeEntryDetail": {
+        "required": [
+          "sequence",
+          "entityKind",
+          "entityId",
+          "operation",
+          "label",
+          "isPurged",
+          "cascadeOf",
+          "fields"
+        ],
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "entityKind": {
+            "$ref": "#/components/schemas/GraphEntityKind"
+          },
+          "entityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/GraphChangeOperation"
+          },
+          "label": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isPurged": {
+            "type": "boolean"
+          },
+          "cascadeOf": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            }
+          }
+        }
       },
       "ChangeEntryItem": {
         "required": [
@@ -1874,6 +2439,39 @@
           }
         }
       },
+      "ChangeSetDetail": {
+        "required": [
+          "changeSet",
+          "agent",
+          "undo",
+          "entries"
+        ],
+        "type": "object",
+        "properties": {
+          "changeSet": {
+            "$ref": "#/components/schemas/ChangeSetItem"
+          },
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentRef"
+              }
+            ]
+          },
+          "undo": {
+            "$ref": "#/components/schemas/ChangeSetUndoState"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangeEntryDetail"
+            }
+          }
+        }
+      },
       "ChangeSetFeed": {
         "required": [
           "data",
@@ -1910,6 +2508,10 @@
           "createdAt",
           "revertsChangeSetId",
           "revertedByChangeSetId",
+          "proposalId",
+          "reviewedAt",
+          "agent",
+          "undo",
           "entries"
         ],
         "type": "object",
@@ -1958,6 +2560,33 @@
             ],
             "format": "uuid"
           },
+          "proposalId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "reviewedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentRef"
+              }
+            ]
+          },
+          "undo": {
+            "$ref": "#/components/schemas/ChangeSetUndoState"
+          },
           "entries": {
             "type": "array",
             "items": {
@@ -1971,6 +2600,36 @@
           "applied",
           "reverted"
         ]
+      },
+      "ChangeSetUndoState": {
+        "required": [
+          "state",
+          "byChangeSetId",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/UndoAvailability"
+          },
+          "byChangeSetId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UndoUnavailableReason"
+              }
+            ]
+          }
+        }
       },
       "CompletePasswordResetRequest": {
         "required": [
@@ -2165,6 +2824,43 @@
         "properties": {
           "token": {
             "type": "string"
+          }
+        }
+      },
+      "FieldChange": {
+        "required": [
+          "field",
+          "before",
+          "after",
+          "overwritesYourValue"
+        ],
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "before": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "after": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "overwritesYourValue": {
+            "type": "boolean"
           }
         }
       },
@@ -2372,6 +3068,41 @@
           },
           "hiddenFromAgents": {
             "type": "boolean"
+          },
+          "suggestedType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "NodeEndpoint": {
+        "required": [
+          "nodeId",
+          "ref",
+          "title"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "ref": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2450,6 +3181,12 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "suggestedType": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2496,6 +3233,24 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PropertyDefinitionItem"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        }
+      },
+      "PagedListOfProposalItem": {
+        "required": [
+          "data",
+          "page"
+        ],
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalItem"
             }
           },
           "page": {
@@ -2626,6 +3381,361 @@
           "multi_select"
         ]
       },
+      "ProposalApprovalRequest": {
+        "required": [
+          "operations"
+        ],
+        "type": "object",
+        "properties": {
+          "operations": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "ProposalDetail": {
+        "required": [
+          "proposal",
+          "agent",
+          "contentPurged",
+          "operations"
+        ],
+        "type": "object",
+        "properties": {
+          "proposal": {
+            "$ref": "#/components/schemas/ProposalItem"
+          },
+          "agent": {
+            "$ref": "#/components/schemas/AgentRef"
+          },
+          "contentPurged": {
+            "type": "boolean"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedOperationItem"
+            }
+          }
+        }
+      },
+      "ProposalItem": {
+        "required": [
+          "id",
+          "agentIdentityId",
+          "agent",
+          "status",
+          "requiresUser",
+          "reasons",
+          "operationCount",
+          "summary",
+          "source",
+          "createdAt",
+          "expiresAt",
+          "decidedAt",
+          "changeSetId",
+          "isRedacted"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agentIdentityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agent": {
+            "$ref": "#/components/schemas/AgentRef"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "requiresUser": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalReason"
+            }
+          },
+          "operationCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ProposalSummary"
+          },
+          "source": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decidedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "changeSetId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "isRedacted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProposalReason": {
+        "enum": [
+          "suggested",
+          "approval_required",
+          "sensitive",
+          "type_change",
+          "bulk",
+          "window"
+        ]
+      },
+      "ProposalStatus": {
+        "enum": [
+          "proposed",
+          "applied",
+          "rejected",
+          "expired",
+          "withdrawn"
+        ]
+      },
+      "ProposalSummary": {
+        "required": [
+          "createNode",
+          "updateNode",
+          "createRelation",
+          "removeRelation",
+          "deleteNode"
+        ],
+        "type": "object",
+        "properties": {
+          "createNode": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "updateNode": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "createRelation": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "removeRelation": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "deleteNode": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ProposedOperationItem": {
+        "required": [
+          "index",
+          "op",
+          "isSensitive",
+          "isRejected",
+          "fields",
+          "dependsOn",
+          "nodeId",
+          "nodeTitle",
+          "expectedVersion",
+          "currentVersion",
+          "ref",
+          "typeId",
+          "suggestedType",
+          "source",
+          "target",
+          "kind",
+          "relationId"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "op": {
+            "$ref": "#/components/schemas/ProposedOperationKind"
+          },
+          "isSensitive": {
+            "type": "boolean"
+          },
+          "isRejected": {
+            "type": "boolean"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            }
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "nodeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "nodeTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "currentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "ref": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "typeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "suggestedType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NodeEndpoint"
+              }
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NodeEndpoint"
+              }
+            ]
+          },
+          "kind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "relationId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "ProposedOperationKind": {
+        "enum": [
+          "create_node",
+          "update_node",
+          "create_relation",
+          "remove_relation",
+          "delete_node"
+        ]
+      },
       "RelationAssertion": {
         "enum": [
           "hard",
@@ -2705,20 +3815,6 @@
           "system",
           "import"
         ]
-      },
-      "RenameAgentIdentityRequest": {
-        "required": [
-          "name"
-        ],
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": [
-              "null",
-              "string"
-            ]
-          }
-        }
       },
       "RequestPasswordResetRequest": {
         "required": [
@@ -2850,6 +3946,37 @@
           },
           "valueKind": {
             "$ref": "#/components/schemas/PropertyValueKind"
+          }
+        }
+      },
+      "UndoAvailability": {
+        "enum": [
+          "available",
+          "undone",
+          "unavailable"
+        ]
+      },
+      "UndoUnavailableReason": {
+        "enum": [
+          "window_closed",
+          "content_purged",
+          null
+        ]
+      },
+      "UpdateAgentIdentityRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requiresApproval": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -3013,6 +4140,36 @@
       "code": "accounts.too_many_attempts",
       "status": 429,
       "recovery": "retry_after"
+    },
+    {
+      "code": "agents.operation_dependency",
+      "status": 422,
+      "recovery": "fix_input"
+    },
+    {
+      "code": "agents.proposal_not_found",
+      "status": 404,
+      "recovery": "not_recoverable"
+    },
+    {
+      "code": "agents.proposal_not_pending",
+      "status": 422,
+      "recovery": "not_recoverable"
+    },
+    {
+      "code": "agents.proposal_queue_full",
+      "status": 422,
+      "recovery": "ask_user"
+    },
+    {
+      "code": "agents.proposal_rejected_before",
+      "status": 422,
+      "recovery": "not_recoverable"
+    },
+    {
+      "code": "agents.proposal_requires_user",
+      "status": 422,
+      "recovery": "ask_user"
     },
     {
       "code": "bad_request",

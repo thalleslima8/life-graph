@@ -23,6 +23,10 @@
                     <label for="scope-write">@WriteDescription <span class="muted">Desmarque para conectar só com leitura.</span></label>
                 </div>
                 <p class="warning">Se a escrita ficar marcada, o agente poderá alterar o seu grafo. Toda alteração dele fica registrada, visível para você, e pode ser desfeita (Undo).</p>
+                <div class="scope">
+                    <input id="require-approval" type="checkbox" name="@RequireApprovalField" value="@RequireApprovalValue" checked="@RequireApprovalChecked" />
+                    <label for="require-approval">Exigir minha aprovação para cada escrita <span class="muted">O agente só propõe; nada muda no grafo até você aprovar em Agent Changes. Você pode mudar isso depois em Agentes conectados.</span></label>
+                </div>
             }
             <p class="muted">O agente fica conectado até você revogar a conexão em Agentes conectados.</p>
         </fieldset>
@@ -80,6 +84,17 @@
 
     [Parameter, EditorRequired]
     public string GrantedScopeField { get; set; } = string.Empty;
+
+    /// <summary>"Exigir aprovação para escritas" (DA-044).</summary>
+    [Parameter, EditorRequired]
+    public string RequireApprovalField { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string RequireApprovalValue { get; set; } = string.Empty;
+
+    /// <summary>The toggle as the existing connection has it, so a reconnect never turns it off unseen; unchecked for a new one.</summary>
+    [Parameter]
+    public bool RequireApprovalChecked { get; set; }
 
     [Parameter]
     public bool LoopbackOnly { get; set; }

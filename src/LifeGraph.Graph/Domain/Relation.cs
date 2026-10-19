@@ -47,11 +47,23 @@ public sealed class Relation
 
     public bool IsDeleted => DeletedAt is not null;
 
+    /// <summary>The AgentIdentity that created it while no other principal wrote to it since (DA-133), as on <see cref="Node"/>.</summary>
+    public Guid? CreatedByAgentIdentityId { get; private set; }
+
     public bool Touches(Guid nodeId) => SourceNodeId == nodeId || TargetNodeId == nodeId;
+
+    /// <summary>Anyone but its creating AgentIdentity writing to it makes it the person's for good (DA-133).</summary>
+    public void WrittenBy(Guid? writerAgentIdentityId)
+    {
+        if (CreatedByAgentIdentityId is { } creator && creator != writerAgentIdentityId)
+        {
+            CreatedByAgentIdentityId = null;
+        }
+    }
 
     public static Result<Relation> AssertHard(RelationDraft draft, DateTimeOffset now)
     {
-        var (id, accountId, sourceNodeId, targetNodeId, kind, origin) = draft;
+        var (id, accountId, sourceNodeId, targetNodeId, kind, origin, _) = draft;
         var errors = new FieldErrors();
         var trimmedKind = TextInput.RequireName(errors, "kind", kind, GraphLimits.RelationKindMaxLength);
         if (sourceNodeId == targetNodeId)
@@ -77,6 +89,7 @@ public sealed class Relation
             Strength = AssertedStrength,
             CreatedAt = now,
             UpdatedAt = now,
+            CreatedByAgentIdentityId = draft.CreatedByAgentIdentityId,
         });
     }
 
@@ -102,4 +115,12 @@ public sealed class Relation
 }
 
 /// <summary>What a new Relation asserts: its two Nodes, its kind and who asserted it.</summary>
-public sealed record RelationDraft(Guid Id, Guid AccountId, Guid SourceNodeId, Guid TargetNodeId, string? Kind, RelationOrigin Origin);
+/// <param name="CreatedByAgentIdentityId">The AgentIdentity creating it, when an agent does (DA-133).</param>
+public sealed record RelationDraft(
+    Guid Id,
+    Guid AccountId,
+    Guid SourceNodeId,
+    Guid TargetNodeId,
+    string? Kind,
+    RelationOrigin Origin,
+    Guid? CreatedByAgentIdentityId = null);

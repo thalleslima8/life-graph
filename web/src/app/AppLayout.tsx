@@ -8,6 +8,7 @@ const GRAPH_LINKS = [
   { to: "/nodes", label: "Nodes" },
   { to: "/nodes?inbox=1", label: "Inbox" },
   { to: "/changes", label: "Recent Changes" },
+  { to: "/agent-changes", label: "Agent Changes" },
   { to: "/types", label: "Types" },
   { to: "/agentes", label: "Agentes conectados" },
 ];

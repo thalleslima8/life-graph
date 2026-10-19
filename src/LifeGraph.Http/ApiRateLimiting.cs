@@ -201,6 +201,18 @@ public sealed class ApiRateLimitOptions
     [Range(1, 100_000)]
     public int AgentReadPermitLimit { get; set; } = 120;
 
+    /// <summary>
+    /// Calls of write tools per AgentIdentity in each window (DA-051): a security limit, not a
+    /// plan limit, apart from the sliding window of agent writes (DA-132). Making a proposal
+    /// takes from it too (DA-130).
+    /// </summary>
+    [Range(1, 100_000)]
+    public int AgentWritePermitLimit { get; set; } = 60;
+
+    /// <summary>Calls of write tools per AgentIdentity in a day (DA-051).</summary>
+    [Range(1, 1_000_000)]
+    public int AgentWriteDailyLimit { get; set; } = 1_000;
+
     /// <summary>MCP requests of all the agents of one Account in each window (DA-121).</summary>
     [Range(1, 100_000)]
     public int AgentAccountPermitLimit { get; set; } = 600;

@@ -1,11 +1,12 @@
-import { infiniteQueryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
+import { infiniteQueryOptions, useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, isApiError, unwrap, type ApiError } from "@/api/client";
 import type { components } from "@/api/schema.gen";
+import { changeSetsKey } from "@/features/graph/graphData";
 
 /**
  * "Agentes conectados" (DA-030, DA-125): the person's agent connections, listed by cursor,
- * renamed and revoked. Same shape as the graph's modules (DA-118): query options, keys and
+ * renamed, switched to "exigir aprovação para escritas" (DA-044, DA-135) and revoked. Same shape as the graph's modules (DA-118): query options, keys and
  * one named mutation hook per action. The client's declared name is display only.
  */
 
@@ -22,6 +23,8 @@ export type AgentIdentityView = {
   status: AgentIdentityStatus;
   connectedAt: string;
   lastUsedAt: string | null;
+  /** "Exigir aprovação para escritas" (DA-044): every write of the agent waits for the person. */
+  requiresApproval: boolean;
 };
 
 // Mirrors AgentIdentity.NameMaxLength on the server, which always checks again (FE-020).
@@ -36,7 +39,7 @@ export const agentNameSchema = z
 /** The consent page's words for each scope (DA-122); a scope missing here is never shown. */
 export const SCOPE_LABELS: Readonly<Record<string, string>> = {
   "lifegraph.read": "Ler o seu grafo: buscar e consultar Nodes, Relations e o contexto que você permitir.",
-  "lifegraph.write": "Criar e alterar Nodes e Relations no seu grafo.",
+  "lifegraph.write": "Criar e alterar Nodes e Relations no seu grafo. Pode propor exclusões, que só você aprova.",
 };
 
 export const agentIdentityKeys = {
@@ -64,11 +67,21 @@ function retryUnlessRefused(failureCount: number, error: unknown): boolean {
   return !(isApiError(error) && refusalStatuses.has(error.status)) && failureCount < 1;
 }
 
-export function useRenameAgentIdentity(id: string) {
+export type AgentIdentityUpdate = { name?: string; requiresApproval?: boolean };
+
+/** Renames the connection and/or switches its approval toggle (DA-135); only what is given changes. */
+export function useUpdateAgentIdentity(id: string): UseMutationResult<AgentIdentityView, ApiError, AgentIdentityUpdate> {
   const queryClient = useQueryClient();
-  return useMutation<AgentIdentityView, ApiError, { name: string }>({
-    mutationFn: async ({ name }) =>
-      toView(unwrap(await api.PATCH("/api/agent-identities/{agentIdentityId}", { params: { path: { agentIdentityId: id } }, body: { name } }))),
+  return useMutation<AgentIdentityView, ApiError, AgentIdentityUpdate>({
+    mutationFn: async ({ name, requiresApproval }) =>
+      toView(
+        unwrap(
+          await api.PATCH("/api/agent-identities/{agentIdentityId}", {
+            params: { path: { agentIdentityId: id } },
+            body: { name: name ?? null, requiresApproval },
+          }),
+        ),
+      ),
     retry: retryUnlessRefused,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: agentIdentityKeys.all }),
     onError: (error) => {
@@ -79,6 +92,12 @@ export function useRenameAgentIdentity(id: string) {
   });
 }
 
+/**
+ * {@link useUpdateAgentIdentity} under the name the rename form uses (DA-135): the same
+ * mutation, which changes whatever it is given; the form sends only the name.
+ */
+export const useRenameAgentIdentity = (id: string) => useUpdateAgentIdentity(id);
+
 export function useRevokeAgentIdentity(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -86,7 +105,11 @@ export function useRevokeAgentIdentity(id: string) {
       unwrap(await api.DELETE("/api/agent-identities/{agentIdentityId}", { params: { path: { agentIdentityId: id } } }));
     },
     retry: retryUnlessRefused,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: agentIdentityKeys.all }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: agentIdentityKeys.all });
+      // Revoking withdraws the agent's pending proposals (DA-135).
+      void queryClient.invalidateQueries({ queryKey: changeSetsKey });
+    },
     onError: (error) => {
       if (isAgentIdentityGone(error)) {
         void queryClient.invalidateQueries({ queryKey: agentIdentityKeys.all });
@@ -105,5 +128,6 @@ function toView(item: Schemas["AgentIdentityView"]): AgentIdentityView {
     status: item.status,
     connectedAt: item.connectedAt,
     lastUsedAt: item.lastUsedAt ?? null,
+    requiresApproval: item.requiresApproval,
   };
 }

@@ -97,6 +97,77 @@ public sealed class ConsentTests(PostgresDatabase database) : IAsyncLifetime
         Assert.Equal(granted.Split(' '), await StoredScopesAsync());
     }
 
+    // DA-044: the consent page offers "exigir aprovação para escritas", unchecked; the choice is stored.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_approval_toggle_is_offered_unchecked_and_the_choice_is_stored(bool requireApproval)
+    {
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, Email);
+        var pkce = AgentAuthorization.NewPkce();
+        var page = await browser.Http.GetStringAsync(AgentAuthorization.AuthorizePath(pkce), TestContext.Current.CancellationToken);
+        Assert.Contains("""name="require_approval" value="on" />""", page, StringComparison.Ordinal);
+        Assert.Contains("pode propor exclusões, que só você aprova", WebUtility.HtmlDecode(page), StringComparison.OrdinalIgnoreCase); // DA-134
+        List<KeyValuePair<string, string>> fields = [.. HtmlForm.HiddenFields(page), new("decision", "allow"), new("granted_scope", "lifegraph.write")];
+        if (requireApproval)
+        {
+            fields.Add(new("require_approval", "on"));
+        }
+
+        var decision = await HtmlForm.PostAsync(browser.Http, "/connect/authorize", fields);
+
+        Assert.Equal(HttpStatusCode.Redirect, decision.StatusCode);
+        Assert.Equal(requireApproval, await database.QueryScalarAsMigratorAsync<bool>("SELECT requires_approval_for_writes FROM agent_identities"));
+    }
+
+    // DA-044: reconnecting shows the toggle as the connection has it, so "Autorizar" never turns
+    // the protection off unseen; unchecking it there is the person's choice.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_reconnect_shows_the_approval_toggle_as_it_is_and_keeps_the_persons_choice(bool keepChecked)
+    {
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, Email);
+        await ConsentAsync(browser, [new("granted_scope", "lifegraph.write"), new("require_approval", "on")]);
+        Assert.True(await RequiresApprovalAsync());
+
+        var page = await browser.Http.GetStringAsync(AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce()), TestContext.Current.CancellationToken);
+        Assert.Contains("""name="require_approval" value="on" checked""", page, StringComparison.Ordinal);
+        List<KeyValuePair<string, string>> fields = [.. HtmlForm.HiddenFields(page), new("decision", "allow"), new("granted_scope", "lifegraph.write")];
+        if (keepChecked)
+        {
+            fields.Add(new("require_approval", "on"));
+        }
+
+        Assert.Equal(HttpStatusCode.Redirect, (await HtmlForm.PostAsync(browser.Http, "/connect/authorize", fields)).StatusCode);
+        Assert.Equal(keepChecked, await RequiresApprovalAsync());
+    }
+
+    // A reconnect whose page does not offer write (and so not the toggle) keeps it as it was.
+    [Fact]
+    public async Task A_read_only_reconnect_keeps_the_approval_toggle_on()
+    {
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, Email);
+        await ConsentAsync(browser, [new("granted_scope", "lifegraph.write"), new("require_approval", "on")]);
+
+        var page = await browser.Http.GetStringAsync(AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce(), scope: "lifegraph.read"), TestContext.Current.CancellationToken);
+        var decision = await HtmlForm.PostAsync(browser.Http, "/connect/authorize", [.. HtmlForm.HiddenFields(page), new("decision", "allow")]);
+
+        Assert.Equal(HttpStatusCode.Redirect, decision.StatusCode);
+        Assert.Equal(["lifegraph.read"], await StoredScopesAsync());
+        Assert.True(await RequiresApprovalAsync());
+    }
+
+    private static async Task ConsentAsync(SpaClient browser, IEnumerable<KeyValuePair<string, string>> choices)
+    {
+        var page = await browser.Http.GetStringAsync(AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce()), TestContext.Current.CancellationToken);
+        var decision = await HtmlForm.PostAsync(browser.Http, "/connect/authorize", [.. HtmlForm.HiddenFields(page), new("decision", "allow"), .. choices]);
+        Assert.Equal(HttpStatusCode.Redirect, decision.StatusCode);
+    }
+
+    private Task<bool> RequiresApprovalAsync() =>
+        database.QueryScalarAsMigratorAsync<bool>("SELECT requires_approval_for_writes FROM agent_identities");
+
     [Fact]
     public async Task A_client_that_asks_only_to_read_is_not_offered_write_nor_warned_about_changes()
     {

@@ -59,6 +59,11 @@ internal static class AuthorizationEndpoints
     /// <summary>The scopes the person checked on the consent page; read is always among them.</summary>
     public const string GrantedScopeField = AgentConnections.GrantedScopeField;
 
+    /// <summary>"Exigir aprovação para escritas" on the consent page (DA-044): checked, its value is posted.</summary>
+    public const string RequireApprovalField = "require_approval";
+
+    public const string RequireApprovalValue = "on";
+
     /// <summary>
     /// What the consent page says of each scope, in plain language. The SPA's "Agentes
     /// conectados" shows the same strings (DA-125).
@@ -66,7 +71,7 @@ internal static class AuthorizationEndpoints
     public static readonly IReadOnlyDictionary<string, string> ScopeDescriptions = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [AgentAccess.ReadScope] = "Ler o seu grafo: buscar e consultar Nodes, Relations e o contexto que você permitir.",
-        [AgentAccess.WriteScope] = "Criar e alterar Nodes e Relations no seu grafo.",
+        [AgentAccess.WriteScope] = "Criar e alterar Nodes e Relations no seu grafo. Pode propor exclusões, que só você aprova.",
     };
 
     public static IEndpointRouteBuilder MapAuthorizationEndpoints(this IEndpointRouteBuilder endpoints)
@@ -135,13 +140,18 @@ internal static class AuthorizationEndpoints
                 return Refuse(Errors.AccessDenied, "The person refused the connection.");
             }
 
-            return await GrantAsync(httpContext, request, human, form[GrantedScopeField], connections, agentIssuer, cancellationToken);
+            // The page offers the toggle only with write, shown as it is now: unchecked there is
+            // the person's choice; without it, the connection keeps what it had (DA-044).
+            bool? requiresApproval = offered.Contains(AgentAccess.WriteScope)
+                ? form[RequireApprovalField].ToString() == RequireApprovalValue
+                : null;
+            return await GrantAsync(httpContext, request, human, form[GrantedScopeField], requiresApproval, connections, agentIssuer, cancellationToken);
         }
 
         // Tests only (DA-033): the host refuses to start with it in any other environment.
         if (issuerOptions.Value.AutoConsent)
         {
-            return await GrantAsync(httpContext, request, human, offered, connections, agentIssuer, cancellationToken);
+            return await GrantAsync(httpContext, request, human, offered, requiresApproval: null, connections, agentIssuer, cancellationToken);
         }
 
         if (request.HasPromptValue(PromptValues.None))
@@ -172,6 +182,9 @@ internal static class AuthorizationEndpoints
             [nameof(ConsentPage.WriteScope)] = offered.Contains(AgentAccess.WriteScope) ? AgentAccess.WriteScope : null,
             [nameof(ConsentPage.WriteDescription)] = ScopeDescriptions[AgentAccess.WriteScope],
             [nameof(ConsentPage.GrantedScopeField)] = GrantedScopeField,
+            [nameof(ConsentPage.RequireApprovalField)] = RequireApprovalField,
+            [nameof(ConsentPage.RequireApprovalValue)] = RequireApprovalValue,
+            [nameof(ConsentPage.RequireApprovalChecked)] = await connections.RequiresApprovalForWritesAsync(request.ClientId, cancellationToken),
             [nameof(ConsentPage.LoopbackOnly)] = registeredRedirects.Length > 0
                 && registeredRedirects.All(uri => Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && RedirectUriMatching.IsLoopback(parsed)),
             [nameof(ConsentPage.RequestParameters)] = ParametersOf(request, tokens.FormFieldName),
@@ -188,6 +201,7 @@ internal static class AuthorizationEndpoints
         OpenIddictRequest request,
         AuthenticatedPrincipal human,
         IEnumerable<string?> checkedScopes,
+        bool? requiresApproval,
         AgentConnections connections,
         IAgentIssuer agentIssuer,
         CancellationToken cancellationToken)
@@ -197,7 +211,9 @@ internal static class AuthorizationEndpoints
             return Refuse(Errors.LoginRequired, "The person is not signed in.");
         }
 
-        var grant = await connections.ConnectAsync(userId, request.ClientId!, request.GetScopes(), checkedScopes, cancellationToken);
+        var grant = await connections.ConnectAsync(
+            new AgentConsent(userId, request.ClientId!, request.GetScopes(), checkedScopes, requiresApproval),
+            cancellationToken);
         if (!grant.IsSuccess)
         {
             // Only what the page offered: a forged scope voids the decision, nothing is granted.

@@ -11,6 +11,7 @@ public sealed record PagedList<T>(IReadOnlyList<T> Data, PageInfo Page);
 public sealed record PageInfo(string? NextCursor);
 
 /// <summary>A Node in a list: enough to show it and to pick it.</summary>
+/// <param name="SuggestedType">The Type an agent suggested for a Node it created without one, shown in the Inbox (DA-049).</param>
 public sealed record NodeSummary(
     Guid Id,
     string Title,
@@ -18,13 +19,15 @@ public sealed record NodeSummary(
     int Version,
     bool InInbox,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string? SuggestedType = null);
 
 /// <summary>
 /// A Node as the Inspector shows it. <see cref="Properties"/> follows the Type's attachments,
 /// in order, with or without a value; <see cref="OtherProperties"/> holds the values whose
 /// definition the Type does not attach: Outras propriedades (DA-016).
 /// <see cref="HiddenFromAgents"/> is the Node's own flag; its Type may hide it too (DA-035).
+/// <see cref="SuggestedType"/> is an agent's hint for a Node it created without Type (DA-049).
 /// </summary>
 public sealed record NodeDetail(
     Guid Id,
@@ -39,7 +42,8 @@ public sealed record NodeDetail(
     DateTimeOffset UpdatedAt,
     IReadOnlyList<NodePropertyValue> Properties,
     IReadOnlyList<NodePropertyValue> OtherProperties,
-    bool HiddenFromAgents);
+    bool HiddenFromAgents,
+    string? SuggestedType = null);
 
 /// <param name="Value">The stored value; <c>null</c> when the Node has none.</param>
 public sealed record NodePropertyValue(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind, JsonElement? Value);
@@ -93,6 +97,10 @@ public sealed record ChangeSetFeed(IReadOnlyList<ChangeSetItem> Data, PageInfo P
 /// A GraphChangeSet with its Provenance and entries. An Undo names the GraphChangeSet it
 /// reverts and the reverted one names its Undo, so the feed shows the chain (DA-115).
 /// </summary>
+/// <param name="ProposalId">The agent proposal it applied, approved by the person or applied by the agent (E5).</param>
+/// <param name="ReviewedAt">When the person marked an agent's change as reviewed in Agent Changes.</param>
+/// <param name="Agent">The agent that made it, as the person knows it now; <c>null</c> when the person did (DA-135).</param>
+/// <param name="Undo">Whether Undo can still be asked for, as the GraphChangeSet screen tells it (DA-135).</param>
 public sealed record ChangeSetItem(
     Guid Id,
     ChangeSetStatus Status,
@@ -103,6 +111,10 @@ public sealed record ChangeSetItem(
     DateTimeOffset CreatedAt,
     Guid? RevertsChangeSetId,
     Guid? RevertedByChangeSetId,
+    Guid? ProposalId,
+    DateTimeOffset? ReviewedAt,
+    AgentRef? Agent,
+    ChangeSetUndoState Undo,
     IReadOnlyList<ChangeEntryItem> Entries);
 
 /// <param name="Label">The Node's title, the Type's or property's name, the Relation's kind; <c>null</c> once purged.</param>

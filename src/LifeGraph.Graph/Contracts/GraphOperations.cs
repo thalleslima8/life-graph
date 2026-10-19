@@ -11,13 +11,15 @@ public abstract record GraphOperation;
 
 /// <param name="Properties">Values keyed by Property Definition id, checked against the Type (DA-015).</param>
 /// <param name="InInbox">Captures the Node into the Inbox, to be classified later (DA-019).</param>
+/// <param name="SuggestedType">An agent's hint for a Node without Type, shown in the Inbox (DA-049).</param>
 public sealed record CreateNode(
     Guid NodeId,
     string Title,
     string? Body = null,
     Guid? TypeId = null,
     IReadOnlyDictionary<Guid, JsonElement>? Properties = null,
-    bool InInbox = false) : GraphOperation;
+    bool InInbox = false,
+    string? SuggestedType = null) : GraphOperation;
 
 /// <summary>
 /// Changes only what is given. <see cref="ExpectedVersion"/> is the version the caller read

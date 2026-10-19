@@ -58,7 +58,7 @@ internal sealed class WriteInProgress(
             return Result.Fail(GraphErrors.TypeNotFound.ToError(TypeNotFoundMessage));
         }
 
-        var draft = new NodeDraft(create.NodeId, accountId, create.Title, create.Body, schema, create.Properties);
+        var draft = new NodeDraft(create.NodeId, accountId, create.Title, create.Body, schema, create.Properties, AgentOf(provenance), create.SuggestedType);
         var created = create.InInbox ? Node.CaptureIntoInbox(draft, now) : Node.Create(draft, now);
         if (!created.IsSuccess)
         {
@@ -172,7 +172,7 @@ internal sealed class WriteInProgress(
         }
 
         var asserted = Relation.AssertHard(
-            new RelationDraft(create.RelationId, accountId, create.SourceNodeId, create.TargetNodeId, create.Kind, OriginOf(provenance)),
+            new RelationDraft(create.RelationId, accountId, create.SourceNodeId, create.TargetNodeId, create.Kind, OriginOf(provenance), AgentOf(provenance)),
             now);
         if (!asserted.IsSuccess)
         {
@@ -451,6 +451,8 @@ internal sealed class WriteInProgress(
         relation.Delete(now);
         return Record(GraphEntityKind.Relation, relation.Id, GraphChangeOperation.Deleted, before, ChangeSnapshots.Of(relation));
     }
+
+    private static Guid? AgentOf(Provenance provenance) => (provenance.Actor as GraphActor.AgentIdentity)?.AgentIdentityId;
 
     // Origin says who originated the object, independent of the assertion (DA-014).
     private static RelationOrigin OriginOf(Provenance provenance) => provenance switch

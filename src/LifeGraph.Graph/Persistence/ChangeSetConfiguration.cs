@@ -18,6 +18,10 @@ internal sealed class GraphChangeSetConfiguration : IEntityTypeConfiguration<Gra
             table.HasCheckConstraint(
                 "ck_changesets_agent_identity",
                 "(actor_kind = 'agent_identity') = (agent_identity_id IS NOT NULL)");
+            // Only an agent's own write consumes the sliding window (DA-132).
+            table.HasCheckConstraint(
+                "ck_changesets_window_operations",
+                "window_operations >= 0 AND (window_operations = 0 OR actor_kind = 'agent_identity')");
         });
         changeSet.HasAccountKeys(entity => entity.Id, entity => new { entity.AccountId, entity.Id });
         changeSet.Property(entity => entity.Id).ValueGeneratedNever();
@@ -39,6 +43,14 @@ internal sealed class GraphChangeSetConfiguration : IEntityTypeConfiguration<Gra
             .IsUnique()
             .HasFilter("reverts_changeset_id IS NOT NULL")
             .HasDatabaseName("uq_changesets_account_id_reverts_changeset_id");
+
+        // The sliding window sums an agent's recent own writes, by agent and by Account (DA-132).
+        changeSet.HasIndex(entity => new { entity.AccountId, entity.CreatedAt })
+            .HasFilter("window_operations > 0")
+            .HasDatabaseName("ix_changesets_account_id_created_at_window");
+        changeSet.HasIndex(entity => new { entity.AgentIdentityId, entity.Id })
+            .HasFilter("agent_identity_id IS NOT NULL")
+            .HasDatabaseName("ix_changesets_agent_identity_id_id");
 
         changeSet.HasMany(entity => entity.Entries)
             .WithOne()

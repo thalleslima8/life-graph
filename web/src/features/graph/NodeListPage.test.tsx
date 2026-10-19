@@ -98,6 +98,19 @@ describe("node list", () => {
     expect(await screen.findByText("A Inbox está vazia.")).toBeInTheDocument();
   });
 
+  // DA-049: a Node an agent created without Type shows the Type the agent suggested.
+  it("shows the agent's suggested Type of a captured Node", async () => {
+    nodesApi();
+    server.use(
+      http.get("/api/nodes", () =>
+        HttpResponse.json({ data: [aNode({ title: "Sêneca", inInbox: true, suggestedType: "Pessoa" })], page: { nextCursor: null } }),
+      ),
+    );
+    renderRoute("/nodes?inbox=1");
+
+    expect(await screen.findByText("Sugestão do agente: Pessoa")).toBeInTheDocument();
+  });
+
   it("creates a Node and opens it in the Inspector", async () => {
     nodesApi();
     const created: unknown[] = [];

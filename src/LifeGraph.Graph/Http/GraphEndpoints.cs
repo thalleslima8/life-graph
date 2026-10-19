@@ -27,6 +27,7 @@ public static class GraphEndpoints
         api.MapRelationEndpoints();
         api.MapOntologyEndpoints();
         api.MapChangeSetEndpoints();
+        api.MapAgentChangeEndpoints();
 
         return endpoints;
     }
@@ -47,6 +48,15 @@ public static class GraphEndpoints
             .Produces<GraphWriteReceipt>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // Restoring one deleted Relation, apart from the change that deleted it (DA-115).
+        relations.MapPost("/{relationId:guid}/restoration", (Guid relationId, GraphWrites writes, CancellationToken cancellationToken) =>
+                writes.RestoreAsync(GraphEntityKind.Relation, relationId, cancellationToken))
+            .WithName("RestoreRelation")
+            .Produces<GraphWriteReceipt>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         return endpoints;
     }
 
@@ -55,14 +65,25 @@ public static class GraphEndpoints
         var changeSets = endpoints.MapGroup("/changesets").WithTags("Changes");
 
         // Recent Changes: the history, and what happened since the last read (DA-024).
+        // Agent Changes (v2 §65) reads the same feed, by agent and "não revisado".
         changeSets.MapGet("/", async (
                 [FromQuery] string? since,
                 [FromQuery] string? before,
                 [FromQuery] int? limit,
+                [FromQuery] bool? agentsOnly,
+                [FromQuery] Guid? agentIdentityId,
+                [FromQuery] bool? unreviewed,
                 GraphReads reads,
                 GraphWrites writes,
                 CancellationToken cancellationToken) =>
-                writes.Responder.ToHttpResult(await reads.ListChangeSetsAsync(since, before, limit, cancellationToken), feed => TypedResults.Ok(feed)))
+                writes.Responder.ToHttpResult(
+                    await reads.ListChangeSetsAsync(
+                        since,
+                        before,
+                        limit,
+                        new ChangeSetFeedFilter(agentsOnly ?? false, agentIdentityId, unreviewed ?? false),
+                        cancellationToken),
+                    feed => TypedResults.Ok(feed)))
             .WithName("ListChangeSets")
             .Produces<ChangeSetFeed>()
             .ProducesValidationProblem();

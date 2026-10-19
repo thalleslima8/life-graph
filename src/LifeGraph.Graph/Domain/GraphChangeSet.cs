@@ -35,6 +35,17 @@ public sealed class GraphChangeSet
     /// <summary>The GraphChangeSet this one undoes (DA-020); <c>null</c> for any other change.</summary>
     public Guid? RevertsChangeSetId { get; private set; }
 
+    /// <summary>
+    /// How many of its operations changed or removed the person's entities, counted when an
+    /// agent applied it on its own (DA-132): the sliding window sums it. Zero for the person's
+    /// changes, Undo and proposals the person approved. Kept as counted then, so a later change
+    /// of ownership never changes what the window already consumed.
+    /// </summary>
+    public int WindowOperations { get; private set; }
+
+    /// <summary>When the person marked an agent's GraphChangeSet as reviewed in Agent Changes; <c>null</c> while not reviewed.</summary>
+    public DateTimeOffset? ReviewedAt { get; private set; }
+
     public IReadOnlyList<ChangeEntry> Entries => _entries;
 
     public static GraphChangeSet Applied(Guid accountId, Provenance provenance, DateTimeOffset now) => new()
@@ -55,6 +66,29 @@ public sealed class GraphChangeSet
         var undo = Applied(undone.AccountId, provenance, now);
         undo.RevertsChangeSetId = undone.Id;
         return undo;
+    }
+
+    /// <summary>Records what an agent's own write consumes of the sliding window (DA-132).</summary>
+    public void CountTowardsWindow(int operations)
+    {
+        if (ActorKind != ChangeActorKind.AgentIdentity || operations < 0)
+        {
+            throw new InvalidOperationException("Only an agent's write consumes the window, and never a negative count.");
+        }
+
+        WindowOperations = operations;
+    }
+
+    /// <returns><c>false</c> when it already was reviewed.</returns>
+    public bool MarkReviewed(DateTimeOffset now)
+    {
+        if (ReviewedAt is not null)
+        {
+            return false;
+        }
+
+        ReviewedAt = now;
+        return true;
     }
 
     /// <summary>Marks this GraphChangeSet as undone. It stays in the history, with its entries.</summary>
@@ -170,8 +204,8 @@ public sealed class ChangeEntry
 }
 
 /// <summary>
-/// The states of a GraphChangeSet the code uses so far. The glossary's others (Proposed,
-/// Rejected, Expired) arrive with agent proposals (E5).
+/// The states of a GraphChangeSet, which only exists applied. What an agent proposes and still
+/// waits for a decision is a <see cref="ChangeProposal"/>, with states of its own (DA-136).
 /// </summary>
 public enum ChangeSetStatus
 {

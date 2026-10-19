@@ -133,6 +133,10 @@ public static class AgentAuthorization
     public static Task<HttpResponseMessage> CallToolAsync(HttpClient client, string? accessToken, string toolName) =>
         SendMcpAsync(client, accessToken, new { jsonrpc = "2.0", id = 2, method = "tools/call", @params = new { name = toolName, arguments = new { } } });
 
+    /// <summary>A raw <c>tools/call</c> of <paramref name="toolName"/> with <paramref name="arguments"/>, to see the HTTP answer.</summary>
+    public static Task<HttpResponseMessage> CallToolAsync(HttpClient client, string? accessToken, string toolName, object arguments) =>
+        SendMcpAsync(client, accessToken, new { jsonrpc = "2.0", id = 2, method = "tools/call", @params = new { name = toolName, arguments } });
+
     /// <summary>A JSON-RPC batch: one <c>tools/call</c> per name, in order.</summary>
     public static Task<HttpResponseMessage> CallToolsInBatchAsync(HttpClient client, string? accessToken, params string[] toolNames) =>
         SendMcpAsync(client, accessToken, toolNames

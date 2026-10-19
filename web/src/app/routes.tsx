@@ -34,6 +34,21 @@ export const routes: RouteObject[] = [
       { path: "changes", loader: requireSession, element: <RecentChangesPage /> },
       { path: "types", loader: requireSession, element: <OntologyPage /> },
       {
+        path: "agent-changes",
+        loader: requireSession,
+        lazy: async () => ({ Component: (await import("@/features/agents/AgentChangesPage")).AgentChangesPage }),
+      },
+      {
+        path: "agent-changes/proposals/:proposalId",
+        loader: requireSession,
+        lazy: async () => ({ Component: (await import("@/features/agents/ProposalPage")).ProposalPage }),
+      },
+      {
+        path: "changesets/:changeSetId",
+        loader: requireSession,
+        lazy: async () => ({ Component: (await import("@/features/agents/ChangeSetPage")).ChangeSetPage }),
+      },
+      {
         path: "agentes",
         loader: requireSession,
         lazy: async () => ({ Component: (await import("@/features/agents/AgentsPage")).AgentsPage }),

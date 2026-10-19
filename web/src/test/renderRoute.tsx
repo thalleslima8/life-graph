@@ -10,8 +10,9 @@ import { createUnauthorizedHandler } from "@/features/session/unauthorizedHandle
 /** Renders the real route tree at `path`, wired like main.tsx: one QueryClient for router and provider. */
 export function renderRoute(path: string) {
   const queryClient = createQueryClient();
-  // Tests fail fast instead of retrying.
-  queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, retry: false } });
+  // Tests fail fast instead of retrying; a mutation's own retry policy still runs, with no real wait (GEN-072).
+  const defaults = queryClient.getDefaultOptions();
+  queryClient.setDefaultOptions({ queries: { ...defaults.queries, retry: false }, mutations: { ...defaults.mutations, retryDelay: 0 } });
   const router = createMemoryRouter(routes, {
     initialEntries: [path],
     getContext: () => createRouterContext(queryClient),

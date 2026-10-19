@@ -45,6 +45,12 @@ public sealed class AgentIdentity
 
     public IReadOnlyList<string> Scopes => _scopes;
 
+    /// <summary>
+    /// "Exigir aprovação para escritas" (DA-044): every write of the agent becomes a proposal
+    /// only the person approves. Off by default, so the simple path of §63 holds.
+    /// </summary>
+    public bool RequiresApprovalForWrites { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -55,28 +61,23 @@ public sealed class AgentIdentity
 
     public bool IsActive => RevokedAt is null;
 
-    /// <summary>The first consent of this client in the Account.</summary>
-    public static AgentIdentity Connect(
-        Guid id,
-        Guid accountId,
-        string clientId,
-        string? declaredClientName,
-        IEnumerable<string> scopes,
-        Guid authorizationId,
-        DateTimeOffset now)
+    /// <summary>The first consent of this client in the Account; without a choice on the page, writes need no approval (DA-044).</summary>
+    public static AgentIdentity Connect(Guid id, ClientGrant grant, DateTimeOffset now)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(clientId);
+        ArgumentNullException.ThrowIfNull(grant);
+        ArgumentException.ThrowIfNullOrWhiteSpace(grant.ClientId);
 
-        var clientName = DisplayNameOf(declaredClientName, clientId);
+        var clientName = DisplayNameOf(grant.DeclaredClientName, grant.ClientId);
         return new AgentIdentity
         {
             Id = id,
-            AccountId = accountId,
-            ClientId = clientId,
+            AccountId = grant.AccountId,
+            ClientId = grant.ClientId,
             ClientName = clientName,
             Name = Truncate(clientName, NameMaxLength),
-            AuthorizationId = authorizationId,
-            _scopes = [.. scopes.Distinct(StringComparer.Ordinal)],
+            AuthorizationId = grant.AuthorizationId,
+            _scopes = [.. grant.Scopes.Distinct(StringComparer.Ordinal)],
+            RequiresApprovalForWrites = grant.RequiresApprovalForWrites ?? false,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -84,15 +85,25 @@ public sealed class AgentIdentity
 
     /// <summary>
     /// A new consent of a client already known to the Account: the same identity, active again,
-    /// with the new grant. The person's name for it stays.
+    /// with the new grant. The person's name for it stays, and so does "exigir aprovação para
+    /// escritas" unless the person chose on the consent page, which shows it as it is: a
+    /// reconnect never turns the protection off behind the person's back (DA-044).
     /// </summary>
     /// <returns>The authorization the new one replaces, to revoke; <c>null</c> when there was none.</returns>
-    public Guid? Reconnect(string? declaredClientName, IEnumerable<string> scopes, Guid authorizationId, DateTimeOffset now)
+    /// <param name="grant">A grant of this same client in this same Account.</param>
+    public Guid? Reconnect(ClientGrant grant, DateTimeOffset now)
     {
-        var replaced = AuthorizationId == authorizationId ? null : AuthorizationId;
-        ClientName = DisplayNameOf(declaredClientName, ClientId);
-        _scopes = [.. scopes.Distinct(StringComparer.Ordinal)];
-        AuthorizationId = authorizationId;
+        ArgumentNullException.ThrowIfNull(grant);
+        if (grant.AccountId != AccountId || !string.Equals(grant.ClientId, ClientId, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The grant is of another client or Account.", nameof(grant));
+        }
+
+        var replaced = AuthorizationId == grant.AuthorizationId ? null : AuthorizationId;
+        ClientName = DisplayNameOf(grant.DeclaredClientName, ClientId);
+        _scopes = [.. grant.Scopes.Distinct(StringComparer.Ordinal)];
+        RequiresApprovalForWrites = grant.RequiresApprovalForWrites ?? RequiresApprovalForWrites;
+        AuthorizationId = grant.AuthorizationId;
         RevokedAt = null;
         UpdatedAt = now;
         return replaced;
@@ -125,6 +136,19 @@ public sealed class AgentIdentity
         Name = trimmed;
         UpdatedAt = now;
         return Result<bool>.Ok(true);
+    }
+
+    /// <returns><c>true</c> when the toggle changed (DA-044).</returns>
+    public bool RequireApprovalForWrites(bool required, DateTimeOffset now)
+    {
+        if (RequiresApprovalForWrites == required)
+        {
+            return false;
+        }
+
+        RequiresApprovalForWrites = required;
+        UpdatedAt = now;
+        return true;
     }
 
     /// <summary>Ends the connection. The row stays: what the agent did is still attributed to it.</summary>
@@ -174,3 +198,15 @@ public sealed class AgentIdentity
 
     private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength].TrimEnd();
 }
+
+/// <summary>What the person granted a client on the consent page, for the client's AgentIdentity in the Account.</summary>
+/// <param name="DeclaredClientName">The name the client declared; display only, never trusted.</param>
+/// <param name="AuthorizationId">The issuer's new authorization behind the grant.</param>
+/// <param name="RequiresApprovalForWrites">"Exigir aprovação para escritas" as the person left it (DA-044); <c>null</c> when the page did not offer it, which keeps the connection's current choice.</param>
+public sealed record ClientGrant(
+    Guid AccountId,
+    string ClientId,
+    string? DeclaredClientName,
+    IReadOnlyCollection<string> Scopes,
+    Guid AuthorizationId,
+    bool? RequiresApprovalForWrites = null);
