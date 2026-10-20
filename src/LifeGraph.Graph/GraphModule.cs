@@ -19,6 +19,7 @@ public static class GraphModule
         services.AddErrorCodes(GraphErrors.All);
         services.AddErrorCodes(AgentWriteErrors.All);
         services.AddOptions<AgentWriteOptions>().BindConfiguration(AgentWriteOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+        services.AddOptions<LocalGraphOptions>().BindConfiguration(LocalGraphOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddSingleton<IModelContributor, GraphModelContributor>();
@@ -28,6 +29,7 @@ public static class GraphModule
         services.AddScoped<AgentChanges>();
         services.AddScoped<GraphReadFilter>();
         services.AddScoped<GraphReads>();
+        services.AddScoped<LocalGraphReads>();
         services.AddScoped<NodeViews>();
         services.AddScoped<IGraphReader, GraphContextReads>();
         services.AddScoped<GraphWrites>();

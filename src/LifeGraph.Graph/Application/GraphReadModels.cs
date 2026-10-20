@@ -62,6 +62,38 @@ public sealed record RelationItem(
     double Strength,
     DateTimeOffset CreatedAt);
 
+/// <summary>
+/// The local graph around a Node (DA-138): the Nodes the walk reaches up to the depth, ranked
+/// (DA-036) and capped, and the Hard Relations among them, capped too. Not a pageable
+/// collection: a cursor over a traversal would break the picture (the exception to API-060
+/// recorded in DA-138); to see further, re-center on another Node. <see cref="Truncated"/> says
+/// a cap left something out, counted in <see cref="OmittedNodeCount"/> and
+/// <see cref="OmittedEdgeCount"/> among what the reader sees.
+/// </summary>
+public sealed record LocalGraph(
+    Guid RootNodeId,
+    IReadOnlyList<LocalGraphNode> Nodes,
+    IReadOnlyList<LocalGraphEdge> Edges,
+    bool Truncated,
+    int OmittedNodeCount,
+    int OmittedEdgeCount);
+
+/// <param name="Distance">Relations from the starting Node along the walk; 0 for it.</param>
+/// <param name="Degree">Its visible Hard Relations in the whole graph, not only in this one (DA-139).</param>
+/// <param name="AgentUnreviewed">Changed by an agent GraphChangeSet not reviewed nor undone yet (DA-141).</param>
+public sealed record LocalGraphNode(Guid Id, string Title, Guid? TypeId, int Distance, int Degree, bool AgentUnreviewed);
+
+/// <param name="AgentUnreviewed">Changed by an agent GraphChangeSet not reviewed nor undone yet (DA-141).</param>
+public sealed record LocalGraphEdge(
+    Guid Id,
+    Guid SourceNodeId,
+    Guid TargetNodeId,
+    string Kind,
+    RelationAssertion Assertion,
+    RelationOrigin Origin,
+    double Strength,
+    bool AgentUnreviewed);
+
 /// <param name="HiddenFromAgents">Oculto para agentes: every Node of the Type is hidden from agents (DA-035).</param>
 public sealed record TypeItem(
     Guid Id,

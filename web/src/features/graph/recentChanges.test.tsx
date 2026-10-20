@@ -8,7 +8,7 @@ import { aChangeSet, aFeed, CHANGESET_ID, NODE_ID } from "@/test/graphFixtures";
 import { csrfTokenHandler, problem } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 import { graphKeys } from "./graphData";
-import { PROBE_INTERVAL_MS, toUndoRefusal, undoChain, useRecentChanges, useUndoChangeSet, type ChangeSetFeed } from "./recentChanges";
+import { PROBE_INTERVAL_MS, toUndoRefusal, undoChain, useChangeSetProbe, useRecentChanges, useUndoChangeSet, type ChangeSetFeed } from "./recentChanges";
 
 function setup() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -118,12 +118,12 @@ describe("useRecentChanges", () => {
 
     const RETRY_AFTER_SECONDS = 60;
 
-    function throttledProbe() {
+    function throttledProbe(useProbing: () => unknown = useRecentChanges) {
       const probes = feedApi(aFeed([aChangeSet()], "cursor-1"), () =>
         problem(429, "too_many_requests", {}, { "Retry-After": String(RETRY_AFTER_SECONDS) }),
       );
       const { wrapper } = setup();
-      renderHook(() => useRecentChanges(), { wrapper });
+      renderHook(() => useProbing(), { wrapper });
       return probes;
     }
 
@@ -147,8 +147,11 @@ describe("useRecentChanges", () => {
       await vi.waitFor(() => expect(probes).toHaveLength(2));
     });
 
-    it("stretches the timer past the 30-second interval to the Retry-After delay", async () => {
-      const probes = throttledProbe();
+    it.each([
+      ["Recent Changes", useRecentChanges],
+      ["the graph page's probe", useChangeSetProbe],
+    ])("stretches the timer past the 30-second interval to the Retry-After delay (%s)", async (_name, useProbing) => {
+      const probes = throttledProbe(useProbing);
       await vi.waitFor(() => expect(probes).toHaveLength(1));
 
       await act(() => vi.advanceTimersByTimeAsync((RETRY_AFTER_SECONDS - 2) * 1_000));
@@ -157,6 +160,38 @@ describe("useRecentChanges", () => {
       await act(() => vi.advanceTimersByTimeAsync(4_000));
       await vi.waitFor(() => expect(probes).toHaveLength(2));
     });
+  });
+});
+
+describe("useChangeSetProbe", () => {
+  it("says something newer exists without reading the graph again, and starts over from it once acknowledged", async () => {
+    const newer = aChangeSet({ id: "01920000-0000-7000-8000-0000000000c2" });
+    let history = aFeed([aChangeSet()], "cursor-1");
+    const probes: (string | null)[] = [];
+    server.use(
+      http.get("/api/changesets", ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        if (!query.has("limit")) {
+          return HttpResponse.json(history);
+        }
+
+        probes.push(query.get("since"));
+        return HttpResponse.json(query.get("since") === "cursor-1" ? aFeed([newer], "cursor-2") : aFeed([], "cursor-2"));
+      }),
+    );
+    const { queryClient, wrapper } = setup();
+    queryClient.setQueryData(graphKeys.node(NODE_ID), {});
+    const { result } = renderHook(() => useChangeSetProbe(), { wrapper });
+
+    await waitFor(() => expect(result.current.hasNewer).toBe(true));
+    // The caller decides what to read again (DA-142): the graph is left alone.
+    expect(queryClient.getQueryState(graphKeys.node(NODE_ID))?.isInvalidated).toBe(false);
+
+    history = aFeed([newer, aChangeSet()], "cursor-2");
+    act(() => result.current.acknowledge());
+
+    await waitFor(() => expect(probes).toEqual(["cursor-1", "cursor-2"]));
+    await waitFor(() => expect(result.current.hasNewer).toBe(false));
   });
 });
 

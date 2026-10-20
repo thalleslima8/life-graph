@@ -20,7 +20,8 @@ internal sealed class GraphReads(
     LifeGraphDbContext db,
     IAccountContext accountContext,
     GraphReadFilter filter,
-    IAgentIdentityDirectory agentDirectory)
+    IAgentIdentityDirectory agentDirectory,
+    LocalGraphReads localGraphs)
 {
     public const int DefaultNodePageSize = 50;
 
@@ -115,6 +116,25 @@ internal sealed class GraphReads(
                 node.HiddenFromAgents,
                 Node.SuggestedTypeOf(node.TypeId, node.SuggestedType)));
         }, cancellationToken);
+
+    /// <summary>
+    /// The local graph around a live Node (DA-138), from 1 to 3 Relations away; a Node the
+    /// reader does not see reads as not found, as in <see cref="GetNodeAsync"/>.
+    /// </summary>
+    public Task<Result<LocalGraph>> GetLocalGraphAsync(Guid nodeId, int? depth, CancellationToken cancellationToken)
+    {
+        var errors = NoErrors();
+        var walkDepth = depth ?? LocalGraphLimits.DefaultDepth;
+        if (walkDepth is < LocalGraphLimits.MinDepth or > LocalGraphLimits.MaxDepth)
+        {
+            errors["depth"] = [$"Must be between {LocalGraphLimits.MinDepth} and {LocalGraphLimits.MaxDepth}."];
+        }
+
+        return RunAsync(errors, async token =>
+            filter.Reader is { } reader && await localGraphs.ExpandAsync(reader, nodeId, walkDepth, token) is { } graph
+                ? Result<LocalGraph>.Ok(graph)
+                : Result<LocalGraph>.Fail(GraphErrors.NodeNotFound.ToError("The node was not found.")), cancellationToken);
+    }
 
     /// <summary>The live Relations of a live Node, either direction, newest first.</summary>
     public Task<Result<PagedList<RelationItem>>> ListRelationsAsync(Guid nodeId, string? cursor, int? limit, CancellationToken cancellationToken)

@@ -44,6 +44,7 @@ export const graphKeys = {
   nodes: (filter: NodeListFilter) => ["graph", "nodes", filter] as const,
   node: (id: string) => ["graph", "node", id] as const,
   relations: (id: string) => ["graph", "node", id, "relations"] as const,
+  localGraph: (id: string, depth: number) => ["graph", "local-graph", id, depth] as const,
   types: ["graph", "types"] as const,
   propertyDefinitions: ["graph", "property-definitions"] as const,
 };
@@ -61,7 +62,7 @@ export const isVersionConflict = (error: unknown): error is ApiError => isApiErr
 export const isNotFound = (error: unknown): error is ApiError => isApiError(error) && error.status === 404;
 
 // A missing resource stays missing: retrying a 404 only delays the answer.
-function retryUnlessNotFound(failureCount: number, error: unknown): boolean {
+export function retryUnlessNotFound(failureCount: number, error: unknown): boolean {
   return !isNotFound(error) && failureCount < 1;
 }
 

@@ -140,6 +140,13 @@ describe("node inspector", () => {
     expect(state.deletes).toEqual(["?version=1"]);
   });
 
+  it("links to the Node's local graph", async () => {
+    inspectorApi(aNode());
+    renderRoute(`/nodes/${NODE_ID}`);
+
+    expect(await screen.findByRole("link", { name: "Ver no grafo" })).toHaveAttribute("href", `/nodes/${NODE_ID}/graph`);
+  });
+
   it("says a Node opened by a link that does not exist is not found", async () => {
     inspectorApi(null);
     renderRoute(`/nodes/${NODE_ID}`);

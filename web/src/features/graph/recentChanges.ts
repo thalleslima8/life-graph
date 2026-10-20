@@ -52,7 +52,31 @@ export function useRecentChanges(): {
 } {
   const queryClient = useQueryClient();
   const feed = useInfiniteQuery({ ...changeSetsQuery, select: (data) => data.pages.flatMap((page) => page.data) });
-  // A second observer of the same cache: the newest cursor the person has seen.
+  const { hasNewer, newestProbed, acknowledge } = useProbe();
+
+  // New items stay out of the list (focus and scroll stay put) but the graph is read again.
+  useEffect(() => {
+    if (hasNewer) {
+      void queryClient.invalidateQueries({ queryKey: graphKeys.all });
+    }
+  }, [hasNewer, newestProbed, queryClient]);
+
+  return { feed, hasNewer, showNewer: acknowledge };
+}
+
+/**
+ * Whether a GraphChangeSet newer than the feed's newest one exists (DA-054, DA-142). It reads
+ * nothing else again: the caller decides what to refresh. `acknowledge` reloads the feed, so the
+ * newest seen moves up and the probe starts over from there.
+ */
+export function useChangeSetProbe(): { hasNewer: boolean; acknowledge(): void } {
+  const { hasNewer, acknowledge } = useProbe();
+  return { hasNewer, acknowledge };
+}
+
+function useProbe(): { hasNewer: boolean; newestProbed: string | null; acknowledge(): void } {
+  const queryClient = useQueryClient();
+  // An observer of the feed's cache: the newest cursor the person has seen.
   const latestCursor = useInfiniteQuery({ ...changeSetsQuery, select: (data) => data.pages[0]?.latestCursor ?? null });
 
   // Without a cursor (empty feed) the probe reads without `since`: anything it finds is new.
@@ -69,21 +93,11 @@ export function useRecentChanges(): {
     refetchIntervalInBackground: false,
   });
 
-  const hasNewer = (probe.data?.data.length ?? 0) > 0;
-  const newestProbed = probe.data?.latestCursor ?? null;
-
-  // New items stay out of the list (focus and scroll stay put) but the graph is read again.
-  useEffect(() => {
-    if (hasNewer) {
-      void queryClient.invalidateQueries({ queryKey: graphKeys.all });
-    }
-  }, [hasNewer, newestProbed, queryClient]);
-
-  const showNewer = () => {
+  const acknowledge = () => {
     void queryClient.resetQueries({ queryKey: feedKey });
   };
 
-  return { feed, hasNewer, showNewer };
+  return { hasNewer: (probe.data?.data.length ?? 0) > 0, newestProbed: probe.data?.latestCursor ?? null, acknowledge };
 }
 
 export type UndoResult = {

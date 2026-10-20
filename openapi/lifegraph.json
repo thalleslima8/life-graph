@@ -834,6 +834,69 @@
         }
       }
     },
+    "/api/nodes/{nodeId}/graph": {
+      "get": {
+        "tags": [
+          "Nodes"
+        ],
+        "operationId": "GetLocalGraph",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalGraph"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/nodes/{nodeId}/archival": {
       "post": {
         "tags": [
@@ -2987,6 +3050,147 @@
         }
       },
       "JsonElement": { },
+      "LocalGraph": {
+        "required": [
+          "rootNodeId",
+          "nodes",
+          "edges",
+          "truncated",
+          "omittedNodeCount",
+          "omittedEdgeCount"
+        ],
+        "type": "object",
+        "properties": {
+          "rootNodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocalGraphNode"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocalGraphEdge"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "omittedNodeCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "omittedEdgeCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "LocalGraphEdge": {
+        "required": [
+          "id",
+          "sourceNodeId",
+          "targetNodeId",
+          "kind",
+          "assertion",
+          "origin",
+          "strength",
+          "agentUnreviewed"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceNodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetNodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "assertion": {
+            "$ref": "#/components/schemas/RelationAssertion"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/RelationOrigin"
+          },
+          "strength": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "agentUnreviewed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LocalGraphNode": {
+        "required": [
+          "id",
+          "title",
+          "typeId",
+          "distance",
+          "degree",
+          "agentUnreviewed"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "typeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "distance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "degree": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "agentUnreviewed": {
+            "type": "boolean"
+          }
+        }
+      },
       "NodeDetail": {
         "required": [
           "id",

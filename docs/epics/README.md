@@ -16,7 +16,7 @@ menor. Ao adicionar ou alterar um épico, verifique esta tabela.
 | E3 | [Conexão de agentes](in-progress/e03-conexao-de-agentes.md) | OAuth 2.1, consentimento, túnel de dev, primeira conexão com ChatGPT/Claude.ai | E1, E2 |
 | E4 | [MCP leitura](in-progress/e04-mcp-leitura.md) | `get_context`, busca, oculto para agentes, auditoria | E3 |
 | E5 | [MCP escrita + Agent Changes](in-progress/e05-mcp-escrita-agent-changes.md) | Escrita de agentes com proteções; **fecha o fluxo da §63** | E4 |
-| E6 | [Grafo 2.5D](backlog/e06-grafo-2-5d.md) | Grafo local, Semantic Zoom básico | E2 |
+| E6 | [Grafo 2.5D](in-progress/e06-grafo-2-5d.md) | Grafo local, Semantic Zoom básico | E2 |
 | E7 | [Resources e captura](backlog/e07-resources-e-captura.md) | Resource como Node, fetch protegido contra SSRF, `capture_resource` | E2, E5 |
 | E8 | [Tags, Collections, editor](backlog/e08-tags-collections-editor.md) | Tags, Collections como queries, editor completo de Properties | E2 |
 | E9 | [Camada semântica](backlog/e09-camada-semantica.md) | Embeddings, Soft Relations, busca semântica | E2, E7 |
@@ -40,4 +40,4 @@ E3–E5.
 - Toda exceção a uma regra **DEVE** de `docs/standards/` vira um `DA-###` no
   épico, citando o ID da regra.
 - **Numeração de decisões:** os `DA-###` são sequenciais e **globais** entre
-  os épicos (DA-001 a DA-136 nesta versão do roadmap). O próximo é o DA-137.
+  os épicos (DA-001 a DA-143 nesta versão do roadmap). O próximo é o DA-144.

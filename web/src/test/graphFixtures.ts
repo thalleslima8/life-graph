@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import type { components } from "@/api/schema.gen";
 import type { NodeDetail, PropertyDefinitionItem, TypeItem } from "@/features/graph/graphData";
 import type { ChangeSetFeed, ChangeSetItem } from "@/features/graph/recentChanges";
 import type { ChangeSetDetail, ProposalDetail, ProposalItem, ProposedOperation } from "@/features/agents/agentChanges";
@@ -148,6 +149,35 @@ export function aChangeSetDetail(overrides: Partial<ChangeSetDetail> = {}): Chan
         fields: [{ field: "title", before: "Leituras", after: "Leituras de 2026", overwritesYourValue: true }],
       },
     ],
+    ...overrides,
+  };
+}
+
+export const RELATION_ID = "01920000-0000-7000-8000-0000000000f1";
+
+/** The local graph as the API sends it: the root and one neighbor, related by one Hard Relation. */
+export function aLocalGraph(overrides: Partial<components["schemas"]["LocalGraph"]> = {}): components["schemas"]["LocalGraph"] {
+  return {
+    rootNodeId: NODE_ID,
+    nodes: [
+      { id: NODE_ID, title: "Leituras", typeId: null, distance: 0, degree: 1, agentUnreviewed: false },
+      { id: OTHER_NODE_ID, title: "Meditações", typeId: TYPE_ID, distance: 1, degree: 1, agentUnreviewed: false },
+    ],
+    edges: [
+      {
+        id: RELATION_ID,
+        sourceNodeId: NODE_ID,
+        targetNodeId: OTHER_NODE_ID,
+        kind: "cita",
+        assertion: "hard",
+        origin: "user",
+        strength: 1,
+        agentUnreviewed: false,
+      },
+    ],
+    truncated: false,
+    omittedNodeCount: 0,
+    omittedEdgeCount: 0,
     ...overrides,
   };
 }

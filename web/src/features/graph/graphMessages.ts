@@ -2,6 +2,7 @@ import { isApiError } from "@/api/client";
 import type { PropertyValueKind } from "./graphData";
 import type { ChangeSetItem, UndoRefusal } from "./recentChanges";
 import type { SchemaRefusal } from "./graphData";
+import type { GraphViewMode, LevelOfDetail, LocalGraphEdge } from "./localGraph";
 
 /** The visible texts of the graph screens (FE-062: one place, formatted by locale). */
 
@@ -9,6 +10,9 @@ export const UNEXPECTED_ERROR_MESSAGE = "Não foi possível concluir agora. Tent
 export const LOAD_ERROR_MESSAGE = "Não foi possível carregar. Tente novamente em instantes.";
 export const VERSION_CONFLICT_MESSAGE = "Este Node foi alterado em outro lugar. Recarregue para ver a versão atual; nada foi sobrescrito.";
 export const NO_TYPE_LABEL = "Sem Type";
+export const LEGEND_SIZE_TEXT = "Tamanho: quanto mais Relations, maior o Node; quanto mais longe da raiz, menor.";
+export const LEGEND_HARD_TEXT = "Hard Relation: linha reta";
+export const LEGEND_SOFT_TEXT = "Soft Relation: linha curva e mais fina";
 export const TYPE_LOADING_LABEL = "Carregando Type…";
 export const TYPE_UNAVAILABLE_LABEL = "Type indisponível";
 export const TYPES_LOAD_ERROR_MESSAGE = "Não foi possível carregar os Types.";
@@ -41,6 +45,109 @@ const dateFormat = new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" });
 
 export function formatDateTime(isoInstant: string): string {
   return dateTimeFormat.format(new Date(isoInstant));
+}
+
+const countFormat = new Intl.NumberFormat("pt-BR");
+
+function counted(count: number, singular: string, plural: string): string {
+  return `${countFormat.format(count)} ${count === 1 ? singular : plural}`;
+}
+
+export const GRAPH_UPDATING_MESSAGE = "Atualizando…";
+export const GRAPH_DRAW_ERROR_MESSAGE = "Não foi possível desenhar o grafo; mostrando a lista.";
+export const SELECTED_NODE_LABEL = "selecionado";
+export const ROOT_HEADING = "Raiz";
+export const NO_RELATIONS_MESSAGE = "Este Node ainda não tem Relations.";
+export const AGENT_UNREVIEWED_LABEL = "mudança de agente não revisada";
+export const LEGEND_AGENT_TEXT = "Anel e texto “mudança de agente não revisada”: tocado por um agente, ainda não revisado";
+export const AGENT_NEWS_MESSAGE = "Há novidades de agentes.";
+export const AGENT_NEWS_ACTION = "Atualizar";
+export const SELECTED_GONE_MESSAGE = "O Node selecionado não existe mais.";
+export const SELECTED_AGENT_NOTICE = "Este Node tem uma mudança de agente não revisada.";
+export const REVIEW_AGENT_CHANGES_LABEL = "Revisar em Agent Changes";
+export const INSPECTOR_CLOSE_LABEL = "Fechar";
+export const REROOT_LABEL = "Centralizar aqui";
+export const SHOW_IN_GRAPH_LABEL = "Ver no grafo";
+export const NODE_BODY_LABEL = "Conteúdo";
+export const TYPE_NAME_LOADING_LABEL = "Type (carregando o nome…)";
+
+/** What each level of the Semantic Zoom shows, announced when the level changes (DA-140). */
+export const ZOOM_LEVEL_MESSAGES: Record<LevelOfDetail, string> = {
+  far: "Zoom afastado: títulos só na raiz e nos vizinhos diretos.",
+  middle: "Zoom médio: todos os títulos, com a cor do Type.",
+  near: "Zoom próximo: resumo de cada Node e o tipo de cada Relation.",
+};
+
+/** The local graph page's own texts (FE-062). */
+export const LOCAL_GRAPH_TITLE = "Grafo local";
+export const LOADING_MESSAGE = "Carregando…";
+export const RETRY_LABEL = "Tentar novamente";
+export const CREATE_RELATION_LABEL = "Criar Relation";
+export const OPEN_IN_INSPECTOR_LABEL = "Abrir no Inspector";
+export const VIEW_MODE_LEGEND = "Visualização";
+export const DEPTH_LEGEND = "Profundidade";
+export const ZOOM_CONTROLS_LABEL = "Zoom";
+export const ZOOM_IN_LABEL = "Aproximar";
+export const ZOOM_OUT_LABEL = "Afastar";
+export const ZOOM_RESET_LABEL = "Restaurar zoom";
+export const LEGEND_TITLE = "Legenda";
+export const NODE_NOT_FOUND_TITLE = "Node não encontrado";
+export const BACK_TO_NODES_LABEL = "Voltar para os Nodes";
+
+/** The heading of the local graph around a root Node. */
+export function localGraphTitle(rootTitle: string): string {
+  return `Grafo de ${rootTitle}`;
+}
+
+/** The names of the two ways to show the local graph (DA-142). */
+export const GRAPH_VIEW_MODE_LABELS: Readonly<Record<GraphViewMode, string>> = { canvas: "Desenho", list: "Lista" };
+
+/** Hard or Soft, in words: the list cannot say it with a line (FE-034). */
+export const ASSERTION_LABELS: Readonly<Record<LocalGraphEdge["assertion"], string>> = { hard: "Hard", soft: "Soft" };
+
+/** The heading of the Nodes at one distance from the root, in the list. */
+export function distanceHeading(distance: number): string {
+  return distance === 0 ? ROOT_HEADING : `A ${counted(distance, "Relation", "Relations")} da raiz`;
+}
+
+/** A Relation in words, from its source to its target. */
+export function relationText(sourceTitle: string, kind: string, targetTitle: string): string {
+  return `${sourceTitle} → ${kind} → ${targetTitle}`;
+}
+
+/** The accessible name of a Node's Relations in the list. */
+export function relationsOfLabel(nodeTitle: string): string {
+  return `Relations de ${nodeTitle}`;
+}
+
+/** The keys of the local graph (DA-142); a visitor's view cannot re-root, and the list has no zoom. */
+export function graphKeyboardHelp({ canReroot, canZoom }: { canReroot: boolean; canZoom: boolean }): string {
+  return [
+    "Teclado: ↑ e ↓ percorrem os Nodes em ordem; → vai a um vizinho mais longe da raiz e ← a um mais perto.",
+    "Enter seleciona.",
+    ...(canReroot ? ["Shift+Enter centraliza no Node."] : []),
+    ...(canZoom ? ["+ e − aproximam e afastam; 0 restaura o zoom."] : []),
+    "Esc volta ao Node selecionado ou à raiz.",
+  ].join(" ");
+}
+
+/** The near level's summary of a Node: its Type and how many Relations it has (DA-139). */
+export function nodeSummaryText(typeName: string, degree: number): string {
+  return `${typeName}, ${counted(degree, "Relation", "Relations")}`;
+}
+
+/** The accessible name of the drawing of the local graph. */
+export function localGraphLabel(rootTitle: string, nodeCount: number, edgeCount: number): string {
+  return `Grafo local de ${rootTitle}: ${counted(nodeCount, "Node", "Nodes")} e ${counted(edgeCount, "Relation", "Relations")}`;
+}
+
+/** What the caps of the local graph left out (DA-138); a Node past the depth is not counted. */
+export function omittedMessage(nodeCount: number, edgeCount: number): string {
+  const omitted = [
+    ...(nodeCount > 0 ? [counted(nodeCount, "Node omitido", "Nodes omitidos")] : []),
+    ...(edgeCount > 0 ? [counted(edgeCount, "Relation omitida", "Relations omitidas")] : []),
+  ];
+  return `${omitted.join(" e ")}. Centralize em outro Node para ver mais.`;
 }
 
 /** The message for a failed write no field explains. */

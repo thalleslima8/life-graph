@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Routing;
 
 namespace LifeGraph.Graph.Http;
 
-/// <summary>Nodes: list (with the "Sem Type" and Inbox filters), Inspector, create, edit, delete, archive and restore.</summary>
+/// <summary>Nodes: list (with the "Sem Type" and Inbox filters), Inspector, local graph, create, edit, delete, archive and restore.</summary>
 internal static class NodeEndpoints
 {
     public static IEndpointRouteBuilder MapNodeEndpoints(this IEndpointRouteBuilder endpoints)
@@ -30,6 +30,13 @@ internal static class NodeEndpoints
         nodes.MapGet("/{nodeId:guid}/relations", ListRelationsAsync)
             .WithName("ListNodeRelations")
             .Produces<PagedList<RelationItem>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // A depth-bounded, capped subgraph, not a pageable collection (DA-138, exception to API-060).
+        nodes.MapGet("/{nodeId:guid}/graph", GetLocalGraphAsync)
+            .WithName("GetLocalGraph")
+            .Produces<LocalGraph>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -103,6 +110,17 @@ internal static class NodeEndpoints
     {
         var page = await reads.ListRelationsAsync(nodeId, cursor, limit, cancellationToken);
         return writes.Responder.ToHttpResult(page, value => TypedResults.Ok(value));
+    }
+
+    private static async Task<IResult> GetLocalGraphAsync(
+        Guid nodeId,
+        [FromQuery] int? depth,
+        GraphReads reads,
+        GraphWrites writes,
+        CancellationToken cancellationToken)
+    {
+        var graph = await reads.GetLocalGraphAsync(nodeId, depth, cancellationToken);
+        return writes.Responder.ToHttpResult(graph, value => TypedResults.Ok(value));
     }
 
     private static Task<IResult> CreateAsync(CreateNodeRequest request, GraphWrites writes, CancellationToken cancellationToken)
