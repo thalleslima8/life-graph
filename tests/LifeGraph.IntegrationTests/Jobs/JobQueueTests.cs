@@ -83,7 +83,8 @@ public sealed class JobQueueTests(PostgresDatabase database) : IAsyncLifetime
 
         var claimed = await Runner.ClaimAsync(10, TestContext.Current.CancellationToken);
 
-        Assert.Equal([(ofA, _accountA), (ofB, _accountB)], claimed.Select(job => (job.JobId, job.AccountId)).Order());
+        // Both sides sorted: the order is not under test, and UUIDv7 ids of one millisecond do not sort in creation order.
+        Assert.Equal(new[] { (ofA, _accountA), (ofB, _accountB) }.Order(), claimed.Select(job => (job.JobId, job.AccountId)).Order());
         Assert.Equal(2, await _graph.ScalarAsync<long>("SELECT count(*) FROM jobs WHERE status = 'running' AND lease_until > now() AND attempts = 1"));
         Assert.Empty(await Runner.ClaimAsync(10, TestContext.Current.CancellationToken));
     }
@@ -184,7 +185,8 @@ public sealed class JobQueueTests(PostgresDatabase database) : IAsyncLifetime
 
         Assert.Equal(2, await Runner.RunDueAsync(TestContext.Current.CancellationToken));
 
-        Assert.Equal([(_accountA, _accountA, 1), (_accountB, _accountB, 1)], _recording.Runs.Order());
+        // Both sides sorted: the order is not under test, and UUIDv7 ids of one millisecond do not sort in creation order.
+        Assert.Equal(new[] { (_accountA, _accountA, 1), (_accountB, _accountB, 1) }.Order(), _recording.Runs.Order());
         Assert.Equal("done", await StatusAsync(ofA));
         Assert.Equal("done", await StatusAsync(ofB));
     }

@@ -274,7 +274,7 @@ public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifet
         await AgentMcp.CallAsync(_agent, GraphReadTools.ListTypesName);
         await AgentMcp.RefusalAsync(_agent, GraphReadTools.GetNodeName, new { nodeId = Guid.CreateVersion7() });
 
-        var operations = await database.QueryScalarAsMigratorAsync<string[]>("SELECT array_agg(operation ORDER BY id) FROM agent_reads");
+        var operations = await database.QueryScalarAsMigratorAsync<string[]>("SELECT array_agg(operation ORDER BY created_at, id) FROM agent_reads");
         Assert.Equal(["search_graph", "get_node", "list_types", "get_node"], operations);
         Assert.Equal(1L, await database.QueryScalarAsMigratorAsync<long>(
             "SELECT count(*) FROM agent_reads WHERE operation = 'search_graph' AND arguments ->> 'query' = 'meditacoes' AND returned_node_ids = ARRAY[@node]",
