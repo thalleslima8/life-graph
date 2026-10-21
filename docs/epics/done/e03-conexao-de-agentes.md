@@ -323,18 +323,27 @@ e de compatibilidade de clientes antes das ferramentas de verdade (E4/E5).
   conexão continua revogável, então não há risco de acesso nem de
   privacidade, só de confusão. Fica registrada em "Fora de escopo".
 
+- **DA-147 — Aceites que dependem de domínio vão para o E13** (usuário,
+  2026-10-21). Tudo que depende de domínio só é testado em pré-produção. O E3
+  fecha com o aceite do Claude Code via CIMD no host, que cobriu consentimento,
+  chamada da ferramenta, "Agentes conectados" e revogação. Saem do E3 para o E13:
+  comprar o domínio e apontar o DNS, confirmar os planos do ChatGPT e do
+  Claude.ai, validar o `resource`/audience e o PRM contra Claude.ai e ChatGPT, e
+  o aceite de Claude.ai e ChatGPT pelo domínio. O critério de saída abaixo foi
+  ajustado.
+
 ## Pré-requisitos do usuário
 
-- [ ] Comprar um domínio e apontar o DNS para o Cloudflare
-- [ ] Confirmar que os planos de ChatGPT (modo desenvolvedor) e Claude.ai permitem conectores MCP personalizados com ferramentas de escrita
+Movidos para o E13 (DA-147): comprar o domínio e apontar o DNS, confirmar os
+planos de ChatGPT e Claude.ai.
 
 ## Checklist
 
 ### Slice 1 — Cliente pré-registrado
-- [ ] Spike: OpenIddict + `resource`/audience + Protected Resource Metadata contra Claude.ai e ChatGPT
+- [x] Spike: OpenIddict + `resource`/audience + Protected Resource Metadata (parte em processo; a validação contra Claude.ai e ChatGPT foi para o E13, DA-147)
   - Parte em processo concluída: `resource` (RFC 8707) com audience fixada no
-    MCP, PRM e discovery validados pelo cliente MCP do SDK. Falta a validação
-    contra Claude.ai e ChatGPT (manual, junto com o aceite abaixo).
+    MCP, PRM e discovery validados pelo cliente MCP do SDK, e pelo Claude Code
+    no aceite da Slice 2.
 - [x] Protected Resource Metadata, 401 com `resource_metadata`, discovery do servidor de autorização
 - [x] Tela de consentimento (Razor no servidor): hostname do redirect, scopes em linguagem simples, aviso de que o agente poderá alterar o grafo (com Undo), aviso para cliente só-loopback
 - [x] AgentIdentity por concessão + tela "Agentes conectados" (último uso, renomear, revogar)
@@ -344,12 +353,18 @@ e de compatibilidade de clientes antes das ferramentas de verdade (E4/E5).
 - [x] Endpoint MCP com uma ferramenta Safe (`whoami`/`ping`)
 - [x] Perfil `public` do compose com cloudflared + runbook do túnel
 - [x] Rate limits em `/authorize`, `/token` e login
-- [ ] Aceite manual: conectar Claude.ai e ChatGPT e chamar a ferramenta
+- Aceite manual com Claude.ai e ChatGPT: movido para o E13 (DA-147)
 
 ### Slice 2 — CIMD
 - [x] Handler de CIMD com fetch protegido contra SSRF, cache, match exato de redirect e loopback
 - [x] Metadata anunciando suporte a CIMD
-- [ ] Aceite manual: Claude Code via CIMD
+- [x] Aceite manual: Claude Code via CIMD
+  - Feito em 2026-10-21, no host, depois da correção do CSP (DA-144). O Claude
+    Code conectou sem cliente pré-registrado, recebeu `lifegraph.read` e
+    `lifegraph.write` e chamou as ferramentas
+    (`docs/analyses-tests/relatorio-teste-mcp-life-graph.md`). Depois da
+    revogação em "Agentes conectados", a chamada seguinte ao `whoami` foi
+    recusada e o cliente pediu nova autenticação (DA-121).
 
 ### Correções achadas no aceite manual
 - [x] Bug: o CSP da tela de consentimento bloqueia o redirect de volta ao
@@ -395,8 +410,9 @@ e de compatibilidade de clientes antes das ferramentas de verdade (E4/E5).
 
 ## Critérios de saída
 
-Claude.ai e ChatGPT conectam pelo túnel, passam pelo consentimento e chamam a
-ferramenta MCP. O usuário vê e revoga a conexão.
+Um agente real (Claude Code via CIMD) conecta, passa pelo consentimento e chama
+a ferramenta MCP. O usuário vê e revoga a conexão, e o agente perde o acesso. A
+mesma prova com Claude.ai e ChatGPT pelo domínio fica no E13 (DA-147).
 
 ## Fora de escopo
 

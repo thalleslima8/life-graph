@@ -2,7 +2,7 @@
 
 - **Ordem:** 6
 - **Depende de:** E2
-- **Última revisão:** 2026-10-20
+- **Última revisão:** 2026-10-21
 
 ## Contexto
 
@@ -176,9 +176,21 @@ Semantic Zoom básico e o Node Inspector, sem o universo visual inteiro.
     - Não há elementos ocultos por Node, porque duplicariam o grafo no DOM.
   - Testes: o anúncio no `status`, a ajuda ligada por `aria-describedby` e o
     retorno do foco do Inspector à vista.
-  - Pendente para o aceite manual: `role="application"` desliga os atalhos do
-    leitor de tela, então vale um teste com NVDA ou VoiceOver. A lista é o
-    fallback acessível (FE-030) e reduz esse risco.
+  - Aceite manual: `role="application"` desliga os atalhos do leitor de tela,
+    então vale um teste com NVDA ou VoiceOver. A lista é o fallback acessível
+    (FE-030) e reduz esse risco.
+    - Feito em 2026-10-21 com o NVDA e o Chrome 155 no Windows, e tudo passou.
+      No desenho: entrar com Tab anuncia o grafo e a ajuda de teclado; ↑/↓ e
+      →/← andam pelos Nodes com fala; +/− anunciam o nível de zoom e 0
+      restaura; Enter seleciona e leva o foco ao Inspector; Shift+Enter
+      centraliza; Esc devolve o teclado ao Node selecionado, ou à raiz sem
+      seleção. Shift+Tab volta do Inspector para o desenho, e "Fechar" fecha o
+      painel e devolve o foco à vista. A Lista é lida por grupos de distância,
+      com o tipo da Relation e Hard/Soft.
+    - Observação de uso: com o foco dentro do Inspector, Esc não faz nada,
+      como manda a DA-143. Para voltar à vista é preciso Shift+Tab ou "Fechar".
+    - Nota de ambiente: o NVDA ficou mudo em qualquer site, Gmail incluído, até
+      o Chrome ser reaberto com o NVDA já ligado. Não é defeito do app.
 
 ## Checklist
 
@@ -189,12 +201,33 @@ Semantic Zoom básico e o Node Inspector, sem o universo visual inteiro.
 - [x] Node Inspector integrado ao grafo
 - [x] Destaque de mudanças recentes de agentes
 - [x] Fallback acessível em lista (FE-030), navegação por teclado
-- [ ] Medição de FPS com 1k Nodes em navegador real (DA-137)
+- [x] Medição de FPS com 1k Nodes em navegador real (DA-137)
+  - Feita em 2026-10-21 com o harness da DA-137 (1 000 Nodes e 1 500 arestas,
+    22 s de pan e zoom automáticos). O navegador foi o Chrome 155 no Windows,
+    com viewport 2048×926 e devicePixelRatio 0,9375. O Sigma.js 3.0.3 (WebGL)
+    deu FPS médio 60,1, p5 59,5 e pior quadro de 17 ms, em 1 201 quadros. É o
+    teto de uma tela de 60 Hz, sem queda. A biblioteca escolhida fica, e a
+    reserva (force-graph) não é necessária.
+  - Comparação nas mesmas condições: o force-graph 1.52.0 (Canvas 2D) deu
+    60,1, p5 59,2 e pior quadro de 17,2 ms, em 1 201 quadros. O Sigma.js 4.0.3
+    deu 60,1, p5 59,2 e pior quadro de 18,9 ms, em 1 143 quadros. As três
+    batem no teto de 60 Hz, então com 1k Nodes o FPS não as diferencia. A
+    escolha da DA-137 se confirma pelos outros critérios: menor bundle
+    (+38,6 KiB) e Semantic Zoom pela câmera e pelos reducers.
 
 ## Critérios de saída
 
 O usuário entra num Node, navega pelos vizinhos em 2.5D, vê aparecer o que um
 agente acabou de criar e abre o Inspector.
+
+Aceite feito em 2026-10-21 com o Claude Code no host. Com "Exigir aprovação
+para escritas" desligado, o agente criou direto o Node «Linha Oeste» e uma
+Relation com Ferrovias. No grafo local de Ferrovias, os dois apareceram como
+"mudança de agente não revisada". O Inspector mostrou o aviso e o link
+"Revisar em Agent Changes", e depois de "Marcar revisado" o destaque sumiu. A
+pessoa navegou e usou o Semantic Zoom. Com a aprovação ligada, o destaque não
+aparece, e isso é esperado: o ChangeSet nascido de uma aprovação já sai
+revisado (E5).
 
 ## Fora de escopo
 

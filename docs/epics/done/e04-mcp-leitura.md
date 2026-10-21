@@ -2,7 +2,7 @@
 
 - **Ordem:** 4
 - **Depende de:** E3
-- **Última revisão:** 2026-10-08
+- **Última revisão:** 2026-10-21
 
 ## Contexto
 
@@ -112,9 +112,19 @@ saem do sistema rumo a provedores de IA de terceiros.
   `ambiguous` (testes unitários da resolução e de integração com um hit de FTS)
 
 ### Aceite
-- [ ] Aceite manual: no Claude.ai ou no ChatGPT, pelo túnel, o agente responde
-  sobre um assunto usando `get_context`, sem nunca ver Nodes ocultos (junto com
-  o aceite do E3)
+- [x] Aceite manual: um agente real responde sobre um assunto usando
+  `get_context`, sem nunca ver Nodes ocultos
+  - Feito em 2026-10-21 com o Claude Code no host
+    (`docs/analyses-tests/relatorio-teste-mcp-life-graph.md`). O agente
+    respondeu sobre "Transport Fever 3" com `get_context` (`depth: 2`), com
+    proveniência e `trust: "untrusted"`. Depois que o Node "Rodovias" foi
+    marcado como oculto para agentes, o `get_node` dele respondeu "not found",
+    o `search_graph` não o achou, e o `get_context` passou de 7 nodes e 9
+    edges para 6 e 7, sem nenhuma aresta apontando para ele. O agente concluiu
+    que o Node tinha sido apagado, ou seja, não distinguiu oculto de
+    inexistente.
+  - A mesma prova no Claude.ai ou no ChatGPT, pelo domínio, foi para o E13
+    (DA-147).
 
 ### Notas de implementação
 
@@ -162,8 +172,9 @@ saem do sistema rumo a provedores de IA de terceiros.
 
 ## Critérios de saída
 
-No Claude.ai ou no ChatGPT, o usuário pergunta sobre um assunto e o agente
-responde usando `get_context`, sem nunca ver Nodes ocultos.
+Um agente real (Claude Code) responde sobre um assunto usando `get_context`,
+sem nunca ver Nodes ocultos. A mesma prova no Claude.ai ou no ChatGPT, pelo
+domínio, fica no E13 (DA-147).
 
 ## Fora de escopo
 

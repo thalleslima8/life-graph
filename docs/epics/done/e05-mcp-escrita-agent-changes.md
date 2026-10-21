@@ -2,7 +2,7 @@
 
 - **Ordem:** 5
 - **Depende de:** E4
-- **Última revisão:** 2026-10-19
+- **Última revisão:** 2026-10-21
 
 ## Pendências do `/flow` de 2026-10-04 (contrato de erro)
 
@@ -271,7 +271,23 @@ e automação reversível".
 - [x] Tela **Agent Changes**: feed por agente, "não revisado", diff campo a campo com aviso "sobrescreveu um valor seu", aprovar/rejeitar total ou parcial, Undo
 - [x] Tela de GraphChangeSet (v2 §66)
 - [x] Ligação com a Inbox para Nodes sem Type de agente
-- [ ] Aceite manual: pelo túnel de dev (`docs/runbooks/tunel-de-dev.md`), a partir do Claude.ai ou do ChatGPT, "guarde isso e relacione com X" gera Nodes e Relations visíveis em Agent Changes, e a pessoa desfaz pela tela de GraphChangeSet
+- [x] Aceite manual: a partir de um agente real, "guarde isso e relacione com X" gera Nodes e Relations visíveis em Agent Changes, e a pessoa desfaz pela tela de GraphChangeSet
+  - Feito em 2026-10-21 com o Claude Code no host
+    (`docs/analyses-tests/relatorio-teste-mcp-life-graph.md`). O pedido foi
+    criar «Linha Norte» e relacioná-la com o Node existente Ferrovias. Isso
+    gerou uma proposta única com 2 operações: o Node, com `ref`, e a Relation
+    `related_to` com o id de Ferrovias. A proposta ficou aguardando em Agent
+    Changes, com o motivo "Você exige aprovação deste agente". A pessoa
+    aprovou (ChangeSet `01a15f21-ddc8-7abc-9f93-68919f50f49c`) e desfez pela
+    tela do GraphChangeSet. Em seguida, `search_graph("Linha Norte")` voltou
+    vazio, e Ferrovias ficou com as 2 relações de antes. Uma tentativa
+    anterior, só com `create_node`, foi recusada pela pessoa e não deixou
+    duplicado.
+  - Depois do Undo, o `get_proposal` continua `applied`. Isso é esperado
+    (DA-136): o desfazer mora no GraphChangeSet (Reverted), não na
+    ChangeProposal.
+  - A mesma prova no Claude.ai ou no ChatGPT, pelo domínio, foi para o E13
+    (DA-147).
 
 ### Testes obrigatórios
 - [x] Um teste por proteção do `apply_changes`
@@ -454,8 +470,9 @@ e automação reversível".
 
 ## Critérios de saída
 
-A partir do Claude.ai ou do ChatGPT, "guarde isso e relacione com X" gera Nodes
-e Relations visíveis em Agent Changes, e o usuário consegue desfazer.
+A partir de um agente real (Claude Code), "guarde isso e relacione com X" gera
+Nodes e Relations visíveis em Agent Changes, e o usuário consegue desfazer. A
+mesma prova no Claude.ai ou no ChatGPT, pelo domínio, fica no E13 (DA-147).
 
 ## Fora de escopo
 
