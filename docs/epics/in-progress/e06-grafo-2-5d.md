@@ -85,6 +85,12 @@ Semantic Zoom básico e o Node Inspector, sem o universo visual inteiro.
     total vem de configuração: padrão de 500 Nodes / 1.500 arestas e teto
     rígido de 1.000 / 3.000, que nenhuma requisição nem configuração de runtime
     ultrapassa.
+  - **Revisão do teto padrão (usuário, 2026-10-21):** com a medição da DA-137
+    (Sigma 3 a 60 FPS, com 1 000 Nodes e 1 500 arestas), o padrão sobe para
+    **1.000 Nodes / 1.500 arestas**. É a carga medida. O teto rígido de
+    1.000 / 3.000 não muda. Isso confirma a visão do analista e encerra o
+    caráter provisório do teto. Para reverter, volte os padrões de
+    `Graph:LocalGraph` e o teste que os fixa.
   - A ordem de corte é determinística (DA-036), para a mesma requisição devolver
     o mesmo subgrafo. A resposta traz `truncated` e as contagens omitidas, e a
     UI mostra "N Nodes omitidos". Nodes ocultos ou fora do alcance do principal
@@ -214,6 +220,9 @@ Semantic Zoom básico e o Node Inspector, sem o universo visual inteiro.
     batem no teto de 60 Hz, então com 1k Nodes o FPS não as diferencia. A
     escolha da DA-137 se confirma pelos outros critérios: menor bundle
     (+38,6 KiB) e Semantic Zoom pela câmera e pelos reducers.
+
+### Ajuste depois do aceite
+- [ ] Subir o padrão do grafo local para 1.000 Nodes / 1.500 arestas (revisão da DA-138, usuário): `LocalGraphReads` (`MaxNodes`) e o teste que fixa os padrões
 
 ## Critérios de saída
 
