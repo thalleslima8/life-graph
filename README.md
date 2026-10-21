@@ -209,6 +209,18 @@ Integration tests need PostgreSQL. Inside the devcontainer they create a
 throwaway database on the `postgres` service; anywhere else they start one with
 Testcontainers, so Docker must be running.
 
+One test drives a real Chromium through the issuer's sign-in and consent pages
+(`ConsentInBrowserTests`, DA-144), because only a browser enforces their
+Content-Security-Policy. It is skipped unless `LIFEGRAPH_BROWSER_TESTS=1`, and
+the CI does not run it. To run it, build once, install Chromium (with its
+system libraries) and run the class:
+
+```bash
+dotnet build tests/LifeGraph.IntegrationTests
+pwsh tests/LifeGraph.IntegrationTests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+LIFEGRAPH_BROWSER_TESTS=1 dotnet test --project tests/LifeGraph.IntegrationTests --filter-class "LifeGraph.IntegrationTests.Agents.ConsentInBrowserTests"
+```
+
 ### Without the devcontainer
 
 The .NET 10 SDK, Node 24 and Docker are enough to build and run every test

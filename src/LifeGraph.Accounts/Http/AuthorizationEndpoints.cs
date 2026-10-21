@@ -167,7 +167,11 @@ internal static class AuthorizationEndpoints
 
         var registeredRedirects = await applications.GetRedirectUrisAsync(application, cancellationToken);
         var tokens = antiforgery.GetAndStoreTokens(httpContext);
-        Page.ProtectFromFraming(httpContext);
+
+        // OpenIddict has validated this redirect URI for the request. Allow and Deny both end in a
+        // redirect to it, which the browser checks against the page's form-action (DA-144).
+        var redirect = Uri.TryCreate(request.RedirectUri, UriKind.Absolute, out var parsedRedirect) ? parsedRedirect : null;
+        Page.SetSecurityHeaders(httpContext, extraFormTarget: redirect);
         return new RazorComponentResult<ConsentPage>(new Dictionary<string, object?>
         {
             [nameof(ConsentPage.Action)] = AuthorizePath,
@@ -176,7 +180,7 @@ internal static class AuthorizationEndpoints
             [nameof(ConsentPage.ClientIdHost)] = Uri.TryCreate(request.ClientId, UriKind.Absolute, out var clientUrl) ? clientUrl.Host : null,
             [nameof(ConsentPage.IssuerHost)] = agentIssuer.Issuer.Authority,
             [nameof(ConsentPage.SignedInEmail)] = httpContext.User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
-            [nameof(ConsentPage.RedirectHost)] = Uri.TryCreate(request.RedirectUri, UriKind.Absolute, out var redirect) ? redirect.Authority : string.Empty,
+            [nameof(ConsentPage.RedirectHost)] = redirect?.Authority ?? string.Empty,
             [nameof(ConsentPage.ReadScope)] = AgentAccess.ReadScope,
             [nameof(ConsentPage.ReadDescription)] = ScopeDescriptions[AgentAccess.ReadScope],
             [nameof(ConsentPage.WriteScope)] = offered.Contains(AgentAccess.WriteScope) ? AgentAccess.WriteScope : null,
@@ -340,7 +344,9 @@ internal static class AuthorizationEndpoints
     {
         var tokens = antiforgery.GetAndStoreTokens(httpContext);
         var services = httpContext.RequestServices;
-        Page.ProtectFromFraming(httpContext);
+
+        // The sign-in only ever redirects within the issuer, so its form gets no other target (DA-145).
+        Page.SetSecurityHeaders(httpContext);
         return new RazorComponentResult<LoginPage>(new Dictionary<string, object?>
         {
             [nameof(LoginPage.Action)] = LoginPath,
@@ -396,7 +402,10 @@ internal static class AuthorizationEndpoints
     public static IResult UnverifiableClient() =>
         Page.BadRequest("Cliente não verificado", "Não foi possível validar os dados de registro deste agente. Tente de novo mais tarde ou fale com quem mantém o agente.");
 
-    /// <summary>The issuer's pages: never framed (clickjacking of the consent), never cached (DA-120).</summary>
+    /// <summary>
+    /// The issuer's pages: never framed (clickjacking of the consent), never cached, forms posted only
+    /// to the issuer or to the one extra target a page passes (DA-120, DA-144).
+    /// </summary>
     private static class Page
     {
         private const string StartOverMessage = "Comece a conexão de novo pelo aplicativo do agente.";
@@ -405,11 +414,11 @@ internal static class AuthorizationEndpoints
 
         public static IResult Expired() => BadRequest("Esta página expirou", StartOverMessage);
 
-        public static void ProtectFromFraming(HttpContext httpContext)
+        public static void SetSecurityHeaders(HttpContext httpContext, Uri? extraFormTarget = null)
         {
             var headers = httpContext.Response.Headers;
             headers.XFrameOptions = "DENY";
-            headers.ContentSecurityPolicy = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+            headers.ContentSecurityPolicy = IssuerPageContentSecurityPolicy.AllowingFormsTo(extraFormTarget);
             headers.CacheControl = "no-store";
             headers["Referrer-Policy"] = "no-referrer";
         }
@@ -422,12 +431,12 @@ internal static class AuthorizationEndpoints
             })
             { StatusCode = StatusCodes.Status400BadRequest });
 
-        // The error pages get the same headers as the consent and sign-in pages.
+        // The error pages get the same headers as the sign-in page.
         private sealed class Protected(IResult page) : IResult
         {
             public Task ExecuteAsync(HttpContext httpContext)
             {
-                ProtectFromFraming(httpContext);
+                SetSecurityHeaders(httpContext);
                 return page.ExecuteAsync(httpContext);
             }
         }

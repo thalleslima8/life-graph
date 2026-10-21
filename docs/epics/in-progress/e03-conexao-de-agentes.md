@@ -2,7 +2,7 @@
 
 - **Ordem:** 3
 - **Depende de:** E1, E2
-- **Última revisão:** 2026-10-07
+- **Última revisão:** 2026-10-21
 
 ## Contexto
 
@@ -255,6 +255,74 @@ e de compatibilidade de clientes antes das ferramentas de verdade (E4/E5).
   Candidata a ADR mais tarde: rollback por padrão em `Result` com falha entre
   módulos.
 
+- **DA-144 — `form-action` da tela de consentimento com a origem do
+  `redirect_uri` validado** (consenso, Q365). A tela de consentimento recebe um
+  CSP montado por requisição: `form-action 'self'` mais a origem exata
+  (esquema, host e porta efetiva) do `redirect_uri` que o `/connect/authorize`
+  já validou para esta requisição, contra o registro ou o CIMD. No loopback,
+  vale a porta exata desta requisição, nunca um curinga. A origem sai do `Uri`
+  já analisado, numa função pura. Nunca se copia a string crua, porque um `;`
+  ou um espaço injetaria diretivas. Se a URI não for absoluta ou a origem
+  tiver qualquer caractere fora do conjunto seguro, a página cai para
+  `form-action 'self'` e o fluxo falha à vista. A mesma CSP cobre Permitir e
+  Negar, já que o `access_denied` também redireciona ao cliente. Não se usou
+  uma página 200 que salta para o cliente (B): ela muda a forma da resposta
+  OAuth, precisa de meta refresh ou de um clique com `default-src 'none'` e
+  continua dependendo de como o navegador trata a navegação. Remover a
+  diretiva (C) tira a proteção justo da página que mais precisa dela. O
+  `redirect_uri` e a query dele continuam fora dos logs (DA-123). Testes:
+  - unidade do construtor, com casos em tabela: loopback com porta para
+    `127.0.0.1` e `localhost`, `https://claude.ai` com o caminho ignorado, o
+    callback do ChatGPT, porta não padrão, entrada hostil (`;`, espaço, quebra
+    de linha, vazio, URI relativa) caindo para `'self'`, e nunca `*` nem
+    curinga;
+  - integração (WebApplicationFactory): o GET real de consentimento traz
+    exatamente `'self'` mais aquela origem, a origem não vaza entre
+    requisições, um `redirect_uri` inválido nunca chega a gerar o header, e as
+    páginas de login e de erro mantêm `form-action 'self'` exato;
+  - um único E2E em Playwright com Chromium, no host de Testing, com um
+    listener HTTP local descartável como `redirect_uri` de loopback: entrar,
+    aprovar e afirmar que o listener recebe `code` e `state`, sem evento
+    `securitypolicyviolation`. Negar entra se sair barato. É o teste que teria
+    pego o bug. Se o Chromium não puder rodar no ambiente, o aceite manual do
+    Claude Code fica como evidência e o épico registra que a regressão do CSP
+    só é pega no navegador.
+
+  O E2E é opcional: só roda com `LIFEGRAPH_BROWSER_TESTS=1` e um Chromium
+  instalado, e o CI não o executa. Uma regressão do CSP, portanto, só é pega
+  no navegador, por esse teste rodado à mão ou pelo aceite manual. Um
+  `redirect_uri` de loopback em IPv6 (`http://[::1]:porta`, aceito pela RFC
+  8252) cai para `form-action 'self'`, porque a gramática de host-source do
+  CSP não aceita literal IPv6, e o bug continua para o cliente que usar esse
+  endereço. O aceite manual confere se algum agente-alvo usa `[::1]`.
+
+- **DA-145 — A página de login mantém `form-action 'self'`; não há
+  consentimento lembrado** (consenso, Q366, depois de uma contra-argumentação).
+  O POST do login redireciona dentro da origem para `/connect/authorize`, e
+  esse GET sempre devolve a tela de consentimento (200), o que encerra a
+  cadeia de envio do formulário. O código só é emitido no POST do
+  consentimento: `ConsentType` é `Explicit`, nenhum grant anterior é
+  consultado, `prompt=none` responde `consent_required`, e o `AutoConsent` só
+  existe no ambiente Testing (DA-033). A reautorização passa pela tela e
+  substitui os scopes (DA-122). Abrir a origem do cliente na página que recebe
+  a senha afrouxaria a defesa contra exfiltração por um caminho que não existe.
+  O helper compartilhado aceita um destino extra de formulário, e só a tela de
+  consentimento o passa. Um teste-guarda de integração, com `AutoConsent`
+  desligado, faz login, segue o `return_url` e afirma 200 com a tela de
+  consentimento, sem `Location` com `code=`. Quem introduzir consentimento
+  lembrado reabre a DA-122 e precisa tratar o CSP do login, com a origem
+  derivada do `return_url` validado.
+
+- **DA-146 — Conexão sem token resgatado fica fora desta correção** (consenso,
+  Q367). A conexão que aparece em "Agentes conectados" sem que o agente tenha
+  recebido o token também acontece quando o agente cai ou o usuário fecha a
+  aba depois de consentir. Logo, não é causada só por este bug. Tratar isso muda
+  o que "Agentes conectados" significa (conectado ou autorizado), toca a
+  DA-121, a DA-122 e a revogação, e atinge o E4 e o E5. Misturar com a
+  correção de segurança deixaria a revisão e a reversão mais difíceis. A
+  conexão continua revogável, então não há risco de acesso nem de
+  privacidade, só de confusão. Fica registrada em "Fora de escopo".
+
 ## Pré-requisitos do usuário
 
 - [ ] Comprar um domínio e apontar o DNS para o Cloudflare
@@ -283,6 +351,34 @@ e de compatibilidade de clientes antes das ferramentas de verdade (E4/E5).
 - [x] Metadata anunciando suporte a CIMD
 - [ ] Aceite manual: Claude Code via CIMD
 
+### Correções achadas no aceite manual
+- [x] Bug: o CSP da tela de consentimento bloqueia o redirect de volta ao
+  agente (achado em 2026-10-20, no aceite local do Claude Code via CIMD, em
+  navegador Chromium)
+  - Sintoma: ao aprovar o consentimento, o console mostra "Sending form data to
+    'http://localhost:5000/connect/authorize' violates the following Content
+    Security Policy directive: "form-action 'self'"", e o agente nunca recebe
+    o código.
+  - Causa: as páginas do emissor mandam `form-action 'self'`
+    (`AuthorizationEndpoints.cs`, `Page.ProtectFromFraming`). O formulário posta
+    para `/connect/authorize`, na mesma origem, mas a resposta é um 302 para o
+    `redirect_uri` do cliente, que está em outra origem. O Chromium aplica o
+    `form-action` também ao redirect que vem depois do envio e, no console,
+    mostra a URL original, não o destino do redirect.
+  - Impacto: bloqueia qualquer cliente cujo `redirect_uri` esteja fora da
+    origem do emissor, inclusive o loopback do Claude Code,
+    `https://claude.ai/api/mcp/auth_callback` e o callback do ChatGPT. Os
+    aceites deste épico, do E4 e do E5 dependem desta correção. Os testes não
+    pegaram o problema porque fazem o fluxo OAuth dentro do processo, sem
+    navegador.
+  - Efeito colateral possível: o código é emitido antes do redirect, então
+    pode ficar em "Agentes conectados" uma conexão cujo agente nunca recebeu o
+    token.
+  - O que o `form-action` passa a permitir é uma decisão de segurança que vai
+    ao arquiteto. Não basta remover a diretiva.
+  - Correção: DA-144 (tela de consentimento), DA-145 (login sem mudança, com
+    teste-guarda) e DA-146 (efeito colateral fora desta correção).
+
 ### Condições das DA-119 a DA-125
 - [x] DA-119: purge só das authorizations e tokens do usuário (os clientes ficam), teste de arquitetura contra SQL cru sobre `oidc_*` e contra listar grants por outra coisa que não o subject ou o id, e teste de que a falha de um participante posterior desfaz a remoção dos grants
 - [x] DA-120: `/connect/login` no mesmo orçamento por e-mail do login da SPA, sem `login_hint`, retorno validado (com `//evil`, `/\evil` e variantes codificadas), domínio do emissor e "Esqueci a senha" na página, aviso de escrita só quando ela é oferecida
@@ -305,3 +401,7 @@ ferramenta MCP. O usuário vê e revoga a conexão.
 ## Fora de escopo
 
 Ferramentas de leitura e escrita do grafo (E4/E5), PATs, DCR, deploy (E13).
+
+Conexão que aparece em "Agentes conectados" sem que o agente tenha resgatado o
+token (DA-146). Fica para uma DA própria, que decide entre o estado "aguardando
+primeiro uso" e expirar as autorizações não resgatadas.

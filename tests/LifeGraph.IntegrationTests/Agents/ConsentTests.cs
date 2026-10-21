@@ -57,6 +57,47 @@ public sealed class ConsentTests(PostgresDatabase database) : IAsyncLifetime
         Assert.Equal(0L, await database.QueryScalarAsMigratorAsync<long>("SELECT count(*) FROM oidc_authorizations"));
     }
 
+    // DA-144: Allow and Deny end in a redirect to the agent, which the browser checks against form-action.
+    [Fact]
+    public async Task The_consent_form_may_post_only_to_the_issuer_and_the_exact_origin_of_this_requests_redirect()
+    {
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, Email);
+
+        var first = await browser.Http.GetAsync(
+            AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce(), clientId: LoopbackClientId, redirectUri: "http://127.0.0.1:49152/callback"),
+            TestContext.Current.CancellationToken);
+        var second = await browser.Http.GetAsync(
+            AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce(), clientId: LoopbackClientId, redirectUri: "http://127.0.0.1:50123/callback"),
+            TestContext.Current.CancellationToken);
+        var registered = await browser.Http.GetAsync(AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce()), TestContext.Current.CancellationToken);
+
+        Assert.Equal(PolicyWithFormAction("'self' http://127.0.0.1:49152"), ContentSecurityPolicyOf(first));
+        Assert.Equal(PolicyWithFormAction("'self' http://127.0.0.1:50123"), ContentSecurityPolicyOf(second));
+        Assert.Equal(PolicyWithFormAction("'self' https://agent.example.test"), ContentSecurityPolicyOf(registered));
+    }
+
+    // DA-145: the sign-in leads to the consent page, never straight to the agent with a code, so
+    // its form keeps posting only to the issuer. Remembered consent would have to revisit this.
+    [Fact]
+    public async Task The_sign_in_never_leads_straight_to_the_agent_so_its_form_posts_only_to_the_issuer()
+    {
+        using var browser = AgentAuthorization.Browser(_factory);
+        var toLogin = await browser.GetAsync(AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce()), TestContext.Current.CancellationToken);
+        var loginPage = await browser.GetAsync(toLogin.Headers.Location, TestContext.Current.CancellationToken);
+        var loginHtml = await loginPage.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        var signedIn = await HtmlForm.PostAsync(browser, "/connect/login", [.. HtmlForm.HiddenFields(loginHtml), new("email", Email), new("password", TestAccounts.Password)]);
+        var consent = await browser.GetAsync(signedIn.Headers.Location, TestContext.Current.CancellationToken);
+
+        Assert.Equal(PolicyWithFormAction("'self'"), ContentSecurityPolicyOf(loginPage));
+        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
+        Assert.DoesNotContain("code=", signedIn.Headers.Location!.OriginalString, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.OK, consent.StatusCode);
+        Assert.Null(consent.Headers.Location);
+        Assert.Contains("Autorizar", await consent.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+        Assert.Equal(0L, await database.QueryScalarAsMigratorAsync<long>("SELECT count(*) FROM oidc_authorizations"));
+    }
+
     [Fact]
     public async Task Allowing_on_the_consent_page_redirects_to_the_agent_with_a_code_that_redeems()
     {
@@ -326,6 +367,7 @@ public sealed class ConsentTests(PostgresDatabase database) : IAsyncLifetime
         var page = await browser.GetAsync($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, page.StatusCode);
+        AssertProtectedFromFraming(page);
     }
 
     [Fact]
@@ -353,13 +395,23 @@ public sealed class ConsentTests(PostgresDatabase database) : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Null(response.Headers.Location);
+        Assert.False(response.Headers.TryGetValues("Content-Security-Policy", out var policies)
+            && policies.Any(policy => policy.Contains("evil.example", StringComparison.Ordinal)));
     }
 
-    // DA-120: the issuer's error pages are never framed nor cached, like the consent page.
+    // DA-120, DA-144: the issuer's error pages are never framed nor cached, and their forms post only to the issuer.
     private static void AssertProtectedFromFraming(HttpResponseMessage response)
     {
         Assert.Equal("DENY", string.Join(",", response.Headers.GetValues("X-Frame-Options")));
-        Assert.Contains("frame-ancestors 'none'", string.Join(",", response.Headers.GetValues("Content-Security-Policy")), StringComparison.Ordinal);
+        Assert.Equal(PolicyWithFormAction("'self'"), ContentSecurityPolicyOf(response));
         Assert.True(response.Headers.CacheControl?.NoStore);
     }
+
+    private static string ContentSecurityPolicyOf(HttpResponseMessage response) =>
+        response.Headers.GetValues("Content-Security-Policy").Single();
+
+    // The issuer pages' whole policy is written out here, not taken from the code under test, so
+    // that a change to any of its directives fails these tests too.
+    private static string PolicyWithFormAction(string formSources) =>
+        $"default-src 'none'; style-src 'unsafe-inline'; form-action {formSources}; frame-ancestors 'none'; base-uri 'none'";
 }

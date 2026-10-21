@@ -40,4 +40,4 @@ E3–E5.
 - Toda exceção a uma regra **DEVE** de `docs/standards/` vira um `DA-###` no
   épico, citando o ID da regra.
 - **Numeração de decisões:** os `DA-###` são sequenciais e **globais** entre
-  os épicos (DA-001 a DA-143 nesta versão do roadmap). O próximo é o DA-144.
+  os épicos (DA-001 a DA-146 nesta versão do roadmap). O próximo é o DA-147.
