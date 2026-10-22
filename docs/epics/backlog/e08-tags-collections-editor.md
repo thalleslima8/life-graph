@@ -2,7 +2,7 @@
 
 - **Ordem:** 8
 - **Depende de:** E2
-- **Última revisão:** 2026-10-02
+- **Última revisão:** 2026-10-22
 
 ## Contexto
 
@@ -43,6 +43,18 @@ salvas.
 - [ ] Editor completo de Properties: matriz de mudança de tipo, opções de Select, arquivar e restaurar, "usada em N Types"
 - [ ] Promover/mapear Outras propriedades
 - [ ] Reconciliar Collections salvas quando muda o tipo de uma propriedade
+- [ ] Corrigir o teste instável herdado do E1,
+  `SessionTests.After_the_window_an_existing_and_an_unknown_email_answer_the_same_again`
+  (`tests/LifeGraph.IntegrationTests/Accounts/SessionTests.cs:125`), pedido do
+  usuário em 2026-10-22. Ele falhou uma vez na suíte completa durante o E7 e
+  passou nas três vezes em que rodou sozinho (triagem: categoria C). A causa
+  provável: as 6 tentativas de login, cada uma com hash de senha, precisam
+  caber numa janela fixa de 1 s (`Accounts:RateLimits:WindowSeconds = 1`). Com
+  a suíte carregada a janela vira antes da sexta tentativa, e ela não recebe
+  429. O teste vizinho `After_the_window_the_user_signs_in_with_the_right_password`
+  tem o mesmo padrão. Pela GEN-072, teste instável é bug: tornar o teste
+  determinístico (por exemplo, um relógio controlado no rate limiter, como
+  `TimeProvider`) sem enfraquecer o que ele garante.
 
 ## Critérios de saída
 
