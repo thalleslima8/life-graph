@@ -4,10 +4,12 @@ using System.Net.Sockets;
 namespace LifeGraph.Infrastructure.Outbound;
 
 /// <summary>
-/// The HTTP handler for fetching a URL someone else chose (SSRF guard, DA-029). HTTPS only,
-/// no redirects, no proxy and no cookies; the host is resolved here and the connection goes
-/// to the vetted address itself, so a DNS answer cannot change between the check and the
-/// connect (rebinding). Bodies are read through <see cref="ReadCappedAsync"/>.
+/// The HTTP handler for fetching a URL someone else chose (SSRF guard): the CIMD fetch of
+/// DA-029, https only (<see cref="IsFetchableUrl"/>), and the Resource fetch of DA-058, http or
+/// https (<see cref="IsFetchableResourceUrl"/>). It follows no redirects itself (a caller that follows them vets each hop), and has no proxy
+/// and no cookies; the host is resolved here, on every connection, and the connection goes to
+/// the vetted address itself, so a DNS answer cannot change between the check and the connect
+/// (rebinding). Bodies are read through <see cref="ReadCappedAsync"/>.
 /// </summary>
 public static class SafeOutboundHttp
 {
@@ -34,6 +36,24 @@ public static class SafeOutboundHttp
             && url.Scheme == Uri.UriSchemeHttps
             && string.IsNullOrEmpty(url.UserInfo)
             && string.IsNullOrEmpty(url.Fragment)
+            && (url.HostNameType != UriHostNameType.IPv4 && url.HostNameType != UriHostNameType.IPv6
+                || OutboundAddressPolicy.IsAllowed(IPAddress.Parse(url.IdnHost)));
+    }
+
+    /// <summary>
+    /// What the Resource fetch may request (DA-058, DA-156): <c>http</c> or <c>https</c>, a host
+    /// name or a public address, and no user info. Unlike <see cref="IsFetchableUrl"/>, which the
+    /// CIMD fetch keeps (https only), plain http is allowed: many pages people save still use it.
+    /// The fragment is never sent, so it does not matter. Checked again on every redirect.
+    /// </summary>
+    public static bool IsFetchableResourceUrl(Uri url)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+
+        return url.IsAbsoluteUri
+            && (url.Scheme == Uri.UriSchemeHttps || url.Scheme == Uri.UriSchemeHttp)
+            && string.IsNullOrEmpty(url.UserInfo)
+            && !string.IsNullOrEmpty(url.Host)
             && (url.HostNameType != UriHostNameType.IPv4 && url.HostNameType != UriHostNameType.IPv6
                 || OutboundAddressPolicy.IsAllowed(IPAddress.Parse(url.IdnHost)));
     }

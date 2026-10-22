@@ -81,8 +81,8 @@ public sealed class GraphIsolationTests(PostgresDatabase database) : IAsyncLifet
     {
         foreach (var table in GraphTables)
         {
-            Assert.True(await CountAsApplicationAsync(_accountA, table) > 0, $"{table} should have rows of Account A");
-            Assert.Equal(0, await CountAsApplicationAsync(_accountB, table));
+            Assert.True(await CountAsApplicationAsync(_accountA, table, _accountA) > 0, $"{table} should have rows of Account A");
+            Assert.Equal(0, await CountAsApplicationAsync(_accountB, table, _accountA));
         }
     }
 
@@ -110,14 +110,16 @@ public sealed class GraphIsolationTests(PostgresDatabase database) : IAsyncLifet
         Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, refused.SqlState);
     }
 
-    private async Task<long> CountAsApplicationAsync(Guid accountId, string table)
+    /// <summary>Counts the rows of <paramref name="ownerAccountId"/> the application role sees while acting for <paramref name="accountId"/>.</summary>
+    private async Task<long> CountAsApplicationAsync(Guid accountId, string table, Guid ownerAccountId)
     {
         await using var connection = new NpgsqlConnection(database.ApplicationConnectionString);
         await connection.OpenAsync(TestContext.Current.CancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(TestContext.Current.CancellationToken);
         await SetAccountAsync(connection, accountId);
 
-        await using var count = new NpgsqlCommand($"SELECT count(*) FROM {table}", connection);
+        await using var count = new NpgsqlCommand($"SELECT count(*) FROM {table} WHERE account_id = @owner", connection);
+        count.Parameters.AddWithValue("owner", ownerAccountId);
         return (long)(await count.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
     }
 

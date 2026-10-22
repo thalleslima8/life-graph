@@ -349,11 +349,12 @@ internal sealed class GraphReads(
             [.. type.Properties.OrderBy(property => property.Position).Select(property =>
             {
                 var definition = definitions[property.PropertyDefinitionId];
-                return new TypePropertyItem(definition.Id, definition.Name, definition.ValueKind);
+                return new TypePropertyItem(definition.Id, definition.Name, definition.ValueKind, definition.IsSystem);
             })],
             type.CreatedAt,
             type.UpdatedAt,
-            type.HiddenFromAgents))];
+            type.HiddenFromAgents,
+            type.IsSystem))];
     }
 
     // The newest GraphChangeSet this read returned, never one it did not: resuming from it
@@ -428,7 +429,7 @@ internal sealed class GraphReads(
     }
 
     private static PropertyDefinitionItem ToItem(PropertyDefinition definition) =>
-        new(definition.Id, definition.Name, definition.ValueKind, definition.Options, definition.CreatedAt, definition.UpdatedAt);
+        new(definition.Id, definition.Name, definition.ValueKind, definition.Options, definition.CreatedAt, definition.UpdatedAt, definition.IsSystem);
 
     private static Dictionary<string, string[]> NoErrors() => new(StringComparer.Ordinal);
 

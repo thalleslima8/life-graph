@@ -164,7 +164,7 @@ internal sealed class NodeViews(LifeGraphDbContext db, GraphReadFilter filter)
 
     /// <summary>
     /// The Provenance of each Node, from its own history: the first and the latest change, and
-    /// whether an agent or an import ever wrote it. Once one did, its text is untrusted for
+    /// whether an agent, an import or the fetch (DA-153) ever wrote it. Once one did, its text is untrusted for
     /// good, even after the person edits it: the person may not have rewritten every part
     /// (DA-038). Aggregated in SQL, one row per Node, however long its history (DB-023).
     /// </summary>
@@ -189,6 +189,7 @@ internal sealed class NodeViews(LifeGraphDbContext db, GraphReadFilter filter)
 
                 var source = reader.GetBoolean(reader.GetOrdinal("by_agent")) ? TextSource.Agent
                     : reader.GetBoolean(reader.GetOrdinal("by_import")) ? TextSource.Import
+                    : reader.GetBoolean(reader.GetOrdinal("by_system")) ? TextSource.System
                     : TextSource.User;
                 return (NodeId: reader.GetGuid(reader.GetOrdinal("node_id")), Provenance: new NodeProvenance(source, new ProvenanceSummary(StampAt("first"), StampAt("last"))));
             },
@@ -206,7 +207,7 @@ internal sealed class NodeViews(LifeGraphDbContext db, GraphReadFilter filter)
         SELECT n.id AS node_id,
                f.actor_kind AS first_actor_kind, f.agent_identity_id AS first_agent_identity_id, f.channel AS first_channel, f.created_at AS first_at,
                l.actor_kind AS last_actor_kind, l.agent_identity_id AS last_agent_identity_id, l.channel AS last_channel, l.created_at AS last_at,
-               w.by_agent, w.by_import
+               w.by_agent, w.by_import, w.by_system
         FROM unnest(@node_ids) AS n(id)
         CROSS JOIN LATERAL (
             SELECT cs.actor_kind, cs.agent_identity_id, cs.channel, cs.created_at
@@ -219,7 +220,8 @@ internal sealed class NodeViews(LifeGraphDbContext db, GraphReadFilter filter)
             ORDER BY cs.created_at DESC, cs.id DESC
             LIMIT 1) l
         CROSS JOIN LATERAL (
-            SELECT bool_or(cs.actor_kind = 'agent_identity') AS by_agent, bool_or(cs.channel = 'import') AS by_import
+            SELECT bool_or(cs.actor_kind = 'agent_identity') AS by_agent, bool_or(cs.channel = 'import') AS by_import,
+                   bool_or(cs.actor_kind = 'system') AS by_system
             {NodeChangesSql}) w
         """;
 

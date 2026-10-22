@@ -11,7 +11,7 @@ public sealed class NodeTests
     private static readonly DateTimeOffset Later = Created.AddMinutes(5);
 
     private readonly PropertyDefinition _pages = Define("Pages", PropertyValueKind.Number);
-    private readonly PropertyDefinition _author = Define("Author", PropertyValueKind.Text);
+    private readonly PropertyDefinition _writer = Define("Writer", PropertyValueKind.Text);
 
     [Fact]
     public void A_node_starts_at_the_first_version_with_a_trimmed_title_and_no_type()
@@ -39,9 +39,9 @@ public sealed class NodeTests
     {
         var book = Book(_pages);
 
-        var created = Node.Create(new NodeDraft(Guid.CreateVersion7(), Account, "Letters", null, book, Values((_author.Id, "Seneca"))), Created);
+        var created = Node.Create(new NodeDraft(Guid.CreateVersion7(), Account, "Letters", null, book, Values((_writer.Id, "Seneca"))), Created);
 
-        Assert.Equal(["properties." + _author.Id], created.Error!.Details!.Keys);
+        Assert.Equal(["properties." + _writer.Id], created.Error!.Details!.Keys);
     }
 
     [Fact]
@@ -74,25 +74,53 @@ public sealed class NodeTests
     [Fact]
     public void Changing_the_type_keeps_every_value_and_a_null_removes_one()
     {
-        var book = Book(_pages, _author);
-        var node = Node.Create(new NodeDraft(Guid.CreateVersion7(), Account, "Meditations", null, book, Values((_pages.Id, 320), (_author.Id, "Marcus"))), Created).Value!;
+        var book = Book(_pages, _writer);
+        var node = Node.Create(new NodeDraft(Guid.CreateVersion7(), Account, "Meditations", null, book, Values((_pages.Id, 320), (_writer.Id, "Marcus"))), Created).Value!;
 
         Assert.True(node.Edit(new NodeEdit(null, null, Schema: null, Values: null), Later).Value);
         Assert.Null(node.TypeId);
-        Assert.Equal(new[] { _pages.Id, _author.Id }.Order(), node.Properties.Values.Keys.Order());
+        Assert.Equal(new[] { _pages.Id, _writer.Id }.Order(), node.Properties.Values.Keys.Order());
 
-        Assert.True(node.Edit(new NodeEdit(null, null, null, Values((_author.Id, null))), Later).Value);
+        Assert.True(node.Edit(new NodeEdit(null, null, null, Values((_writer.Id, null))), Later).Value);
         Assert.Equal([_pages.Id], node.Properties.Values.Keys);
     }
 
     [Fact]
     public void Property_values_are_equal_by_content_whatever_the_order_they_were_set_in()
     {
-        var one = PropertyValues.Empty.With(_pages.Id, JsonSerializer.SerializeToElement(1)).With(_author.Id, JsonSerializer.SerializeToElement("a"));
-        var other = PropertyValues.Empty.With(_author.Id, JsonSerializer.SerializeToElement("a")).With(_pages.Id, JsonSerializer.SerializeToElement(1));
+        var one = PropertyValues.Empty.With(_pages.Id, JsonSerializer.SerializeToElement(1)).With(_writer.Id, JsonSerializer.SerializeToElement("a"));
+        var other = PropertyValues.Empty.With(_writer.Id, JsonSerializer.SerializeToElement("a")).With(_pages.Id, JsonSerializer.SerializeToElement(1));
 
         Assert.Equal(one, other);
         Assert.Equal(one, PropertyValues.FromJson(one.Json));
+    }
+
+    [Fact]
+    public void A_human_edit_marks_only_the_fields_it_changed_and_keeps_earlier_marks()
+    {
+        var book = Book(_pages, _writer);
+        var node = Node.Create(new NodeDraft(Guid.CreateVersion7(), Account, "Letters", "Body", book, Values((_pages.Id, 3), (_writer.Id, "Seneca"))), Created).Value!;
+
+        var before = node.State;
+        node.Edit(new NodeEdit("Letters", "New body", book, Values((_pages.Id, 3), (_writer.Id, "Seneca"))), Later);
+        node.EditedByHuman(before);
+        before = node.State;
+        node.Edit(new NodeEdit("Moral letters", null, book, Values((_pages.Id, 4), (_writer.Id, "Seneca"))), Later);
+        node.EditedByHuman(before);
+
+        Assert.Equal(new[] { Node.BodyField, Node.TitleField, _pages.Id.ToString("D") }.Order(StringComparer.Ordinal), node.HumanEditedFields);
+    }
+
+    [Fact]
+    public void A_human_edit_that_changes_nothing_marks_nothing()
+    {
+        var node = Node.Create(new NodeDraft(Guid.CreateVersion7(), Account, "Letters"), Created).Value!;
+
+        var before = node.State;
+        node.Edit(new NodeEdit("Letters", null, null, null), Later);
+        node.EditedByHuman(before);
+
+        Assert.Empty(node.HumanEditedFields);
     }
 
     private static TypeSchema Book(params PropertyDefinition[] attached)

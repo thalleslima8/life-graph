@@ -22,6 +22,17 @@ internal static class AgentOperations
     public static string Serialize(IReadOnlyList<AgentOperation> operations) =>
         JsonSerializer.Serialize(operations.Select(ToStored).ToList(), Options);
 
+    /// <summary>
+    /// The operations as the same request is recognized by: a capture by the canonical form of
+    /// its link alone, so the same link pending in a proposal finds that proposal whatever its
+    /// variant, title or Relation (DA-060, DA-156). The proposal still keeps what the agent gave.
+    /// </summary>
+    public static IReadOnlyList<AgentOperation> IdentityOf(IReadOnlyList<AgentOperation> operations, IResourceAddressRules addressRules) =>
+        [.. operations.Select(operation => operation is AgentCaptureResource capture
+            && addressRules.Read(capture.Url, "url") is { IsSuccess: true } address
+                ? new AgentCaptureResource(address.Value!.CanonicalUrl)
+                : operation)];
+
     public static IReadOnlyList<AgentOperation> Deserialize(string json) =>
         [.. (JsonSerializer.Deserialize<List<StoredOperation>>(json, Options) ?? []).Select(FromStored)];
 
@@ -32,6 +43,7 @@ internal static class AgentOperations
             AgentUpdateNode update => [update.NodeId],
             AgentDeleteNode delete => [delete.NodeId],
             AgentCreateRelation relate => new[] { relate.Source.NodeId, relate.Target.NodeId }.OfType<Guid>(),
+            AgentCaptureResource { RelatedNodeId: { } related } => [related],
             _ => [],
         }).Distinct()];
 
@@ -87,6 +99,16 @@ internal static class AgentOperations
                 case AgentDeleteNode delete:
                     graphOperations.Add(new DeleteNode(delete.NodeId, delete.ExpectedVersion));
                     break;
+                case AgentCaptureResource capture:
+                    // The Resource's id is answered by the receipt's capture: the link may be one already kept.
+                    graphOperations.Add(new CaptureResource(Guid.CreateVersion7(now), capture.Url)
+                    {
+                        Title = capture.Title,
+                        RelatedNodeId = capture.RelatedNodeId,
+                        RelationKind = capture.RelationKind,
+                        RelationId = capture.RelatedNodeId is null ? null : Guid.CreateVersion7(now),
+                    });
+                    break;
                 default:
                     throw new NotSupportedException($"Unknown agent operation {operations[index].GetType().Name}.");
             }
@@ -126,6 +148,13 @@ internal static class AgentOperations
         },
         AgentRemoveRelation remove => new StoredOperation(StoredKind.RemoveRelation) { RelationId = remove.RelationId },
         AgentDeleteNode delete => new StoredOperation(StoredKind.DeleteNode) { NodeId = delete.NodeId, ExpectedVersion = delete.ExpectedVersion },
+        AgentCaptureResource capture => new StoredOperation(StoredKind.CaptureResource)
+        {
+            Url = capture.Url,
+            Title = capture.Title,
+            NodeId = capture.RelatedNodeId,
+            Kind = capture.RelationKind,
+        },
         _ => throw new NotSupportedException($"Unknown agent operation {operation.GetType().Name}."),
     };
 
@@ -142,6 +171,12 @@ internal static class AgentOperations
         StoredKind.CreateRelation => new AgentCreateRelation(stored.Source!, stored.Target!, stored.Kind!),
         StoredKind.RemoveRelation => new AgentRemoveRelation(stored.RelationId!.Value),
         StoredKind.DeleteNode => new AgentDeleteNode(stored.NodeId!.Value, stored.ExpectedVersion!.Value),
+        StoredKind.CaptureResource => new AgentCaptureResource(stored.Url!)
+        {
+            Title = stored.Title,
+            RelatedNodeId = stored.NodeId,
+            RelationKind = stored.Kind,
+        },
         _ => throw new NotSupportedException($"Unknown stored operation {stored.Op}."),
     };
 
@@ -156,6 +191,7 @@ internal static class AgentOperations
         CreateRelation,
         RemoveRelation,
         DeleteNode,
+        CaptureResource,
     }
 
     internal sealed record StoredOperation(StoredKind Op)
@@ -185,5 +221,7 @@ internal static class AgentOperations
         public string? Kind { get; init; }
 
         public Guid? RelationId { get; init; }
+
+        public string? Url { get; init; }
     }
 }

@@ -167,8 +167,9 @@ internal sealed class GraphContextReads(
                         [.. type.Properties.OrderBy(property => property.Position).Select(property =>
                         {
                             var definition = definitions[property.PropertyDefinitionId];
-                            return new GraphTypeProperty(definition.Id, definition.Name, definition.ValueKind, [.. definition.Options.Select(option => option.Label)]);
-                        })]))],
+                            return new GraphTypeProperty(definition.Id, definition.Name, definition.ValueKind, [.. definition.Options.Select(option => option.Label)], definition.IsSystem);
+                        })],
+                        type.IsSystem))],
                     nextCursor);
                 return Read.Of(list, []);
             },

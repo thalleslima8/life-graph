@@ -768,6 +768,7 @@
           "LifeGraph.Graph": "[1.0.0, )",
           "LifeGraph.Http": "[1.0.0, )",
           "LifeGraph.Infrastructure": "[1.0.0, )",
+          "LifeGraph.Resources": "[1.0.0, )",
           "ModelContextProtocol.AspNetCore": "[1.4.1, )"
         }
       },
@@ -799,6 +800,21 @@
           "OpenIddict.EntityFrameworkCore": "[7.7.1, )",
           "Pgvector.EntityFrameworkCore": "[0.3.0, )"
         }
+      },
+      "lifegraph.resources": {
+        "type": "Project",
+        "dependencies": {
+          "AngleSharp": "[1.8.5, )",
+          "LifeGraph.Graph": "[1.0.0, )",
+          "LifeGraph.Http": "[1.0.0, )",
+          "LifeGraph.Infrastructure": "[1.0.0, )"
+        }
+      },
+      "AngleSharp": {
+        "type": "CentralTransitive",
+        "requested": "[1.8.5, )",
+        "resolved": "1.8.5",
+        "contentHash": "BUgFIpmkjwMPi6QneHUHaprjUOGSXoWEF/xi/2seHCpnI8XMHACNiC09rn9qL8jbxrP8jWyJ3DnOjsGvXWNGmw=="
       },
       "EFCore.NamingConventions": {
         "type": "CentralTransitive",

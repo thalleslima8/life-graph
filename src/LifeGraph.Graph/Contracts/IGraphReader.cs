@@ -89,16 +89,19 @@ public enum TextTrust
     /// <summary>Only the person wrote it.</summary>
     Trusted,
 
-    /// <summary>An agent or an import wrote some of it.</summary>
+    /// <summary>An agent, an import or the fetch wrote some of it.</summary>
     Untrusted,
 }
 
-/// <summary>Who wrote a text: the person, an agent, or an import (web captures arrive with E7).</summary>
+/// <summary>Who wrote a text: the person, an agent, an import, or the Resource fetch (DA-153).</summary>
 public enum TextSource
 {
     User,
     Agent,
     Import,
+
+    /// <summary>Written by the application from fetched content (DA-153): untrusted, as an import's.</summary>
+    System,
 }
 
 /// <summary>A Node, short: what a hit or a candidate shows.</summary>
@@ -178,9 +181,11 @@ public sealed record GraphContext(
     IReadOnlyList<NodeHeadline> Candidates);
 
 /// <param name="Options">The choices of a Select or MultiSelect, by label.</param>
-public sealed record GraphTypeProperty(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind, IReadOnlyList<string> Options);
+/// <param name="IsSystem">A system Property: locked, its name reserved (DA-057, DA-155).</param>
+public sealed record GraphTypeProperty(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind, IReadOnlyList<string> Options, bool IsSystem);
 
-public sealed record GraphTypeView(Guid Id, string Name, IReadOnlyList<GraphTypeProperty> Properties);
+/// <param name="IsSystem">A system Type, such as Resource: locked, its name reserved (DA-057, DA-155).</param>
+public sealed record GraphTypeView(Guid Id, string Name, IReadOnlyList<GraphTypeProperty> Properties, bool IsSystem);
 
 /// <param name="Cursor">Where the previous page ended (its <see cref="GraphTypeList.NextCursor"/>); none for the first page.</param>
 /// <param name="Count">How many Types, <see cref="GraphReadLimits.TypeListDefaultCount"/> by default, at most <see cref="GraphReadLimits.TypeListMaxCount"/>.</param>

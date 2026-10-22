@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -128,13 +128,57 @@ describe("types and properties", () => {
   });
 
   it("detaches a property from a Type", async () => {
-    const sent = ontologyApi([aType({ properties: [{ propertyDefinitionId: DEFINITION_ID, name: "Status", valueKind: "select" }] })]);
+    const sent = ontologyApi([aType({ properties: [{ propertyDefinitionId: DEFINITION_ID, name: "Status", valueKind: "select", isSystem: false }] })]);
     renderRoute("/types");
 
     await userEvent.click(await screen.findByRole("button", { name: "Desanexar Status de Livro" }));
 
     await waitFor(() =>
       expect(sent).toContainEqual({ method: "DELETE", path: `/api/types/${TYPE_ID}/properties/${DEFINITION_ID}`, body: null }),
+    );
+  });
+
+  it("shows the system Type and its system properties as locked, and lets a user property come and go", async () => {
+    const resourceId = "01920000-0000-7000-8000-0000000000a2";
+    const urlId = "01920000-0000-7000-8000-0000000000b2";
+    const types = [
+      aType(),
+      aType({
+        id: resourceId,
+        name: "Resource",
+        isSystem: true,
+        properties: [
+          { propertyDefinitionId: urlId, name: "url", valueKind: "url", isSystem: true },
+          { propertyDefinitionId: DEFINITION_ID, name: "Status", valueKind: "select", isSystem: false },
+        ],
+      }),
+    ];
+    const sent = ontologyApi(types);
+    server.use(
+      ...ontologyHandlers({
+        types,
+        definitions: [aDefinition({ valueKind: "select", options: [OPTION] }), aDefinition({ id: urlId, name: "url", valueKind: "url", isSystem: true })],
+      }),
+    );
+    renderRoute("/types");
+
+    const resource = within(await screen.findByRole("list", { name: "Propriedades de Resource" }));
+    expect(resource.getByText("Sistema, travado")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apagar Type Resource" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Renomear Resource" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Desanexar url de Resource" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar url" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apagar propriedade url" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Sistema, travado").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByRole("button", { name: "Apagar Type Livro" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Anexar propriedade" }));
+    expect(screen.queryByRole("option", { name: "url" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(screen.getByRole("button", { name: "Desanexar Status de Resource" }));
+    await waitFor(() =>
+      expect(sent).toContainEqual({ method: "DELETE", path: `/api/types/${resourceId}/properties/${DEFINITION_ID}`, body: null }),
     );
   });
 

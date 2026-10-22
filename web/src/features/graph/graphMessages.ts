@@ -3,6 +3,7 @@ import type { PropertyValueKind } from "./graphData";
 import type { ChangeSetItem, UndoRefusal } from "./recentChanges";
 import type { SchemaRefusal } from "./graphData";
 import type { GraphViewMode, LevelOfDetail, LocalGraphEdge } from "./localGraph";
+import type { CaptureOutcome } from "@/features/resources/resourceCapture";
 
 /** The visible texts of the graph screens (FE-062: one place, formatted by locale). */
 
@@ -37,6 +38,8 @@ const WRITE_ERRORS: Readonly<Record<string, string>> = {
   "graph.type_not_found": "Este Type não está mais disponível.",
   "graph.property_definition_not_found": "Esta propriedade não está mais disponível.",
   "graph.write_conflict": "Outra alteração chegou ao mesmo tempo. Tente novamente.",
+  "graph.resource_url_invalid": "Use um link http ou https completo, sem usuário e senha.",
+  "graph.resource_url_taken": "Outro Resource já guarda esse link.",
   payload_too_large: "O conteúdo é grande demais para salvar de uma vez.",
 };
 
@@ -215,11 +218,23 @@ export function undoRefusalMessage(refusal: UndoRefusal, changeSet: ChangeSetIte
   }
 }
 
-const CHANNEL_LABELS: Readonly<Record<ChangeSetItem["channel"], string>> = { ui: "Interface", api: "API", mcp: "MCP", import: "Importação" };
+const CHANNEL_LABELS: Readonly<Record<ChangeSetItem["channel"], string>> = { ui: "Interface", api: "API", mcp: "MCP", import: "Importação", system: "Sistema" };
 
-/** Who, by which channel and from which source (Provenance). An agent shows by id until E5 names it. */
+/** The actor's name: the user, the metadata fetch (DA-153) or an agent, by id until E5 names it. */
+function actorOf(changeSet: ChangeSetItem): string {
+  switch (changeSet.actorKind) {
+    case "human":
+      return "Você";
+    case "system":
+      return "Busca de metadados";
+    default:
+      return `Agente ${changeSet.agentIdentityId ?? "desconhecido"}`;
+  }
+}
+
+/** Who, by which channel and from which source (Provenance). */
 export function provenanceOf(changeSet: ChangeSetItem): string {
-  const who = changeSet.actorKind === "human" ? "Você" : `Agente ${changeSet.agentIdentityId ?? "desconhecido"}`;
+  const who = actorOf(changeSet);
   const source = changeSet.source ? ` · fonte: ${changeSet.source}` : "";
   return `${who} · ${CHANNEL_LABELS[changeSet.channel]}${source}`;
 }
@@ -241,4 +256,22 @@ const ENTITY_LABELS: Readonly<Record<ChangeSetItem["entries"][number]["entityKin
 export function entryDescription(entry: ChangeSetItem["entries"][number]): string {
   const label = entry.label ?? (entry.isPurged ? "(conteúdo removido)" : "(sem rótulo)");
   return `${OPERATION_LABELS[entry.operation]} ${ENTITY_LABELS[entry.entityKind]} «${label}»`;
+}
+
+/** Capture by paste on the Inbox (DA-157). */
+export const CAPTURE_LINK_LABEL = "Colar um link na Inbox";
+export const CAPTURE_LINK_PLACEHOLDER = "https://…";
+export const CAPTURE_SUBMIT_LABEL = "Capturar";
+export const CAPTURE_PENDING_LABEL = "Capturando…";
+export const CAPTURE_OPEN_LABEL = "Abrir o Resource";
+export const CAPTURE_TOO_MANY_MESSAGE = "Muitas capturas em pouco tempo, tente de novo em instantes.";
+export const CAPTURE_OUTCOME_MESSAGES: Readonly<Record<CaptureOutcome, string>> = {
+  created: "Link capturado.",
+  "already-in-inbox": "Já está na sua Inbox.",
+  reentered: "Estava fora da Inbox e voltou.",
+};
+
+/** A refused capture: the Account's capture budget has its own text; the link is never echoed. */
+export function captureErrorMessage(error: unknown): string {
+  return isApiError(error) && error.status === 429 ? CAPTURE_TOO_MANY_MESSAGE : writeErrorMessage(error);
 }

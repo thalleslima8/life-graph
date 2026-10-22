@@ -68,6 +68,11 @@ export function operationTitle(operation: ProposedOperation): string {
       return "Remover uma Relation";
     case "delete_node":
       return `Apagar Node ${quoted(operation.nodeTitle, "indisponível")}`;
+    case "capture_resource": {
+      const title = operation.fields.find((field) => field.field === "title")?.after;
+      const capture = `Capturar Resource ${quoted(typeof title === "string" ? title : null, "sem título")}`;
+      return operation.target ? `${capture} → ${endpointLabel(operation.target)}${operation.kind ? ` (${operation.kind})` : ""}` : capture;
+    }
   }
 }
 
@@ -79,6 +84,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   inInbox: "Na Inbox",
   suggestedType: "Type sugerido",
   kind: "Tipo da Relation",
+  url: "Link",
   name: "Nome",
 };
 

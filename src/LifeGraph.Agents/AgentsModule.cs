@@ -73,7 +73,8 @@ public static class AgentsModule
             .WithHttpTransport(transport => transport.Stateless = true)
             .WithTools<WhoAmITool>()
             .WithTools<GraphReadTools>()
-            .WithTools<GraphWriteTools>();
+            .WithTools<GraphWriteTools>()
+            .WithTools<ResourceTools>();
 
         return services;
     }

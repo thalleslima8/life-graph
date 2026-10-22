@@ -302,8 +302,11 @@ public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifet
 
         using var list = await AgentMcp.CallAsync(_agent, GraphReadTools.ListTypesName);
 
-        var type = Assert.Single(list.RootElement.GetProperty("types").EnumerateArray());
+        var types = list.RootElement.GetProperty("types").EnumerateArray().ToArray();
+        var type = Assert.Single(types, item => !item.GetProperty("isSystem").GetBoolean());
         Assert.Equal("Livro", type.GetProperty("name").GetString());
+        var system = Assert.Single(types, item => item.GetProperty("isSystem").GetBoolean());
+        Assert.Equal(SystemOntology.ResourceTypeName, system.GetProperty("name").GetString());
         var property = Assert.Single(type.GetProperty("properties").EnumerateArray());
         Assert.Equal(("Status", "select", "Lendo"), (property.GetProperty("name").GetString(), property.GetProperty("valueKind").GetString(), property.GetProperty("options")[0].GetString()));
         Assert.False(list.RootElement.TryGetProperty("nextCursor", out _));
@@ -325,9 +328,11 @@ public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifet
 
         var firstIds = Ids(first.RootElement.GetProperty("types"));
         var restIds = Ids(rest.RootElement.GetProperty("types"));
+        var resource = await _graph.ScalarAsync<Guid>(
+            "SELECT id FROM types WHERE account_id = @account AND system_key IS NOT NULL", new NpgsqlParameter("account", _accountId));
         Assert.Equal(2, firstIds.Length);
-        Assert.Single(restIds);
-        Assert.Equal(visible.Order(), firstIds.Concat(restIds).Order());
+        Assert.Equal(2, restIds.Length);
+        Assert.Equal(visible.Append(resource).Order(), firstIds.Concat(restIds).Order());
         Assert.False(rest.RootElement.TryGetProperty("nextCursor", out _));
 
         Assert.Contains("cursor", await AgentMcp.RefusalAsync(_agent, GraphReadTools.ListTypesName, new { cursor = "not-a-cursor" }), StringComparison.Ordinal);

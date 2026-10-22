@@ -1,3 +1,4 @@
+using LifeGraph.Infrastructure.Accounts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -23,6 +24,7 @@ public static class PersistenceServiceCollectionExtensions
         // Needs an ICurrentPrincipal, registered by the Accounts module (DA-094).
         services.TryAddScoped<BackgroundAccount>();
         services.TryAddScoped<IAccountContext, PrincipalAccountContext>();
+        services.TryAddSingleton<AccountSetup>();
 
         // The connection string is read lazily so tooling that boots the host without a
         // database (OpenAPI generation at build time) still works.

@@ -45,6 +45,9 @@ public sealed record GraphWriteReceipt(Guid? ChangeSetId, IReadOnlyList<GraphEnt
     /// no longer live (DA-115). They stay deleted, and are purged at the end of their window.
     /// </summary>
     public IReadOnlyList<Guid> RelationsLeftDeleted { get; init; } = [];
+
+    /// <summary>What each <see cref="CaptureResource"/> of the write found, in operation order.</summary>
+    public IReadOnlyList<ResourceCaptured> Captures { get; init; } = [];
 }
 
 /// <param name="Version">The Node's version after the change; <c>null</c> for other entities.</param>

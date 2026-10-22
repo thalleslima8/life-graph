@@ -183,16 +183,23 @@ function TypeRow({ type, definitions }: { type: TypeItem; definitions: PropertyD
   const update = useUpdateType(type.id);
   const hide = useUpdateType(type.id);
   const [toAttach, setToAttach] = useState("");
-  const attachable = definitions.filter((definition) => !type.properties.some((property) => property.propertyDefinitionId === definition.id));
+  // A system Property belongs to its system Type only (DA-057): it is never offered elsewhere.
+  const attachable = definitions.filter(
+    (definition) => !definition.isSystem && !type.properties.some((property) => property.propertyDefinitionId === definition.id),
+  );
   const attachId = `attach-${type.id}`;
 
   return (
     <li className="space-y-3 px-3 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-medium">{type.name}</h3>
-        <Button type="button" variant="ghost" size="sm" onClick={() => remove.mutate()} disabled={remove.isPending} aria-label={`Apagar Type ${type.name}`}>
-          Apagar
-        </Button>
+        <h3 className="font-medium">
+          {type.name} {type.isSystem && <SystemMark />}
+        </h3>
+        {!type.isSystem && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => remove.mutate()} disabled={remove.isPending} aria-label={`Apagar Type ${type.name}`}>
+            Apagar
+          </Button>
+        )}
       </div>
       <RefusalOrError error={remove.error} />
 
@@ -213,13 +220,15 @@ function TypeRow({ type, definitions }: { type: TypeItem; definitions: PropertyD
         <RefusalOrError error={hide.error} />
       </div>
 
-      <NameForm
-        label={`Renomear ${type.name}`}
-        idPrefix={`rename-${type.id}`}
-        initialName={type.name}
-        submitLabel="Renomear"
-        action={{ ...update, submit: (name, onDone) => update.mutate({ name }, { onSuccess: onDone }) }}
-      />
+      {!type.isSystem && (
+        <NameForm
+          label={`Renomear ${type.name}`}
+          idPrefix={`rename-${type.id}`}
+          initialName={type.name}
+          submitLabel="Renomear"
+          action={{ ...update, submit: (name, onDone) => update.mutate({ name }, { onSuccess: onDone }) }}
+        />
+      )}
 
       {type.properties.length > 0 && (
         <ul className="space-y-1 text-sm" aria-label={`Propriedades de ${type.name}`}>
@@ -228,16 +237,20 @@ function TypeRow({ type, definitions }: { type: TypeItem; definitions: PropertyD
               <span>
                 {property.name} <span className="text-muted-foreground">({VALUE_KIND_LABELS[property.valueKind]})</span>
               </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => detach.mutate(property.propertyDefinitionId)}
-                disabled={detach.isPending}
-                aria-label={`Desanexar ${property.name} de ${type.name}`}
-              >
-                Desanexar
-              </Button>
+              {property.isSystem ? (
+                <SystemMark />
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => detach.mutate(property.propertyDefinitionId)}
+                  disabled={detach.isPending}
+                  aria-label={`Desanexar ${property.name} de ${type.name}`}
+                >
+                  Desanexar
+                </Button>
+              )}
             </li>
           ))}
         </ul>
@@ -412,31 +425,40 @@ function DefinitionRow({ definition }: { definition: PropertyDefinitionItem }) {
             {definition.options.length > 0 && `: ${definition.options.map((option) => option.label).join(", ")}`})
           </span>
         </p>
-        <span className="flex gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsEditing((editing) => !editing)}
-            aria-expanded={isEditing}
-            aria-label={`${isEditing ? "Fechar" : "Editar"} ${definition.name}`}
-          >
-            {isEditing ? "Fechar" : "Editar"}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => remove.mutate()}
-            disabled={remove.isPending}
-            aria-label={`Apagar propriedade ${definition.name}`}
-          >
-            Apagar
-          </Button>
-        </span>
+        {definition.isSystem ? (
+          <SystemMark />
+        ) : (
+          <span className="flex gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsEditing((editing) => !editing)}
+              aria-expanded={isEditing}
+              aria-label={`${isEditing ? "Fechar" : "Editar"} ${definition.name}`}
+            >
+              {isEditing ? "Fechar" : "Editar"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => remove.mutate()}
+              disabled={remove.isPending}
+              aria-label={`Apagar propriedade ${definition.name}`}
+            >
+              Apagar
+            </Button>
+          </span>
+        )}
       </div>
       <RefusalOrError error={remove.error} />
       {isEditing && <DefinitionForm definition={definition} onDone={() => setIsEditing(false)} />}
     </li>
   );
+}
+
+/** System entries keep their name and place (DA-057): the mark stands where the edit controls would be. */
+function SystemMark() {
+  return <span className="rounded border px-1.5 text-xs font-normal">Sistema, travado</span>;
 }

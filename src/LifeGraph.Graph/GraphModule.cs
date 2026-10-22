@@ -33,9 +33,11 @@ public static class GraphModule
         services.AddScoped<NodeViews>();
         services.AddScoped<IGraphReader, GraphContextReads>();
         services.AddScoped<GraphWrites>();
+        services.AddScoped<IResourceFetchGraph, ResourceFetchGraph>();
         services.AddScoped<IJobHandler, GraphPurge>();
         services.AddScoped<IJobHandler, ProposalExpiry>();
         services.AddScoped<IAccountPurgeParticipant, GraphAccountPurge>();
+        services.AddScoped<IAccountSetupParticipant, SystemOntologySetup>();
         services.AddScoped<IAgentRevocationParticipant, ProposalWithdrawalOnRevocation>();
 
         return services;

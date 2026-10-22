@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using LifeGraph.Graph.Contracts;
+using LifeGraph.Infrastructure.Accounts;
 using LifeGraph.Infrastructure.Identity;
 using LifeGraph.Infrastructure.Jobs;
 using LifeGraph.IntegrationTests.Infrastructure;
@@ -15,7 +16,7 @@ public sealed class GraphWriteHarness(PostgresDatabase database, LifeGraphApiFac
 {
     public static readonly Provenance HumanInUi = new(new GraphActor.Human(), WriteChannel.Ui);
 
-    /// <summary>An Account row, as the provisioning would leave it; graph tests need no login.</summary>
+    /// <summary>An Account row with its system ontology, as provisioning and the first sign-in leave it; graph tests need no login.</summary>
     public async Task<Guid> CreateAccountAsync()
     {
         var accountId = Guid.CreateVersion7();
@@ -23,6 +24,7 @@ public sealed class GraphWriteHarness(PostgresDatabase database, LifeGraphApiFac
             "INSERT INTO accounts (id, created_at) VALUES (@id, now())",
             TestContext.Current.CancellationToken,
             new NpgsqlParameter("id", accountId));
+        await factory.Services.GetRequiredService<AccountSetup>().EnsureAsync(accountId, TestContext.Current.CancellationToken);
         return accountId;
     }
 
@@ -132,9 +134,20 @@ public sealed class GraphWriteHarness(PostgresDatabase database, LifeGraphApiFac
     public Task<int> RunDueJobsAsync() =>
         factory.Services.GetRequiredService<JobRunner>().RunDueAsync(TestContext.Current.CancellationToken);
 
-    /// <summary>Counts rows as the table owner, past RLS: what is really stored.</summary>
+    /// <summary>
+    /// Counts rows as the table owner, past RLS: what is really stored. The system Types and
+    /// Properties every Account starts with (DA-149), and their attachments, are left out: a
+    /// test counts what its own writes stored.
+    /// </summary>
     public async Task<long> CountAsync(string table) =>
-        await database.QueryScalarAsMigratorAsync<long>($"SELECT count(*) FROM {table}");
+        await database.QueryScalarAsMigratorAsync<long>($"SELECT count(*) FROM {table}{UserRowsOnly(table)}");
+
+    private static string UserRowsOnly(string table) => table switch
+    {
+        "types" or "property_definitions" => " WHERE system_key IS NULL",
+        "type_properties" => " WHERE property_definition_id NOT IN (SELECT id FROM property_definitions WHERE system_key IS NOT NULL)",
+        _ => string.Empty,
+    };
 
     public Task<T> ScalarAsync<T>(string sql, params NpgsqlParameter[] parameters) =>
         database.QueryScalarAsMigratorAsync<T>(sql, parameters);

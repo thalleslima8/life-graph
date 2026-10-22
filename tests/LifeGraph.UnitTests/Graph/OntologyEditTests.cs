@@ -12,19 +12,19 @@ public sealed class OntologyEditTests
     private static readonly DateTimeOffset Later = Now.AddMinutes(5);
 
     private readonly PropertyDefinition _pages = Define("Pages", PropertyValueKind.Number);
-    private readonly PropertyDefinition _author = Define("Author", PropertyValueKind.Text);
+    private readonly PropertyDefinition _writer = Define("Writer", PropertyValueKind.Text);
 
     [Fact]
     public void A_type_attaches_at_the_end_once_and_detaches_what_it_attaches()
     {
         var book = NodeType.Create(Guid.CreateVersion7(), Account, "Book", [_pages], Now).Value!;
 
-        Assert.True(book.Attach(_author, Later).Value);
-        Assert.False(book.Attach(_author, Later).Value);
-        Assert.True(book.Detach(_pages.Id, Later));
-        Assert.False(book.Detach(_pages.Id, Later));
+        Assert.True(book.Attach(_writer, Later).Value);
+        Assert.False(book.Attach(_writer, Later).Value);
+        Assert.True(book.Detach(_pages.Id, _pages, Later).Value);
+        Assert.False(book.Detach(_pages.Id, _pages, Later).Value);
 
-        Assert.Equal([(_author.Id, 1)], book.Properties.Select(property => (property.PropertyDefinitionId, property.Position)));
+        Assert.Equal([(_writer.Id, 1)], book.Properties.Select(property => (property.PropertyDefinitionId, property.Position)));
         Assert.Equal(Later, book.UpdatedAt);
     }
 
@@ -56,13 +56,13 @@ public sealed class OntologyEditTests
     public void Reverting_a_type_puts_back_its_name_and_attachments_in_order()
     {
         var book = NodeType.Create(Guid.CreateVersion7(), Account, "Book", [_pages], Now).Value!;
-        book.Attach(_author, Now);
+        book.Attach(_writer, Now);
         book.Rename("Livro", Now);
 
-        book.Revert("Book", [_author.Id], hiddenFromAgents: false, Later);
+        book.Revert("Book", [_writer.Id], hiddenFromAgents: false, Later);
 
         Assert.Equal("Book", book.Name);
-        Assert.Equal([(_author.Id, 0)], book.Properties.Select(property => (property.PropertyDefinitionId, property.Position)));
+        Assert.Equal([(_writer.Id, 0)], book.Properties.Select(property => (property.PropertyDefinitionId, property.Position)));
     }
 
     [Fact]

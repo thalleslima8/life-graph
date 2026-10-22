@@ -77,6 +77,33 @@ public static class GraphErrors
     /// </summary>
     public static readonly ErrorCode PropertyHasValues = ErrorCode.BusinessRule("graph.property_has_values", ErrorRecovery.AskUser);
 
+    /// <summary>
+    /// A system Type or Property (the Resource ones, DA-057) cannot be renamed, deleted,
+    /// changed or detached from its Type, nor attached to another Type (DA-149).
+    /// </summary>
+    public static readonly ErrorCode SystemEntryLocked = ErrorCode.BusinessRule("graph.system_entry_locked", ErrorRecovery.NotRecoverable);
+
+    /// <summary>The name of a system Type or Property, in any case, is reserved for it (DA-057).</summary>
+    public static readonly ErrorCode NameReserved = ErrorCode.BusinessRule("graph.name_reserved", ErrorRecovery.AskUser);
+
+    /// <summary>
+    /// Another live Resource of the Account already keeps the link: its canonical URL is unique
+    /// (DA-060, DA-154). Editing a Resource's <c>url</c> to that link is refused (DA-150). An agent is
+    /// never told this: it gets <see cref="ResourceUrlInvalid"/>, so a Node hidden from agents is
+    /// never revealed (DA-154).
+    /// </summary>
+    public static readonly ErrorCode ResourceUrlTaken = ErrorCode.BusinessRule("graph.resource_url_taken", ErrorRecovery.AskUser);
+
+    /// <summary>
+    /// A Resource keeps only an http or https link without credentials, of at most 2048
+    /// characters (DA-150); the field names the request's link. An agent's write of a link another
+    /// Resource keeps answers this too, without a field (DA-154).
+    /// </summary>
+    public static readonly ErrorCode ResourceUrlInvalid = ErrorCode.BusinessRule("graph.resource_url_invalid", ErrorRecovery.AskUser);
+
+    /// <summary>The message of <see cref="ResourceUrlInvalid"/>, the same for every cause.</summary>
+    public const string ResourceUrlInvalidMessage = "This link cannot be kept as a Resource.";
+
     public static IReadOnlyList<ErrorCode> All { get; } =
     [
         NodeNotFound,
@@ -97,5 +124,9 @@ public static class GraphErrors
         PropertyInUse,
         PropertyInUseByDeletedNodes,
         PropertyHasValues,
+        SystemEntryLocked,
+        NameReserved,
+        ResourceUrlTaken,
+        ResourceUrlInvalid,
     ];
 }

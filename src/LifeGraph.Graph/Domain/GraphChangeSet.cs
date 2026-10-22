@@ -53,7 +53,12 @@ public sealed class GraphChangeSet
         Id = Guid.CreateVersion7(now),
         AccountId = accountId,
         Status = ChangeSetStatus.Applied,
-        ActorKind = provenance.Actor is GraphActor.AgentIdentity ? ChangeActorKind.AgentIdentity : ChangeActorKind.Human,
+        ActorKind = provenance.Actor switch
+        {
+            GraphActor.AgentIdentity => ChangeActorKind.AgentIdentity,
+            GraphActor.System => ChangeActorKind.System,
+            _ => ChangeActorKind.Human,
+        },
         AgentIdentityId = (provenance.Actor as GraphActor.AgentIdentity)?.AgentIdentityId,
         Channel = provenance.Channel,
         Source = string.IsNullOrWhiteSpace(provenance.Source) ? null : provenance.Source.Trim(),

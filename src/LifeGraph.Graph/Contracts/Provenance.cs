@@ -22,6 +22,13 @@ public abstract record GraphActor
 
     /// <summary>An authorized agent connection, acting on behalf of the Account.</summary>
     public sealed record AgentIdentity(Guid AgentIdentityId) : GraphActor;
+
+    /// <summary>
+    /// The application itself, in a job of the queue (DA-153): the Resource fetch. It writes
+    /// only through the job's entry of the pipeline (<see cref="IResourceFetchGraph"/>), never through
+    /// <see cref="IGraphWriter"/>, and never makes a Node the person's (DA-133).
+    /// </summary>
+    public sealed record System : GraphActor;
 }
 
 /// <summary>The kind of <see cref="GraphActor"/> a GraphChangeSet records.</summary>
@@ -29,6 +36,7 @@ public enum ChangeActorKind
 {
     Human,
     AgentIdentity,
+    System,
 }
 
 /// <summary>The way the write came in.</summary>
@@ -38,4 +46,7 @@ public enum WriteChannel
     Api,
     Mcp,
     Import,
+
+    /// <summary>A job of the queue, with <see cref="GraphActor.System"/> (DA-153).</summary>
+    System,
 }

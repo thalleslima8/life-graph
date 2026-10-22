@@ -26,6 +26,7 @@ internal sealed class AgentGraphWriter(
     GraphReadFilter filter,
     ICurrentPrincipal currentPrincipal,
     IAgentIdentityDirectory agentDirectory,
+    IResourceAddressRules addressRules,
     IOptions<AgentWriteOptions> options,
     TimeProvider clock) : IAgentGraphWriter
 {
@@ -110,7 +111,7 @@ internal sealed class AgentGraphWriter(
                     return Result<ApplyAttempt>.Fail(RejectedBefore());
                 }
 
-                var facts = await LoadFactsAsync(operations, token);
+                var facts = await LoadFactsAsync(operations, agentIdentityId, token);
                 if (!facts.IsSuccess)
                 {
                     return Result<ApplyAttempt>.Fail(facts.Error!);
@@ -240,7 +241,7 @@ internal sealed class AgentGraphWriter(
                     return Result<ChangeOutcome>.Fail(ConnectionRevoked());
                 }
 
-                var facts = await LoadFactsAsync(request.Operations, token);
+                var facts = await LoadFactsAsync(request.Operations, agentIdentityId, token);
                 if (!facts.IsSuccess)
                 {
                     return Result<ChangeOutcome>.Fail(facts.Error!);
@@ -306,7 +307,7 @@ internal sealed class AgentGraphWriter(
         }
 
         var content = AgentOperations.Serialize(request.Operations);
-        var hash = ChangeProposal.ContentHashOf(content);
+        var hash = ChangeProposal.ContentHashOf(AgentOperations.Serialize(AgentOperations.IdentityOf(request.Operations, addressRules)));
         if (await WasRejectedAsync(hash, cancellationToken))
         {
             return Result<ChangeOutcome>.Fail(RejectedBefore());
@@ -437,7 +438,7 @@ internal sealed class AgentGraphWriter(
 
     // The entities the operations name, through the central read filter: what the agent may
     // not see is not found, operation by operation (DA-035, DA-043 item 6).
-    private async Task<Result<AgentWriteFacts>> LoadFactsAsync(IReadOnlyList<AgentOperation> operations, CancellationToken cancellationToken)
+    private async Task<Result<AgentWriteFacts>> LoadFactsAsync(IReadOnlyList<AgentOperation> operations, Guid agentIdentityId, CancellationToken cancellationToken)
     {
         var nodeIds = AgentOperations.TargetNodeIds(operations);
         var relationIds = operations.OfType<AgentRemoveRelation>().Select(remove => remove.RelationId).Distinct().ToList();
@@ -466,6 +467,7 @@ internal sealed class AgentGraphWriter(
                 AgentDeleteNode delete when !nodes.ContainsKey(delete.NodeId) => NodeNotFound(),
                 AgentCreateRelation relate when relate.Source.NodeId is { } source && !nodes.ContainsKey(source) => NodeNotFound(),
                 AgentCreateRelation relate when relate.Target.NodeId is { } target && !nodes.ContainsKey(target) => NodeNotFound(),
+                AgentCaptureResource { RelatedNodeId: { } related } when !nodes.ContainsKey(related) => NodeNotFound(),
                 AgentRemoveRelation remove when !relations.ContainsKey(remove.RelationId) =>
                     GraphErrors.RelationNotFound.ToError("The relation was not found."),
                 AgentCreateNode { TypeId: { } typeId } when !types.Contains(typeId) => TypeNotFound(),
@@ -478,7 +480,53 @@ internal sealed class AgentGraphWriter(
             }
         }
 
-        return Result<AgentWriteFacts>.Ok(new AgentWriteFacts(nodes, relations));
+        var capturesOfPersonsResources = await CapturesOfPersonsResourcesAsync(operations, agentIdentityId, cancellationToken);
+        return Result<AgentWriteFacts>.Ok(new AgentWriteFacts(nodes, relations, capturesOfPersonsResources));
+    }
+
+    // A capture of a link the person's Resource keeps, out of the Inbox or in the tombstone, brings
+    // that Resource back: it changes the person's entity (DA-046, DA-132). A Resource hidden from
+    // agents is left as it is (DA-154), so its capture changes nothing.
+    private async Task<IReadOnlySet<string>> CapturesOfPersonsResourcesAsync(
+        IReadOnlyList<AgentOperation> operations,
+        Guid agentIdentityId,
+        CancellationToken cancellationToken)
+    {
+        var canonicalByUrl = operations.OfType<AgentCaptureResource>()
+            .Select(capture => (capture.Url, Address: addressRules.Read(capture.Url, "url")))
+            .Where(read => read.Address.IsSuccess)
+            .DistinctBy(read => read.Url)
+            .ToDictionary(read => read.Url, read => read.Address.Value!.CanonicalUrl);
+        if (canonicalByUrl.Count == 0)
+        {
+            return new HashSet<string>();
+        }
+
+        var canonicalUrls = canonicalByUrl.Values.Distinct().ToList();
+        var windowStart = clock.GetUtcNow() - GraphRetention.DeleteWindow;
+        var kept = await (
+                from node in db.Set<Node>().AsNoTracking()
+                where node.CanonicalUrl != null && canonicalUrls.Contains(node.CanonicalUrl)
+                    && (node.DeletedAt == null || node.DeletedAt > windowStart)
+                join type in db.Set<NodeType>() on node.TypeId equals type.Id
+                select new
+                {
+                    node.CanonicalUrl,
+                    node.DeletedAt,
+                    node.InboxEnteredAt,
+                    node.CreatedByAgentIdentityId,
+                    Hidden = node.HiddenFromAgents || type.HiddenFromAgents,
+                })
+            .ToListAsync(cancellationToken);
+        var bringsBack = kept
+            .GroupBy(node => node.CanonicalUrl!)
+            .Select(group => group.OrderBy(node => node.DeletedAt != null).ThenByDescending(node => node.DeletedAt).First())
+            .Where(node => !node.Hidden
+                && (node.DeletedAt != null || node.InboxEnteredAt == null)
+                && !AgentWritePolicy.IsAgentOwned(node.CreatedByAgentIdentityId, agentIdentityId))
+            .Select(node => node.CanonicalUrl!)
+            .ToHashSet(StringComparer.Ordinal);
+        return canonicalByUrl.Where(pair => bringsBack.Contains(pair.Value)).Select(pair => pair.Key).ToHashSet(StringComparer.Ordinal);
     }
 
     // The shape of the request, before anything is read: the operation limit (DA-045), the

@@ -21,9 +21,12 @@ internal sealed class GraphWriter(
     GraphReadFilter filter,
     IAccountContext accountContext,
     ICurrentPrincipal currentPrincipal,
+    IResourceAddressRules addressRules,
     TimeProvider clock) : IGraphWriter
 {
     public const int MaxOperations = 100;
+
+    public const string ResourceUrlTakenMessage = "Another resource already keeps this link.";
 
     public const string NodeChangedMessage = "The node changed after it was read. Read it again and reapply the change.";
 
@@ -133,7 +136,7 @@ internal sealed class GraphWriter(
         {
             // A race the loading could not see: a name or id taken, or a referenced row gone.
             db.ChangeTracker.Clear();
-            return Result<T>.Fail(TranslateRace(postgres));
+            return Result<T>.Fail(TranslateRace(postgres, provenance.Actor));
         }
         catch
         {
@@ -151,10 +154,17 @@ internal sealed class GraphWriter(
         Action<GraphChangeSet>? complete,
         CancellationToken cancellationToken)
     {
-        var (accountId, provenance, operations, now) = transactional;
+        var (accountId, provenance, _, now) = transactional;
+        var expansion = await ResourceCaptureExpansion.ExpandAsync(db, addressRules, transactional, cancellationToken);
+        if (!expansion.IsSuccess)
+        {
+            return Result<GraphWriteReceipt>.Fail(expansion.Error!);
+        }
+
+        var (operations, captures, refetch) = expansion.Value!;
         var workingSet = await GraphWorkingSet.LoadAsync(db, operations, cancellationToken);
         var changeSet = GraphChangeSet.Applied(accountId, provenance, now);
-        var write = new WriteInProgress(accountId, provenance, now, workingSet, changeSet);
+        var write = new WriteInProgress(accountId, provenance, now, workingSet, changeSet, addressRules);
         var invalid = new OperationErrors();
 
         for (var index = 0; index < operations.Count; index++)
@@ -185,17 +195,26 @@ internal sealed class GraphWriter(
 
         if (write.Changes.Count == 0)
         {
-            return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(null, []));
+            // A capture of a link kept in the Inbox changes nothing, yet a failed fetch runs again (DA-156).
+            if (refetch.Count > 0)
+            {
+                ResourceFetchScheduling.ScheduleAgain(db, accountId, refetch, now);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
+            return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(null, []) { Captures = captures });
         }
 
         db.AddRange(write.Added);
         db.RemoveRange(write.Removed);
         db.Add(changeSet);
         GraphPurge.ScheduleFor(db, changeSet, now);
+        ResourceFetchScheduling.ScheduleFor(db, workingSet, changeSet, now);
+        ResourceFetchScheduling.ScheduleAgain(db, accountId, refetch, now);
         complete?.Invoke(changeSet);
         await SaveAsync(provenance, cancellationToken);
 
-        return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(changeSet.Id, write.Changes));
+        return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(changeSet.Id, write.Changes) { Captures = captures });
     }
 
     /// <summary>
@@ -208,12 +227,19 @@ internal sealed class GraphWriter(
     /// </summary>
     internal async Task<Result> CheckFieldsInTransactionAsync(TransactionalWrite transactional, CancellationToken cancellationToken)
     {
-        var (accountId, provenance, operations, now) = transactional;
+        var (accountId, provenance, _, now) = transactional;
         var invalid = new OperationErrors();
         try
         {
+            var expansion = await ResourceCaptureExpansion.ExpandAsync(db, addressRules, transactional, cancellationToken);
+            if (!expansion.IsSuccess)
+            {
+                return Result.Fail(expansion.Error!);
+            }
+
+            var operations = expansion.Value!.Operations;
             var workingSet = await GraphWorkingSet.LoadAsync(db, operations, cancellationToken);
-            var write = new WriteInProgress(accountId, provenance, now, workingSet, GraphChangeSet.Applied(accountId, provenance, now));
+            var write = new WriteInProgress(accountId, provenance, now, workingSet, GraphChangeSet.Applied(accountId, provenance, now), addressRules);
             for (var index = 0; index < operations.Count; index++)
             {
                 var operation = operations[index] switch
@@ -248,6 +274,7 @@ internal sealed class GraphWriter(
         DefineProperty define => write.Apply(define),
         CreateType create => write.Apply(create),
         ArchiveNode archive => write.Apply(archive),
+        ReturnToInbox back => write.Apply(back),
         UpdatePropertyDefinition update => write.Apply(update),
         DeletePropertyDefinition delete => write.Apply(delete),
         RenameType rename => write.Apply(rename),
@@ -260,9 +287,17 @@ internal sealed class GraphWriter(
 
     // Every Node and Relation the write changed records who wrote it: anyone but the agent
     // that created it makes it the person's for good (DA-133). Done here, once, so no path of
-    // the pipeline (write, Undo, restore, proposal) can forget it.
+    // the pipeline (write, Undo, restore, proposal) can forget it. The system's fetch is no
+    // one: its metadata keeps the Node the agent's, and its text untrusted (DA-153).
     private async Task SaveAsync(Provenance provenance, CancellationToken cancellationToken)
     {
+        await ProjectCanonicalUrlsAsync(cancellationToken);
+        if (provenance.Actor is GraphActor.System)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
         var writer = (provenance.Actor as GraphActor.AgentIdentity)?.AgentIdentityId;
         foreach (var node in db.ChangeTracker.Entries<Node>().Where(entry => entry.State == EntityState.Modified))
         {
@@ -275,6 +310,43 @@ internal sealed class GraphWriter(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // The canonical_url column follows the Resource's value on every path that changes a Node
+    // (write, Undo, restore, fetch): it is the projection the unique index stands on (DA-154).
+    private async Task ProjectCanonicalUrlsAsync(CancellationToken cancellationToken)
+    {
+        var nodes = db.ChangeTracker.Entries<Node>()
+            .Where(entry => entry.State is EntityState.Added or EntityState.Modified)
+            .Select(entry => entry.Entity)
+            .ToList();
+        if (nodes.Count == 0)
+        {
+            return;
+        }
+
+        var resourceTypeId = await db.Set<NodeType>().AsNoTracking()
+            .Where(type => type.SystemKey == SystemOntology.ResourceTypeKey)
+            .Select(type => (Guid?)type.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        var canonicalId = await db.Set<PropertyDefinition>().AsNoTracking()
+            .Where(definition => definition.SystemKey == SystemOntology.ResourcePropertyKeys.CanonicalUrl)
+            .Select(definition => (Guid?)definition.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        foreach (var node in nodes)
+        {
+            var canonicalUrl = node.TypeId is { } typeId
+                && typeId == resourceTypeId
+                && canonicalId is { } propertyId
+                && node.Properties.Values.TryGetValue(propertyId, out var value)
+                && value.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? value.GetString()
+                    : null;
+            if (node.CanonicalUrl != canonicalUrl)
+            {
+                node.ProjectCanonicalUrl(canonicalUrl);
+            }
+        }
     }
 
     internal static FieldErrors CheckShape(Provenance provenance, IReadOnlyList<GraphOperation> operations)
@@ -303,13 +375,19 @@ internal sealed class GraphWriter(
         return errors;
     }
 
-    private static DateTimeOffset TruncatedToMicroseconds(DateTimeOffset value) =>
+    internal static DateTimeOffset TruncatedToMicroseconds(DateTimeOffset value) =>
         new(value.Ticks - (value.Ticks % TimeSpan.TicksPerMicrosecond), value.Offset);
 
     // The adapter builds the Provenance from the caller; a mismatch is a bug, never a request
     // to attribute the change to someone else.
     private void EnsureTheActorIsTheCaller(Provenance provenance)
     {
+        // The application's own writes come only through the job's entry (DA-152, DA-153).
+        if (provenance.Actor is GraphActor.System || provenance.Channel == WriteChannel.System)
+        {
+            throw new InvalidOperationException("The system writes only through the job's entry of the pipeline.");
+        }
+
         var caller = currentPrincipal.Authenticated;
         if (caller is null)
         {
@@ -323,10 +401,17 @@ internal sealed class GraphWriter(
         }
     }
 
-    private static Error TranslateRace(PostgresException postgres) => postgres.ConstraintName switch
+    // A link another Resource keeps: a Human is told so; an agent gets the answer of a link that
+    // cannot be kept, naming neither the Resource nor that one exists, whether it is hidden from
+    // agents or not (DA-154). A proposal never reaches the index, so it answers nothing about the
+    // link either; its approval is the person's write.
+    private static Error TranslateRace(PostgresException postgres, GraphActor actor) => postgres.ConstraintName switch
     {
         GraphConstraints.TypeNameUnique => GraphErrors.TypeNameTaken.ToError(WriteInProgress.TypeNameTakenMessage),
         GraphConstraints.PropertyNameUnique => GraphErrors.PropertyNameTaken.ToError(WriteInProgress.PropertyNameTakenMessage),
+        GraphConstraints.NodeCanonicalUrlUnique when actor is GraphActor.AgentIdentity =>
+            GraphErrors.ResourceUrlInvalid.ToError(GraphErrors.ResourceUrlInvalidMessage),
+        GraphConstraints.NodeCanonicalUrlUnique => GraphErrors.ResourceUrlTaken.ToError(ResourceUrlTakenMessage),
         _ => RaceLostError(),
     };
 

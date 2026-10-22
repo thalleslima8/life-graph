@@ -50,8 +50,11 @@ internal sealed class GraphWorkingSet
         var createdIds = operations.Select(CreatedId).OfType<Guid>().ToHashSet();
 
         var nodeIds = operations.SelectMany(ReferencedNodeIds).Where(id => !createdIds.Contains(id)).Distinct().ToList();
+        // A capture brings a Resource back from its tombstone (DA-154): the one write that
+        // touches a deleted Node.
+        var returningIds = operations.OfType<ReturnToInbox>().Select(back => back.NodeId).ToList();
         var nodes = await db.Set<Node>()
-            .Where(node => nodeIds.Contains(node.Id) && node.DeletedAt == null)
+            .Where(node => (nodeIds.Contains(node.Id) && node.DeletedAt == null) || returningIds.Contains(node.Id))
             .ToListAsync(cancellationToken);
 
         // A deleted Node takes the Relations that touch it along (DA-021).
@@ -114,6 +117,9 @@ internal sealed class GraphWorkingSet
 
     /// <summary>A live Node of the write; one deleted by an earlier operation of it is gone.</summary>
     public Node? FindNode(Guid id) => _nodes.GetValueOrDefault(id) is { IsDeleted: false } node ? node : null;
+
+    /// <summary>A Node of the write, a tombstone included: only for <see cref="ReturnToInbox"/>.</summary>
+    public Node? FindNodeEvenDeleted(Guid id) => _nodes.GetValueOrDefault(id);
 
     public Relation? FindRelation(Guid id) => _relations.GetValueOrDefault(id) is { IsDeleted: false } relation ? relation : null;
 
@@ -205,6 +211,7 @@ internal sealed class GraphWorkingSet
         UpdateNode update => [update.NodeId],
         DeleteNode delete => [delete.NodeId],
         ArchiveNode archive => [archive.NodeId],
+        ReturnToInbox back => [back.NodeId],
         CreateRelation create => [create.SourceNodeId, create.TargetNodeId],
         _ => [],
     };

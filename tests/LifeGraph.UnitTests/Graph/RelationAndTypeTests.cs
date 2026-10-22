@@ -37,12 +37,12 @@ public sealed class RelationAndTypeTests
     public void A_type_attaches_its_definitions_in_order_once_each()
     {
         var pages = PropertyDefinition.Define(new PropertyDefinitionDraft(Guid.CreateVersion7(), Account, "Pages", PropertyValueKind.Number), Now).Value!;
-        var author = PropertyDefinition.Define(new PropertyDefinitionDraft(Guid.CreateVersion7(), Account, "Author", PropertyValueKind.Text), Now).Value!;
+        var writer = PropertyDefinition.Define(new PropertyDefinitionDraft(Guid.CreateVersion7(), Account, "Writer", PropertyValueKind.Text), Now).Value!;
 
-        var book = NodeType.Create(Guid.CreateVersion7(), Account, "Book", [author, pages], Now).Value!;
+        var book = NodeType.Create(Guid.CreateVersion7(), Account, "Book", [writer, pages], Now).Value!;
         var repeated = NodeType.Create(Guid.CreateVersion7(), Account, "Book", [pages, pages], Now);
 
-        Assert.Equal([(author.Id, 0), (pages.Id, 1)], book.Properties.Select(property => (property.PropertyDefinitionId, property.Position)));
+        Assert.Equal([(writer.Id, 0), (pages.Id, 1)], book.Properties.Select(property => (property.PropertyDefinitionId, property.Position)));
         Assert.Equal(["propertyDefinitionIds"], repeated.Error!.Details!.Keys);
     }
 

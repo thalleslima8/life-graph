@@ -19,7 +19,20 @@ public sealed record CreateNode(
     Guid? TypeId = null,
     IReadOnlyDictionary<Guid, JsonElement>? Properties = null,
     bool InInbox = false,
-    string? SuggestedType = null) : GraphOperation;
+    string? SuggestedType = null) : GraphOperation
+{
+    /// <summary>
+    /// The person chose the title, so a Resource's fetch never replaces it (DA-151): the capture
+    /// sets it for a title the person typed, not for one taken from the link.
+    /// </summary>
+    public bool TitleChosenByHuman { get; init; }
+
+    /// <summary>
+    /// The capture made it, so it carries the first <c>fetch_status</c>, a value only the
+    /// system writes otherwise (DA-150). Only the pipeline's expansion of a capture sets it.
+    /// </summary>
+    internal bool MadeByCapture { get; init; }
+}
 
 /// <summary>
 /// Changes only what is given. <see cref="ExpectedVersion"/> is the version the caller read

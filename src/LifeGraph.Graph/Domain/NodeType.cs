@@ -1,3 +1,4 @@
+using LifeGraph.Graph.Contracts;
 using Limaj.Framework.Core;
 
 namespace LifeGraph.Graph.Domain;
@@ -30,6 +31,12 @@ public sealed class NodeType
     /// </summary>
     public bool HiddenFromAgents { get; private set; }
 
+    /// <summary>The key of a system Type (DA-149); <c>null</c> for a Type of the user.</summary>
+    public string? SystemKey { get; private set; }
+
+    /// <summary>A system Type is locked: no rename, no delete, its system Properties stay (DA-057).</summary>
+    public bool IsSystem => SystemKey is not null;
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -43,6 +50,21 @@ public sealed class NodeType
     {
         var errors = new FieldErrors();
         var trimmedName = TextInput.RequireName(errors, "name", name, GraphLimits.NameMaxLength);
+        if (!errors.IsEmpty)
+        {
+            return Result<NodeType>.Fail(errors.ToError());
+        }
+
+        if (SystemOntology.IsReservedTypeName(trimmedName))
+        {
+            return Result<NodeType>.Fail(ReservedName());
+        }
+
+        if (attached.Any(definition => definition.IsSystem))
+        {
+            return Result<NodeType>.Fail(SystemPropertyElsewhere());
+        }
+
         if (attached.Count > GraphLimits.TypePropertiesMaxCount)
         {
             errors.Add("propertyDefinitionIds", $"At most {GraphLimits.TypePropertiesMaxCount} properties.");
@@ -62,9 +84,38 @@ public sealed class NodeType
         });
     }
 
+    /// <summary>A system Type with its system Properties attached in catalog order (DA-149).</summary>
+    internal static NodeType CreateSystem(Guid id, Guid accountId, string systemKey, string name, IReadOnlyList<PropertyDefinition> attached, DateTimeOffset now)
+    {
+        var type = new NodeType { Id = id, AccountId = accountId, Name = name, SystemKey = systemKey, CreatedAt = now, UpdatedAt = now };
+        type._properties.AddRange(attached.Select((definition, position) =>
+            new TypeProperty(accountId, id, definition.Id, position)));
+        return type;
+    }
+
+    /// <summary>Attaches, at the end, the system Properties a system Type is missing (DA-149).</summary>
+    internal void AttachSystem(IReadOnlyList<PropertyDefinition> systemProperties, DateTimeOffset now)
+    {
+        foreach (var definition in systemProperties.Where(definition => !Attaches(definition.Id)))
+        {
+            var position = _properties.Count == 0 ? 0 : _properties.Max(property => property.Position) + 1;
+            _properties.Add(new TypeProperty(AccountId, Id, definition.Id, position));
+            UpdatedAt = now;
+        }
+    }
+
+    /// <summary>Refuses to delete a system Type (DA-149).</summary>
+    public Result CheckDeletable() =>
+        IsSystem ? Result.Fail(Locked("A system type cannot be deleted.")) : Result.Ok();
+
     /// <returns><c>true</c> when the name changed.</returns>
     public Result<bool> Rename(string? name, DateTimeOffset now)
     {
+        if (IsSystem)
+        {
+            return Result<bool>.Fail(Locked("A system type cannot be renamed."));
+        }
+
         var errors = new FieldErrors();
         var trimmedName = TextInput.RequireName(errors, "name", name, GraphLimits.NameMaxLength);
         if (!errors.IsEmpty)
@@ -75,6 +126,11 @@ public sealed class NodeType
         if (trimmedName == Name)
         {
             return Result<bool>.Ok(false);
+        }
+
+        if (SystemOntology.IsReservedTypeName(trimmedName))
+        {
+            return Result<bool>.Fail(ReservedName());
         }
 
         Name = trimmedName;
@@ -107,6 +163,11 @@ public sealed class NodeType
             return Result<bool>.Ok(false);
         }
 
+        if (definition.IsSystem)
+        {
+            return Result<bool>.Fail(SystemPropertyElsewhere());
+        }
+
         if (_properties.Count >= GraphLimits.TypePropertiesMaxCount)
         {
             var errors = new FieldErrors();
@@ -125,16 +186,28 @@ public sealed class NodeType
     /// Outras propriedades, and come back when it is attached again (DA-016).
     /// </summary>
     /// <returns><c>false</c> when it was not attached.</returns>
-    public bool Detach(Guid propertyDefinitionId, DateTimeOffset now)
+    public Result<bool> Detach(Guid propertyDefinitionId, PropertyDefinition? definition, DateTimeOffset now)
     {
+        if (definition is { IsSystem: true } && Attaches(propertyDefinitionId))
+        {
+            return Result<bool>.Fail(Locked("A system property stays attached to its type."));
+        }
+
         if (_properties.RemoveAll(property => property.PropertyDefinitionId == propertyDefinitionId) == 0)
         {
-            return false;
+            return Result<bool>.Ok(false);
         }
 
         UpdatedAt = now;
-        return true;
+        return Result<bool>.Ok(true);
     }
+
+    private static Error Locked(string message) => GraphErrors.SystemEntryLocked.ToError(message);
+
+    private static Error ReservedName() => GraphErrors.NameReserved.ToError("This name is reserved for a system type.");
+
+    private static Error SystemPropertyElsewhere() =>
+        GraphErrors.SystemEntryLocked.ToError("A system property belongs to its system type only.");
 
     public bool Attaches(Guid propertyDefinitionId) =>
         _properties.Any(property => property.PropertyDefinitionId == propertyDefinitionId);

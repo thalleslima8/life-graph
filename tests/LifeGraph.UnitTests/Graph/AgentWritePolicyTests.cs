@@ -55,6 +55,19 @@ public sealed class AgentWritePolicyTests
         Assert.True(AgentWritePolicy.IsAgentOwned(Agent, Agent));
     }
 
+    // DA-046, DA-132: a capture that brings back the person's Resource changes their entity; a new link does not.
+    [Fact]
+    public void A_capture_counts_only_when_it_brings_back_the_persons_resource()
+    {
+        var facts = new AgentWriteFacts(
+            new Dictionary<Guid, NodeFact>(),
+            new Dictionary<Guid, RelationFact>(),
+            new HashSet<string> { "https://example.test/persons" });
+
+        Assert.Equal(1, Assess([new AgentCaptureResource("https://example.test/persons")], facts).OnPersonsEntities);
+        Assert.Equal(0, Assess([new AgentCaptureResource("https://example.test/new")], facts).OnPersonsEntities);
+    }
+
     // Testes obrigatórios — DA-046: 20 changes to the person's entities pass, 21 are a bulk.
     [Theory]
     [InlineData(20, false)]

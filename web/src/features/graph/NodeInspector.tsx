@@ -261,7 +261,7 @@ function PropertyValues({ properties, definitionsById }: { properties: NodePrope
         <div key={property.propertyDefinitionId} className="contents">
           <dt className="text-muted-foreground">{property.name}</dt>
           <dd>
-            <PropertyValueDisplay definition={fieldOf(property, definitionsById)} value={property.value} />
+            <PropertyValueDisplay definition={fieldOf(property, definitionsById)} value={shownValueOf(property, definitionsById)} />
           </dd>
         </div>
       ))}
@@ -316,6 +316,30 @@ const BECOMES_VISIBLE_MESSAGE =
   "Atenção: o Type atual oculta este Node para agentes e o novo Type não. Ao salvar, ele fica visível para os agentes conectados. Marque “Oculto para agentes” para mantê-lo oculto.";
 
 type EditValues = { title: string; body: string; typeId: string; hiddenFromAgents: boolean; properties: Record<string, PropertyValue> };
+
+// The server sets these system Properties of a Resource, never the person (DA-150): canonical_url
+// follows url and fetch_status follows the fetch. System names are locked and reserved (DA-057).
+const SERVER_SET_PROPERTY_NAMES = new Set(["canonical_url", "fetch_status"]);
+const RESOURCE_KINDS = new Set(["web_page", "article", "video", "pdf", "image", "document", "other"]);
+const RESOURCE_KIND_PROPERTY_NAME = "resource_kind";
+
+function isSystemProperty(property: NodePropertyValue, definitionsById: Map<string, PropertyDefinitionItem>): boolean {
+  return definitionsById.get(property.propertyDefinitionId)?.isSystem === true;
+}
+
+function isServerSet(property: NodePropertyValue, definitionsById: Map<string, PropertyDefinitionItem>): boolean {
+  return isSystemProperty(property, definitionsById) && SERVER_SET_PROPERTY_NAMES.has(property.name);
+}
+
+/** A resource_kind outside the closed list reads as "other" (DA-056); any other value shows as stored. */
+function shownValueOf(property: NodePropertyValue, definitionsById: Map<string, PropertyDefinitionItem>): NodePropertyValue["value"] {
+  const isUnknownKind =
+    property.name === RESOURCE_KIND_PROPERTY_NAME &&
+    isSystemProperty(property, definitionsById) &&
+    typeof property.value === "string" &&
+    !RESOURCE_KINDS.has(property.value);
+  return isUnknownKind ? "other" : property.value;
+}
 
 function fieldOf(property: NodePropertyValue, definitionsById: Map<string, PropertyDefinitionItem>): PropertyField {
   return { name: property.name, valueKind: property.valueKind, options: definitionsById.get(property.propertyDefinitionId)?.options };
@@ -526,23 +550,30 @@ function NodeEditForm({
 
       {!typeChanged && node.properties.length > 0 && (
         <div className="space-y-4">
-          {node.properties.map((property) => (
-            <Controller
-              key={property.propertyDefinitionId}
-              name={`properties.${property.propertyDefinitionId}`}
-              control={control}
-              render={({ field, fieldState }) => (
-                <PropertyValueEditor
-                  id={`prop-${property.propertyDefinitionId}`}
-                  definition={fieldOf(property, definitionsById)}
-                  value={field.value ?? null}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  error={fieldState.error?.message}
-                />
-              )}
-            />
-          ))}
+          {node.properties.map((property) =>
+            isServerSet(property, definitionsById) ? (
+              <div key={property.propertyDefinitionId} className="space-y-1 text-sm">
+                <p className="font-medium">{property.name}</p>
+                <PropertyValueDisplay definition={fieldOf(property, definitionsById)} value={property.value} />
+              </div>
+            ) : (
+              <Controller
+                key={property.propertyDefinitionId}
+                name={`properties.${property.propertyDefinitionId}`}
+                control={control}
+                render={({ field, fieldState }) => (
+                  <PropertyValueEditor
+                    id={`prop-${property.propertyDefinitionId}`}
+                    definition={fieldOf(property, definitionsById)}
+                    value={field.value ?? null}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    error={fieldState.error?.message}
+                  />
+                )}
+              />
+            ),
+          )}
         </div>
       )}
 

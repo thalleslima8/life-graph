@@ -75,6 +75,14 @@ public sealed partial class JobRunner(
         {
             await using var scope = ScopeFor(claimed.AccountId);
             var db = scope.ServiceProvider.GetRequiredService<LifeGraphDbContext>();
+            var twoPhaseHandler = scope.ServiceProvider.GetServices<ITwoPhaseJobHandler>()
+                .FirstOrDefault(candidate => candidate.Kind == claimed.Kind);
+            if (twoPhaseHandler is not null)
+            {
+                await RunInTwoPhasesAsync(db, claimed, twoPhaseHandler, cancellationToken);
+                return;
+            }
+
             var handler = scope.ServiceProvider.GetServices<IJobHandler>().FirstOrDefault(candidate => candidate.Kind == claimed.Kind);
             await db.InAccountTransactionAsync(
                 async token =>
@@ -109,6 +117,45 @@ public sealed partial class JobRunner(
             // The innermost type: the execution strategy wraps transient failures.
             await RecordFailureAsync(claimed, exception.GetBaseException().GetType().Name, cancellationToken);
         }
+    }
+
+    // DA-152: the payload in a short transaction, the I/O with none open, then the apply phase
+    // and the done mark in one transaction, only while this claim still owns the job.
+    private async Task RunInTwoPhasesAsync(
+        LifeGraphDbContext db,
+        ClaimedJob claimed,
+        ITwoPhaseJobHandler handler,
+        CancellationToken cancellationToken)
+    {
+        var payload = await db.InAccountTransactionAsync(
+            token => db.Set<Job>().AsNoTracking()
+                .Where(entity => entity.Id == claimed.JobId && entity.Status == JobStatus.Running)
+                .Select(entity => entity.Payload)
+                .SingleOrDefaultAsync(token),
+            cancellationToken);
+        if (payload is null)
+        {
+            return;
+        }
+
+        var apply = await handler.RunOutsideTransactionAsync(payload, cancellationToken);
+        await db.InAccountTransactionAsync(
+            async token =>
+            {
+                var job = await db.Set<Job>().SingleOrDefaultAsync(
+                    entity => entity.Id == claimed.JobId && entity.Status == JobStatus.Running,
+                    token);
+                if (job is null)
+                {
+                    return false;
+                }
+
+                await apply(token);
+                job.Done(clock.GetUtcNow());
+                await db.SaveChangesAsync(token);
+                return true;
+            },
+            cancellationToken);
     }
 
     // The run's transaction rolled back with everything the handler did; the failure is

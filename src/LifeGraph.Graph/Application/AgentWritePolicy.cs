@@ -53,6 +53,14 @@ internal static class AgentWritePolicy
                     }
 
                     break;
+                case AgentCaptureResource capture:
+                    // A new Resource is the agent's own; one of the person's it brings back is theirs (DA-046, DA-132).
+                    if (facts.CapturesOfPersonsResources?.Contains(capture.Url) == true)
+                    {
+                        onPersonsEntities++;
+                    }
+
+                    break;
                 case AgentRemoveRelation remove:
                     if (!IsAgentOwned(facts.Relations[remove.RelationId].CreatedByAgentIdentityId, agentIdentityId))
                     {
@@ -96,9 +104,14 @@ internal sealed record AgentWriteAssessment(IReadOnlyList<ProposalReason> Reason
 internal sealed record WindowUsage(int ByAgent, int ByAccount);
 
 /// <summary>The current state of the entities an agent write names, as the agent sees them.</summary>
+/// <param name="CapturesOfPersonsResources">
+/// The links, as the agent gave them, whose capture changes a Resource of the person: restores it
+/// from the tombstone or returns it to the Inbox (DA-154, DA-156).
+/// </param>
 internal sealed record AgentWriteFacts(
     IReadOnlyDictionary<Guid, NodeFact> Nodes,
-    IReadOnlyDictionary<Guid, RelationFact> Relations);
+    IReadOnlyDictionary<Guid, RelationFact> Relations,
+    IReadOnlySet<string>? CapturesOfPersonsResources = null);
 
 internal sealed record NodeFact(Guid Id, Guid? TypeId, Guid? CreatedByAgentIdentityId);
 

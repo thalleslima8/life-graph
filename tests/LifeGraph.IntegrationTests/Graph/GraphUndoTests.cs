@@ -147,7 +147,7 @@ public sealed class GraphUndoTests(PostgresDatabase database) : IAsyncLifetime
             "SELECT type_id || '|' || (properties ->> @pages) FROM nodes WHERE id = @id AND deleted_at IS NULL",
             new NpgsqlParameter("pages", pages.ToString()),
             new NpgsqlParameter("id", node)));
-        Assert.Equal(1, await _graph.ScalarAsync<long>("SELECT count(*) FROM type_properties"));
+        Assert.Equal(1, await _graph.CountAsync("type_properties"));
     }
 
     // Testes obrigatórios — Undo com conflito: refused, naming the entries, and nothing changes.

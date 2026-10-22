@@ -82,6 +82,12 @@ public static class ArchitectureRules
     private static string NonAccountsModules(string rootNamespace) =>
         $@"^{Regex.Escape(rootNamespace)}\.({string.Join('|', Modules.Where(module => module != "Accounts"))})(\..+)?$";
 
+    /// <summary>The system's write path (DA-152, DA-153) is used only by the Graph and the metadata fetch job.</summary>
+    public static IArchRule OnlyTheFetchJobWritesAsTheSystem(string rootNamespace) =>
+        Types().That().DoNotResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}\.(Graph(\.Application|\.Contracts)?|Resources\.Fetch)$")
+            .Should().NotDependOnAnyTypesThat().HaveFullName($"{rootNamespace}.Graph.Contracts.IResourceFetchGraph")
+            .Because("only the fetch job may write as the system, in the job's transaction (DA-152, DA-153)");
+
     // The domain knows nothing about HTTP, MCP or the database (BE-001, CLAUDE.md).
     public static IArchRule DomainIsFrameworkFree(string rootNamespace) =>
         Types().That().ResideInNamespaceMatching($@"^{rootNamespace}\.\w+\.Domain(\..+)?$")

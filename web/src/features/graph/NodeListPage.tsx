@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CaptureResourceForm } from "@/features/resources/CaptureResourceForm";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ANY_TYPE,
@@ -47,6 +48,7 @@ export function NodeListPage() {
         {title}
       </h1>
 
+      <CaptureResourceForm inInbox={filter.inbox} />
       <CreateNodeForm inInbox={filter.inbox} />
 
       <div className="flex flex-wrap items-end gap-4" role="group" aria-label="Filtros">

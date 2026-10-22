@@ -1,3 +1,4 @@
+using LifeGraph.Infrastructure.Accounts;
 using LifeGraph.Infrastructure.Identity;
 using LifeGraph.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -74,6 +75,18 @@ internal static class IdentityRegistration
                 if (context.Principal is not null && PrincipalClaims.Read(context.Principal) is null)
                 {
                     context.RejectPrincipal();
+                }
+            };
+
+            // Every Account has the system Types before it reaches the graph (DA-149). The CLI
+            // that creates the Account holds only the provisioning role, so the setup runs here,
+            // with the application role, on each sign-in; it is idempotent.
+            options.Events.OnSigningIn = async context =>
+            {
+                if (context.Principal is not null && PrincipalClaims.Read(context.Principal) is { } principal)
+                {
+                    await context.HttpContext.RequestServices.GetRequiredService<AccountSetup>()
+                        .EnsureAsync(principal.AccountId, context.HttpContext.RequestAborted);
                 }
             };
 

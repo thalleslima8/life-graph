@@ -30,6 +30,9 @@ internal sealed class AgentChanges(
 
     public const int MaxPageSize = 100;
 
+    /// <summary>The field of a proposed capture that shows the link (DA-156).</summary>
+    public const string CapturedUrlField = "url";
+
     private const string OnlyThePersonMessage = "Only the person who owns the Account decides on agents' changes.";
 
     private static readonly Provenance PersonInUi = new(new GraphActor.Human(), WriteChannel.Ui);
@@ -355,6 +358,12 @@ internal sealed class AgentChanges(
                 ExpectedVersion = delete.ExpectedVersion,
                 CurrentVersion = nodes.GetValueOrDefault(delete.NodeId)?.Version,
             },
+            AgentCaptureResource capture => new ProposedOperationItem(
+                index, ProposedOperationKind.CaptureResource, IsSensitive: false, isRejected, ProposedFields(null, CapturedState(capture)), dependsOn)
+            {
+                Target = capture.RelatedNodeId is { } related ? EndpointOf(NodeRef.Of(related)) : null,
+                Kind = capture.RelatedNodeId is null ? null : capture.RelationKind ?? CaptureResource.DefaultRelationKind,
+            },
             _ => throw new NotSupportedException($"Unknown agent operation {operation.GetType().Name}."),
         };
         return (item, []);
@@ -362,6 +371,14 @@ internal sealed class AgentChanges(
 
     // The proposed state, in the fields of a recorded one: only what the operation sets, over
     // the current Node for an edit.
+    // The link and the title a capture proposes; the Resource it names is only known when applied.
+    private static Dictionary<string, JsonElement> CapturedState(AgentCaptureResource capture)
+    {
+        var fields = ProposedState(capture.Title, body: null, properties: null);
+        fields[CapturedUrlField] = JsonSerializer.SerializeToElement(capture.Url);
+        return fields;
+    }
+
     private static Dictionary<string, JsonElement> ProposedState(
         string? title,
         string? body,

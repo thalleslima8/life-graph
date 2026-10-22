@@ -67,7 +67,7 @@ public sealed class GraphReadTools
         AnswerOf(await reader.GetContextAsync(new GraphContextQuery(nodeId, subject, depth, includeSoft), cancellationToken));
 
     [McpServerTool(Name = ListTypesName, Title = "Types do grafo", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("Lists the Types of the person's graph with their properties. Prefer one of these Types when you describe or file something."
+    [Description("Lists the Types of the person's graph with their properties. A Type or property with `isSystem` (Resource and its properties) is locked: it cannot be renamed, changed or deleted. Prefer one of these Types when you describe or file something."
         + " A page at a time: when the answer has a `nextCursor`, call again with it as `cursor` for the rest.")]
     public static async Task<CallToolResult> ListTypesAsync(
         IGraphReader reader,

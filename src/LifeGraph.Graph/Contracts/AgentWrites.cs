@@ -84,6 +84,22 @@ public sealed record AgentRemoveRelation(Guid RelationId) : AgentOperation;
 /// <summary>Sensitive (DA-041): always a proposal only the person approves.</summary>
 public sealed record AgentDeleteNode(Guid NodeId, int ExpectedVersion) : AgentOperation;
 
+/// <summary>
+/// Captures a link into the Inbox as a Resource, idempotent by canonical URL (DA-062, DA-156):
+/// the Resource the Account already keeps, or a new one. The Relation to
+/// <see cref="RelatedNodeId"/>, when given, goes in the same GraphChangeSet; a related Node the
+/// agent may not see is not found (DA-035).
+/// </summary>
+public sealed record AgentCaptureResource(string Url) : AgentOperation
+{
+    public string? Title { get; init; }
+
+    public Guid? RelatedNodeId { get; init; }
+
+    /// <summary>The kind of that Relation; <see cref="CaptureResource.DefaultRelationKind"/> when not given.</summary>
+    public string? RelationKind { get; init; }
+}
+
 /// <summary>A Node by id, or by the <see cref="AgentCreateNode.Ref"/> of a Node created earlier in the same write.</summary>
 public sealed record NodeRef(Guid? NodeId, string? Ref)
 {

@@ -9,7 +9,11 @@ internal sealed class PropertyDefinitionConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<PropertyDefinition> definition)
     {
-        definition.ToTable("property_definitions", table => table.HasEnumCheck<PropertyValueKind>("value_kind"));
+        definition.ToTable("property_definitions", table =>
+        {
+            table.HasEnumCheck<PropertyValueKind>("value_kind");
+            table.HasCheckConstraint(GraphConstraints.PropertySystemKeyCheck, GraphConstraints.SystemKeyIn(SystemOntology.PropertyKeys));
+        });
         definition.HasAccountKeys(entity => entity.Id, entity => new { entity.AccountId, entity.Id });
         definition.Property(entity => entity.Id).ValueGeneratedNever();
         definition.Property(entity => entity.Name).HasMaxLength(GraphLimits.NameMaxLength);
@@ -19,6 +23,11 @@ internal sealed class PropertyDefinitionConfiguration : IEntityTypeConfiguration
         definition.HasIndex(entity => new { entity.AccountId, entity.Name })
             .IsUnique()
             .HasDatabaseName(GraphConstraints.PropertyNameUnique);
+        definition.Property(entity => entity.SystemKey).HasMaxLength(SystemOntology.KeyMaxLength);
+        definition.HasIndex(entity => new { entity.AccountId, entity.SystemKey })
+            .IsUnique()
+            .HasFilter("system_key IS NOT NULL")
+            .HasDatabaseName(GraphConstraints.PropertySystemKeyUnique);
     }
 }
 
@@ -26,7 +35,8 @@ internal sealed class NodeTypeConfiguration : IEntityTypeConfiguration<NodeType>
 {
     public void Configure(EntityTypeBuilder<NodeType> type)
     {
-        type.ToTable("types");
+        type.ToTable("types", table =>
+            table.HasCheckConstraint(GraphConstraints.TypeSystemKeyCheck, GraphConstraints.SystemKeyIn(SystemOntology.TypeKeys)));
         type.HasAccountKeys(entity => entity.Id, entity => new { entity.AccountId, entity.Id });
         type.Property(entity => entity.Id).ValueGeneratedNever();
         type.Property(entity => entity.Name).HasMaxLength(GraphLimits.NameMaxLength);
@@ -34,6 +44,11 @@ internal sealed class NodeTypeConfiguration : IEntityTypeConfiguration<NodeType>
         type.HasIndex(entity => new { entity.AccountId, entity.Name })
             .IsUnique()
             .HasDatabaseName(GraphConstraints.TypeNameUnique);
+        type.Property(entity => entity.SystemKey).HasMaxLength(SystemOntology.KeyMaxLength);
+        type.HasIndex(entity => new { entity.AccountId, entity.SystemKey })
+            .IsUnique()
+            .HasFilter("system_key IS NOT NULL")
+            .HasDatabaseName(GraphConstraints.TypeSystemKeyUnique);
 
         type.HasMany(entity => entity.Properties)
             .WithOne()

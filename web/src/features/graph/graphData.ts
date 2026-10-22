@@ -180,9 +180,9 @@ export function useEditBaseline(node: NodeDetail | undefined, isDirty: boolean):
  * A write of the SPA: afterwards the graph and the feed are read again. Not awaited, so a
  * form can reset to what it saved before the refetch arrives.
  */
-function useGraphWrite<TVariables>(mutationFn: MutationFunction<GraphWriteReceipt, TVariables>, onConflict?: () => void) {
+export function useGraphWrite<TReceipt, TVariables>(mutationFn: MutationFunction<TReceipt, TVariables>, onConflict?: () => void) {
   const queryClient = useQueryClient();
-  return useMutation<GraphWriteReceipt, ApiError, TVariables>({
+  return useMutation<TReceipt, ApiError, TVariables>({
     mutationFn,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: graphKeys.all });

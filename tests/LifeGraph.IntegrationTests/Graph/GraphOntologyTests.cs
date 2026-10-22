@@ -31,18 +31,18 @@ public sealed class GraphOntologyTests(PostgresDatabase database) : IAsyncLifeti
     public async Task Renaming_attaching_and_detaching_are_recorded_and_undone()
     {
         var pages = await DefineAsync("Pages", PropertyValueKind.Number);
-        var author = await DefineAsync("Author", PropertyValueKind.Text);
+        var writer = await DefineAsync("Writer", PropertyValueKind.Text);
         var book = await CreateTypeAsync("Book", pages);
 
         var renamed = await _graph.WrittenAsync(_account, new RenameType(book, "  Livro "));
-        var attached = await _graph.WrittenAsync(_account, new AttachProperty(book, author));
+        var attached = await _graph.WrittenAsync(_account, new AttachProperty(book, writer));
         var detached = await _graph.WrittenAsync(_account, new DetachProperty(book, pages));
 
         Assert.Equal("Livro", await TypeNameAsync(book));
-        Assert.Equal([author], await AttachedAsync(book));
+        Assert.Equal([writer], await AttachedAsync(book));
 
         Assert.True((await _graph.UndoAsync(_account, detached)).IsSuccess);
-        Assert.Equal([pages, author], await AttachedAsync(book));
+        Assert.Equal([pages, writer], await AttachedAsync(book));
         Assert.True((await _graph.UndoAsync(_account, attached)).IsSuccess);
         Assert.Equal([pages], await AttachedAsync(book));
         Assert.True((await _graph.UndoAsync(_account, renamed)).IsSuccess);

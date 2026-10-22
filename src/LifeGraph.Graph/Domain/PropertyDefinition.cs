@@ -29,6 +29,12 @@ public sealed class PropertyDefinition
     /// <summary>The choices of a Select or MultiSelect; empty for every other kind.</summary>
     public IReadOnlyList<SelectOption> Options { get; private set; }
 
+    /// <summary>The key of a system Property (DA-149); <c>null</c> for a Property of the user.</summary>
+    public string? SystemKey { get; private set; }
+
+    /// <summary>A system Property is locked: no rename, no change, no delete (DA-057).</summary>
+    public bool IsSystem => SystemKey is not null;
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -44,6 +50,10 @@ public sealed class PropertyDefinition
         }
 
         var checkedOptions = CheckOptions(errors, valueKind, options ?? []);
+        if (errors.IsEmpty && SystemOntology.IsReservedPropertyName(trimmedName))
+        {
+            return Result<PropertyDefinition>.Fail(ReservedName());
+        }
 
         return errors.ToResult(() => new PropertyDefinition
         {
@@ -66,6 +76,11 @@ public sealed class PropertyDefinition
     /// <returns><c>true</c> when something changed.</returns>
     public Result<bool> Update(PropertyDefinitionEdit edit, PropertyValuesInUse inUse, DateTimeOffset now)
     {
+        if (IsSystem)
+        {
+            return Result<bool>.Fail(GraphErrors.SystemEntryLocked.ToError("A system property cannot be changed."));
+        }
+
         var errors = new FieldErrors();
         var newName = edit.Name is null ? Name : TextInput.RequireName(errors, "name", edit.Name, GraphLimits.NameMaxLength);
         var newKind = edit.ValueKind ?? ValueKind;
@@ -93,6 +108,11 @@ public sealed class PropertyDefinition
                 "Nodes chose an option this change removes, deleted ones included. Keep the option."));
         }
 
+        if (newName != Name && SystemOntology.IsReservedPropertyName(newName))
+        {
+            return Result<bool>.Fail(ReservedName());
+        }
+
         var changed = newName != Name || newKind != ValueKind || !SameOptions(newOptions, Options);
         if (changed)
         {
@@ -101,6 +121,25 @@ public sealed class PropertyDefinition
 
         return Result<bool>.Ok(changed);
     }
+
+    /// <summary>A system Property (DA-149), with no options.</summary>
+    internal static PropertyDefinition DefineSystem(Guid id, Guid accountId, SystemProperty property, DateTimeOffset now) => new()
+    {
+        Id = id,
+        AccountId = accountId,
+        Name = property.Name,
+        ValueKind = property.ValueKind,
+        Options = [],
+        SystemKey = property.Key,
+        CreatedAt = now,
+        UpdatedAt = now,
+    };
+
+    /// <summary>Refuses to delete a system Property (DA-149).</summary>
+    public Result CheckDeletable() =>
+        IsSystem ? Result.Fail(GraphErrors.SystemEntryLocked.ToError("A system property cannot be deleted.")) : Result.Ok();
+
+    private static Error ReservedName() => GraphErrors.NameReserved.ToError("This name is reserved for a system property.");
 
     /// <summary>Puts back a state the history recorded (Undo, DA-020); the caller checked the values still fit.</summary>
     public void Revert(string name, PropertyValueKind valueKind, IReadOnlyList<SelectOption> options, DateTimeOffset now)

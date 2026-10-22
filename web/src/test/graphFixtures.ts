@@ -36,11 +36,11 @@ export function aNode(overrides: Partial<NodeDetail> = {}): NodeDetail {
 }
 
 export function aType(overrides: Partial<TypeItem> = {}): TypeItem {
-  return { id: TYPE_ID, name: "Livro", properties: [], createdAt: INSTANT, updatedAt: INSTANT, hiddenFromAgents: false, ...overrides };
+  return { id: TYPE_ID, name: "Livro", properties: [], createdAt: INSTANT, updatedAt: INSTANT, hiddenFromAgents: false, isSystem: false, ...overrides };
 }
 
 export function aDefinition(overrides: Partial<PropertyDefinitionItem> = {}): PropertyDefinitionItem {
-  return { id: DEFINITION_ID, name: "Status", valueKind: "text", options: [], createdAt: INSTANT, updatedAt: INSTANT, ...overrides };
+  return { id: DEFINITION_ID, name: "Status", valueKind: "text", options: [], createdAt: INSTANT, updatedAt: INSTANT, isSystem: false, ...overrides };
 }
 
 export function aChangeSet(overrides: Partial<ChangeSetItem> = {}): ChangeSetItem {
@@ -88,7 +88,7 @@ export function aProposal(overrides: Partial<ProposalItem> = {}): ProposalItem {
     requiresUser: true,
     reasons: ["sensitive"],
     operationCount: 1,
-    summary: { createNode: 0, updateNode: 0, createRelation: 0, removeRelation: 0, deleteNode: 1 },
+    summary: { createNode: 0, updateNode: 0, createRelation: 0, removeRelation: 0, deleteNode: 1, captureResource: 0 },
     source: null,
     createdAt: INSTANT,
     expiresAt: "2026-10-12T12:00:00Z",

@@ -92,7 +92,7 @@ public sealed class PropertyDefinitionTests
     }
 
     private static PropertyDefinition Define(PropertyValueKind kind, IReadOnlyList<SelectOption>? options = null) =>
-        PropertyDefinition.Define(new PropertyDefinitionDraft(Guid.CreateVersion7(), Guid.CreateVersion7(), kind.ToString(), kind, options), Now).Value!;
+        PropertyDefinition.Define(new PropertyDefinitionDraft(Guid.CreateVersion7(), Guid.CreateVersion7(), $"{kind} field", kind, options), Now).Value!;
 
     private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
 }

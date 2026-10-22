@@ -1,6 +1,8 @@
 using LifeGraph.Infrastructure.Persistence;
 using LifeGraph.Migrations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Respawn;
 using Respawn.Graph;
@@ -127,6 +129,13 @@ public sealed class PostgresDatabase : IAsyncLifetime
         await using var connection = new NpgsqlConnection(adminOnTestDatabase.ConnectionString);
         await connection.OpenAsync(cancellationToken);
         await ExecuteAsync(connection, await ReadBootstrapAsync("extensions.sql", cancellationToken), cancellationToken);
+    }
+
+    /// <summary>Moves the schema to <paramref name="migration"/>, down or up: for testing one migration's data steps.</summary>
+    public async Task MigrateToAsync(string migration, CancellationToken cancellationToken)
+    {
+        await using var context = LifeGraphDbContextFactory.Create(MigratorConnectionString);
+        await context.GetService<IMigrator>().MigrateAsync(migration, cancellationToken);
     }
 
     private async Task MigrateAsync(CancellationToken cancellationToken)

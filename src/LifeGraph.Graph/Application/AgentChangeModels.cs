@@ -28,7 +28,7 @@ public sealed record ProposalItem(
     bool IsRedacted);
 
 /// <summary>How many operations of each kind a proposal holds, as Agent Changes lists them (v2 §65).</summary>
-public sealed record ProposalSummary(int CreateNode, int UpdateNode, int CreateRelation, int RemoveRelation, int DeleteNode);
+public sealed record ProposalSummary(int CreateNode, int UpdateNode, int CreateRelation, int RemoveRelation, int DeleteNode, int CaptureResource);
 
 /// <param name="Agent">The agent that proposed it, as the person knows it now.</param>
 /// <param name="ContentPurged">"conteúdo removido por purge": Purge emptied the operations, so there is nothing to approve (DA-135).</param>
@@ -48,6 +48,7 @@ public enum ProposedOperationKind
     CreateRelation,
     RemoveRelation,
     DeleteNode,
+    CaptureResource,
 }
 
 /// <summary>
@@ -185,7 +186,8 @@ internal static class ProposalItems
             operations.Count(operation => operation is AgentUpdateNode),
             operations.Count(operation => operation is AgentCreateRelation),
             operations.Count(operation => operation is AgentRemoveRelation),
-            operations.Count(operation => operation is AgentDeleteNode)),
+            operations.Count(operation => operation is AgentDeleteNode),
+            operations.Count(operation => operation is AgentCaptureResource)),
         proposal.Source,
         proposal.CreatedAt,
         proposal.ExpiresAt,

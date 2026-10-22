@@ -77,6 +77,30 @@ public sealed class Node
     /// </summary>
     public static string? SuggestedTypeOf(Guid? typeId, string? suggestedType) => typeId is null ? suggestedType : null;
 
+    /// <summary>The name <see cref="HumanEditedFields"/> gives the title.</summary>
+    public const string TitleField = "title";
+
+    /// <summary>The name <see cref="HumanEditedFields"/> gives the body.</summary>
+    public const string BodyField = "body";
+
+    /// <summary>
+    /// The fields the person has changed on the Node (DA-151): <see cref="TitleField"/>,
+    /// <see cref="BodyField"/> and Property Definition ids (<see cref="FieldOf"/>). The Resource
+    /// fetch fills only the others. Like <see cref="CreatedByAgentIdentityId"/>, it is not part
+    /// of the recorded state: undoing the person's edit does not hand the field back to the fetch.
+    /// </summary>
+    public string[] HumanEditedFields { get; private set; } = [];
+
+    /// <summary>
+    /// The canonical URL of a Resource, projected from its <c>canonical_url</c> value: the
+    /// column the unique index of live Resources stands on (DA-154). The pipeline keeps it in
+    /// step with the value at every save; <c>null</c> for any other Node.
+    /// </summary>
+    public string? CanonicalUrl { get; private set; }
+
+    /// <summary>The name <see cref="HumanEditedFields"/> gives a Property.</summary>
+    public static string FieldOf(Guid propertyId) => propertyId.ToString("D");
+
     /// <summary>The state the history records and Undo puts back (DA-020).</summary>
     public NodeState State => new(Title, Body, TypeId, Properties, DeletedAt, InboxEnteredAt, HiddenFromAgents, SuggestedType);
 
@@ -92,6 +116,50 @@ public sealed class Node
             CreatedByAgentIdentityId = null;
         }
     }
+
+    /// <summary>
+    /// Records the fields the person changed from <paramref name="before"/> to now (DA-151).
+    /// The single write pipeline calls it after the person's edit.
+    /// </summary>
+    public void EditedByHuman(NodeState before)
+    {
+        var edited = new List<string>();
+        if (before.Title != Title)
+        {
+            edited.Add(TitleField);
+        }
+
+        if (before.Body != Body)
+        {
+            edited.Add(BodyField);
+        }
+
+        var propertyIds = before.Properties.Values.Keys.Union(Properties.Values.Keys);
+        edited.AddRange(propertyIds
+            .Where(propertyId => ValueText(before.Properties, propertyId) != ValueText(Properties, propertyId))
+            .Select(FieldOf));
+
+        var marked = HumanEditedFields.Union(edited).Order(StringComparer.Ordinal).ToArray();
+        if (marked.Length != HumanEditedFields.Length)
+        {
+            HumanEditedFields = marked;
+        }
+    }
+
+    /// <summary>Records that the person chose the title (DA-151): a fetch never replaces it.</summary>
+    public void TitleChosenByHuman()
+    {
+        if (!HumanEditedFields.Contains(TitleField))
+        {
+            HumanEditedFields = [.. HumanEditedFields.Append(TitleField).Order(StringComparer.Ordinal)];
+        }
+    }
+
+    /// <summary>Keeps <see cref="CanonicalUrl"/> in step with the value it projects (DA-154).</summary>
+    public void ProjectCanonicalUrl(string? canonicalUrl) => CanonicalUrl = canonicalUrl;
+
+    private static string? ValueText(PropertyValues values, Guid propertyId) =>
+        values.Values.TryGetValue(propertyId, out var value) ? value.GetRawText() : null;
 
     /// <summary>A Node outside the Inbox.</summary>
     public static Result<Node> Create(NodeDraft draft, DateTimeOffset now) => Start(draft, now, inboxEnteredAt: null);
@@ -188,6 +256,25 @@ public sealed class Node
         }
 
         InboxEnteredAt = null;
+        Changed(now);
+        return true;
+    }
+
+    /// <summary>
+    /// Brings the Node back into the Inbox, out of its tombstone too: what a capture of a link the
+    /// Account already keeps does (DA-062, DA-154). Its Relations deleted with it stay deleted,
+    /// each still restorable on its own (DA-115).
+    /// </summary>
+    /// <returns><c>false</c> when it was live and in the Inbox already.</returns>
+    public bool ReturnToInbox(DateTimeOffset now)
+    {
+        if (IsInInbox && !IsDeleted)
+        {
+            return false;
+        }
+
+        DeletedAt = null;
+        InboxEnteredAt ??= now;
         Changed(now);
         return true;
     }

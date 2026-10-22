@@ -17,7 +17,7 @@ menor. Ao adicionar ou alterar um épico, verifique esta tabela.
 | E4 | [MCP leitura](done/e04-mcp-leitura.md) | `get_context`, busca, oculto para agentes, auditoria | E3 |
 | E5 | [MCP escrita + Agent Changes](done/e05-mcp-escrita-agent-changes.md) | Escrita de agentes com proteções; **fecha o fluxo da §63** | E4 |
 | E6 | [Grafo 2.5D](in-progress/e06-grafo-2-5d.md) | Grafo local, Semantic Zoom básico | E2 |
-| E7 | [Resources e captura](backlog/e07-resources-e-captura.md) | Resource como Node, fetch protegido contra SSRF, `capture_resource` | E2, E5 |
+| E7 | [Resources e captura](done/e07-resources-e-captura.md) | Resource como Node, fetch protegido contra SSRF, `capture_resource` | E2, E5 |
 | E8 | [Tags, Collections, editor](backlog/e08-tags-collections-editor.md) | Tags, Collections como queries, editor completo de Properties | E2 |
 | E9 | [Camada semântica](backlog/e09-camada-semantica.md) | Embeddings, Soft Relations, busca semântica | E2, E7 |
 | E10 | [SharedGraphView](backlog/e10-shared-graph-view.md) | Link compartilhado no Free | E2, E6, E8 |

@@ -95,23 +95,28 @@ public sealed record LocalGraphEdge(
     bool AgentUnreviewed);
 
 /// <param name="HiddenFromAgents">Oculto para agentes: every Node of the Type is hidden from agents (DA-035).</param>
+/// <param name="IsSystem">A system Type (Resource): locked, it cannot be renamed nor deleted (DA-155).</param>
 public sealed record TypeItem(
     Guid Id,
     string Name,
     IReadOnlyList<TypePropertyItem> Properties,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    bool HiddenFromAgents);
+    bool HiddenFromAgents,
+    bool IsSystem);
 
-public sealed record TypePropertyItem(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind);
+/// <param name="IsSystem">A system Property: locked, it stays attached and cannot change (DA-057).</param>
+public sealed record TypePropertyItem(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind, bool IsSystem);
 
+/// <param name="IsSystem">A system Property: locked, it cannot be renamed, changed nor deleted (DA-057).</param>
 public sealed record PropertyDefinitionItem(
     Guid Id,
     string Name,
     PropertyValueKind ValueKind,
     IReadOnlyList<SelectOption> Options,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    bool IsSystem);
 
 /// <param name="WithoutType">Only the Nodes without a Type (DA-018); exclusive with <see cref="TypeId"/>.</param>
 /// <param name="InInbox">Only the Nodes in the Inbox (DA-019).</param>

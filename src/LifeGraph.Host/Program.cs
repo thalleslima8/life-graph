@@ -14,6 +14,7 @@ using LifeGraph.Http;
 using LifeGraph.Infrastructure.Jobs;
 using LifeGraph.Infrastructure.Persistence;
 using LifeGraph.Resources;
+using LifeGraph.Resources.Http;
 using LifeGraph.Semantic;
 using LifeGraph.Sharing;
 using Microsoft.AspNetCore.Authorization;
@@ -95,6 +96,7 @@ app.UseRateLimiter();
 app.MapLifeGraphHealthChecks();
 app.MapAccountsEndpoints();
 app.MapGraphEndpoints();
+app.MapResourceEndpoints();
 app.MapAgentsEndpoints();
 
 app.Run();

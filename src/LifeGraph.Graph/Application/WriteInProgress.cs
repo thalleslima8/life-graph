@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
 using LifeGraph.Infrastructure.Errors;
@@ -15,7 +16,8 @@ internal sealed class WriteInProgress(
     Provenance provenance,
     DateTimeOffset now,
     GraphWorkingSet workingSet,
-    GraphChangeSet changeSet)
+    GraphChangeSet changeSet,
+    IResourceAddressRules addressRules)
 {
     public const string TypeNameTakenMessage = "A type with this name already exists.";
 
@@ -58,7 +60,13 @@ internal sealed class WriteInProgress(
             return Result.Fail(GraphErrors.TypeNotFound.ToError(TypeNotFoundMessage));
         }
 
-        var draft = new NodeDraft(create.NodeId, accountId, create.Title, create.Body, schema, create.Properties, AgentOf(provenance), create.SuggestedType);
+        var values = WithResourceRules(schema, create.Properties, systemValuesAllowed: create.MadeByCapture);
+        if (!values.IsSuccess)
+        {
+            return Result.Fail(values.Error!);
+        }
+
+        var draft = new NodeDraft(create.NodeId, accountId, create.Title, create.Body, schema, values.Value, AgentOf(provenance), create.SuggestedType);
         var created = create.InInbox ? Node.CaptureIntoInbox(draft, now) : Node.Create(draft, now);
         if (!created.IsSuccess)
         {
@@ -66,6 +74,11 @@ internal sealed class WriteInProgress(
         }
 
         var node = created.Value!;
+        if (create.TitleChosenByHuman)
+        {
+            node.TitleChosenByHuman();
+        }
+
         workingSet.Created(node);
         _added.Add(node);
         Record(GraphEntityKind.Node, node.Id, GraphChangeOperation.Created, before: null, ChangeSnapshots.Of(node), node.Version);
@@ -91,8 +104,15 @@ internal sealed class WriteInProgress(
             return Result.Fail(GraphErrors.TypeNotFound.ToError(TypeNotFoundMessage));
         }
 
+        var values = WithResourceRules(schema, update.Properties, systemValuesAllowed: false);
+        if (!values.IsSuccess)
+        {
+            return Result.Fail(values.Error!);
+        }
+
         var before = ChangeSnapshots.Of(node);
-        var edited = node.Edit(new NodeEdit(update.Title, update.Body, schema, update.Properties, update.HiddenFromAgents), now);
+        var stateBefore = node.State;
+        var edited = node.Edit(new NodeEdit(update.Title, update.Body, schema, values.Value, update.HiddenFromAgents), now);
         if (!edited.IsSuccess)
         {
             return Result.Fail(edited.Error!);
@@ -100,11 +120,105 @@ internal sealed class WriteInProgress(
 
         if (edited.Value)
         {
+            if (provenance.Actor is GraphActor.Human)
+            {
+                node.EditedByHuman(stateBefore);
+            }
+
             Record(GraphEntityKind.Node, node.Id, GraphChangeOperation.Updated, before, ChangeSnapshots.Of(node), node.Version);
         }
 
         return Result.Ok();
     }
+
+    public Result Apply(ReturnToInbox back)
+    {
+        if (workingSet.FindNodeEvenDeleted(back.NodeId) is not { } node)
+        {
+            return Result.Fail(GraphErrors.NodeNotFound.ToError("The node was not found."));
+        }
+
+        var wasDeleted = node.IsDeleted;
+        var before = ChangeSnapshots.Of(node);
+        if (node.ReturnToInbox(now))
+        {
+            var operation = wasDeleted ? GraphChangeOperation.Restored : GraphChangeOperation.Updated;
+            Record(GraphEntityKind.Node, node.Id, operation, before, ChangeSnapshots.Of(node), node.Version);
+        }
+
+        return Result.Ok();
+    }
+
+    // A Resource's canonical_url follows its url, and only from it (DA-150, DA-154): a new url
+    // is read by the Resources' rules, a removed one takes the canonical URL along. Its
+    // fetch_status is the system's too: only the fetch job and the capture that starts it write
+    // it. Its resource_kind is a Text the closed list of DA-056 checks, whoever writes it.
+    private Result<IReadOnlyDictionary<Guid, JsonElement>?> WithResourceRules(
+        TypeSchema? schema,
+        IReadOnlyDictionary<Guid, JsonElement>? values,
+        bool systemValuesAllowed)
+    {
+        if (values is null
+            || schema is not { Type.SystemKey: SystemOntology.ResourceTypeKey }
+            || SystemPropertyOf(schema, SystemOntology.ResourcePropertyKeys.Url) is not { } url
+            || SystemPropertyOf(schema, SystemOntology.ResourcePropertyKeys.CanonicalUrl) is not { } canonical)
+        {
+            return Result<IReadOnlyDictionary<Guid, JsonElement>?>.Ok(values);
+        }
+
+        var errors = new FieldErrors();
+        if (values.ContainsKey(canonical.Id))
+        {
+            errors.Add($"properties.{canonical.Id}", "Set by the server from url.");
+        }
+
+        if (!systemValuesAllowed
+            && provenance.Actor is not GraphActor.System
+            && SystemPropertyOf(schema, SystemOntology.ResourcePropertyKeys.FetchStatus) is { } fetchStatus
+            && values.ContainsKey(fetchStatus.Id))
+        {
+            errors.Add($"properties.{fetchStatus.Id}", "Set by the server when it reads the link.");
+        }
+
+        if (SystemPropertyOf(schema, SystemOntology.ResourcePropertyKeys.ResourceKind) is { } kind
+            && values.TryGetValue(kind.Id, out var kindValue)
+            && kindValue.ValueKind != JsonValueKind.Null
+            && (kindValue.ValueKind != JsonValueKind.String || !addressRules.ResourceKinds.Contains(kindValue.GetString()!, StringComparer.Ordinal)))
+        {
+            errors.Add($"properties.{kind.Id}", $"Must be one of: {string.Join(", ", addressRules.ResourceKinds)}.");
+        }
+
+        if (!errors.IsEmpty)
+        {
+            return Result<IReadOnlyDictionary<Guid, JsonElement>?>.Fail(errors.ToError());
+        }
+
+        var urlField = $"properties.{url.Id}";
+        if (!values.TryGetValue(url.Id, out var link))
+        {
+            return Result<IReadOnlyDictionary<Guid, JsonElement>?>.Ok(values);
+        }
+
+        var withCanonical = values.ToDictionary(pair => pair.Key, pair => pair.Value);
+        if (link.ValueKind == JsonValueKind.Null)
+        {
+            withCanonical[canonical.Id] = link;
+            return Result<IReadOnlyDictionary<Guid, JsonElement>?>.Ok(withCanonical);
+        }
+
+        var address = addressRules.Read(link.ValueKind == JsonValueKind.String ? link.GetString() : null, urlField);
+        if (!address.IsSuccess)
+        {
+            return Result<IReadOnlyDictionary<Guid, JsonElement>?>.Fail(address.Error!);
+        }
+
+        withCanonical[url.Id] = JsonSerializer.SerializeToElement(address.Value!.Url);
+        withCanonical[canonical.Id] = JsonSerializer.SerializeToElement(address.Value!.CanonicalUrl);
+        return Result<IReadOnlyDictionary<Guid, JsonElement>?>.Ok(withCanonical);
+    }
+
+    private static PropertyDefinition? SystemPropertyOf(TypeSchema schema, string key) =>
+        schema.Attached.Values.FirstOrDefault(definition => definition.SystemKey == key);
 
     public Result Apply(DeleteNode delete)
     {
@@ -290,6 +404,11 @@ internal sealed class WriteInProgress(
             return Result.Fail(GraphErrors.PropertyDefinitionNotFound.ToError(PropertyNotFoundMessage));
         }
 
+        if (definition.CheckDeletable() is { IsSuccess: false } locked)
+        {
+            return locked;
+        }
+
         if (workingSet.IsAttached(definition.Id))
         {
             return Result.Fail(GraphErrors.PropertyInUse.ToError("A type attaches this property. Detach it first."));
@@ -396,7 +515,13 @@ internal sealed class WriteInProgress(
         }
 
         var before = ChangeSnapshots.Of(type);
-        if (type.Detach(detach.PropertyDefinitionId, now))
+        var detached = type.Detach(detach.PropertyDefinitionId, workingSet.FindDefinition(detach.PropertyDefinitionId), now);
+        if (!detached.IsSuccess)
+        {
+            return Result.Fail(detached.Error!);
+        }
+
+        if (detached.Value)
         {
             Record(GraphEntityKind.Type, type.Id, GraphChangeOperation.Updated, before, ChangeSnapshots.Of(type));
         }
@@ -409,6 +534,11 @@ internal sealed class WriteInProgress(
         if (workingSet.FindType(delete.TypeId) is not { } type)
         {
             return Result.Fail(GraphErrors.TypeNotFound.ToError(TypeNotFoundMessage));
+        }
+
+        if (type.CheckDeletable() is { IsSuccess: false } locked)
+        {
+            return locked;
         }
 
         var usage = workingSet.UsageOfType(type.Id);
@@ -459,6 +589,7 @@ internal sealed class WriteInProgress(
     {
         { Channel: WriteChannel.Import } => RelationOrigin.Import,
         { Actor: GraphActor.AgentIdentity } => RelationOrigin.Agent,
+        { Actor: GraphActor.System } => RelationOrigin.System,
         _ => RelationOrigin.User,
     };
 

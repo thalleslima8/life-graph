@@ -17,12 +17,24 @@ internal sealed class NodeConfiguration : IEntityTypeConfiguration<Node>
         node.Property(entity => entity.Title).HasMaxLength(GraphLimits.TitleMaxLength);
         node.Property(entity => entity.Body).HasMaxLength(GraphLimits.BodyMaxLength);
         node.Property(entity => entity.SuggestedType).HasMaxLength(GraphLimits.NameMaxLength);
+        node.Property(entity => entity.HumanEditedFields).HasDefaultValueSql("'{}'::text[]");
 
         // The agent's own creation (DA-133); the foreign key to agent_identities is in the
         // migration only, as the Graph's model cannot name the Accounts' entity (DA-121).
         node.HasIndex(entity => entity.CreatedByAgentIdentityId)
             .HasFilter("created_by_agent_identity_id IS NOT NULL")
             .HasDatabaseName("ix_nodes_created_by_agent_identity_id");
+
+        // One live Resource per link and Account (DA-060, DA-154); the tombstones apart, so a
+        // capture finds the one to restore.
+        node.Property(entity => entity.CanonicalUrl).HasMaxLength(GraphLimits.UrlValueMaxLength);
+        node.HasIndex(entity => new { entity.AccountId, entity.CanonicalUrl })
+            .IsUnique()
+            .HasFilter("canonical_url IS NOT NULL AND deleted_at IS NULL")
+            .HasDatabaseName(GraphConstraints.NodeCanonicalUrlUnique);
+        node.HasIndex(entity => new { entity.AccountId, entity.CanonicalUrl, entity.DeletedAt })
+            .HasFilter("canonical_url IS NOT NULL AND deleted_at IS NOT NULL")
+            .HasDatabaseName("ix_nodes_account_id_canonical_url_deleted_at");
 
         // Optimistic concurrency (DA-022): an update only matches the version it read.
         node.Property(entity => entity.Version).IsConcurrencyToken();

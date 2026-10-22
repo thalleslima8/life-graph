@@ -452,13 +452,15 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.ToTable("changesets", null, t =>
                         {
-                            t.HasCheckConstraint("ck_changesets_actor_kind", "actor_kind IN ('agent_identity', 'human')");
+                            t.HasCheckConstraint("ck_changesets_actor_kind", "actor_kind IN ('agent_identity', 'human', 'system')");
 
                             t.HasCheckConstraint("ck_changesets_agent_identity", "(actor_kind = 'agent_identity') = (agent_identity_id IS NOT NULL)");
 
-                            t.HasCheckConstraint("ck_changesets_channel", "channel IN ('api', 'import', 'mcp', 'ui')");
+                            t.HasCheckConstraint("ck_changesets_channel", "channel IN ('api', 'import', 'mcp', 'system', 'ui')");
 
                             t.HasCheckConstraint("ck_changesets_status", "status IN ('applied', 'reverted')");
+
+                            t.HasCheckConstraint("ck_changesets_system_channel", "(actor_kind = 'system') = (channel = 'system')");
 
                             t.HasCheckConstraint("ck_changesets_window_operations", "window_operations >= 0 AND (window_operations = 0 OR actor_kind = 'agent_identity')");
                         });
@@ -480,6 +482,11 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("character varying(100000)")
                         .HasColumnName("body");
 
+                    b.Property<string>("CanonicalUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("canonical_url");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -495,6 +502,13 @@ namespace LifeGraph.Migrations.Migrations
                     b.Property<bool>("HiddenFromAgents")
                         .HasColumnType("boolean")
                         .HasColumnName("hidden_from_agents");
+
+                    b.PrimitiveCollection<string[]>("HumanEditedFields")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("human_edited_fields")
+                        .HasDefaultValueSql("'{}'::text[]");
 
                     b.Property<DateTimeOffset?>("InboxEnteredAt")
                         .HasColumnType("timestamp with time zone")
@@ -545,6 +559,11 @@ namespace LifeGraph.Migrations.Migrations
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Properties"), "gin");
                     NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Properties"), new[] { "jsonb_path_ops" });
 
+                    b.HasIndex("AccountId", "CanonicalUrl")
+                        .IsUnique()
+                        .HasDatabaseName("uq_nodes_account_id_canonical_url")
+                        .HasFilter("canonical_url IS NOT NULL AND deleted_at IS NULL");
+
                     b.HasIndex("AccountId", "DeletedAt")
                         .HasDatabaseName("ix_nodes_account_id_deleted_at")
                         .HasFilter("deleted_at IS NOT NULL");
@@ -555,6 +574,10 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.HasIndex("AccountId", "TypeId")
                         .HasDatabaseName("ix_nodes_account_id_type_id");
+
+                    b.HasIndex("AccountId", "CanonicalUrl", "DeletedAt")
+                        .HasDatabaseName("ix_nodes_account_id_canonical_url_deleted_at")
+                        .HasFilter("canonical_url IS NOT NULL AND deleted_at IS NOT NULL");
 
                     b.ToTable("nodes", null, t =>
                         {
@@ -592,6 +615,11 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
+                    b.Property<string>("SystemKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("system_key");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -606,7 +634,15 @@ namespace LifeGraph.Migrations.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_types_account_id_name");
 
-                    b.ToTable("types", (string)null);
+                    b.HasIndex("AccountId", "SystemKey")
+                        .IsUnique()
+                        .HasDatabaseName("uq_types_account_id_system_key")
+                        .HasFilter("system_key IS NOT NULL");
+
+                    b.ToTable("types", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_types_system_key", "system_key IS NULL OR system_key IN ('resource')");
+                        });
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.PropertyDefinition", b =>
@@ -640,6 +676,11 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
+                    b.Property<string>("SystemKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("system_key");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -660,8 +701,15 @@ namespace LifeGraph.Migrations.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_property_definitions_account_id_name");
 
+                    b.HasIndex("AccountId", "SystemKey")
+                        .IsUnique()
+                        .HasDatabaseName("uq_property_definitions_account_id_system_key")
+                        .HasFilter("system_key IS NOT NULL");
+
                     b.ToTable("property_definitions", null, t =>
                         {
+                            t.HasCheckConstraint("ck_property_definitions_system_key", "system_key IS NULL OR system_key IN ('resource.url', 'resource.canonical_url', 'resource.resource_kind', 'resource.provider', 'resource.fetch_status', 'resource.site_name', 'resource.author', 'resource.description', 'resource.published_at')");
+
                             t.HasCheckConstraint("ck_property_definitions_value_kind", "value_kind IN ('boolean', 'date', 'date_time', 'multi_select', 'number', 'select', 'text', 'url')");
                         });
                 });

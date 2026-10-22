@@ -18,6 +18,8 @@ internal sealed class GraphChangeSetConfiguration : IEntityTypeConfiguration<Gra
             table.HasCheckConstraint(
                 "ck_changesets_agent_identity",
                 "(actor_kind = 'agent_identity') = (agent_identity_id IS NOT NULL)");
+            // The system writes only from a job, on its own channel (DA-153).
+            table.HasCheckConstraint("ck_changesets_system_channel", "(actor_kind = 'system') = (channel = 'system')");
             // Only an agent's own write consumes the sliding window (DA-132).
             table.HasCheckConstraint(
                 "ck_changesets_window_operations",

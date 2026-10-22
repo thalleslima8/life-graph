@@ -45,6 +45,10 @@ public sealed class ArchitectureTests
         ArchitectureRules.OnlyAccountsUsesIdentityAndOpenIddict("LifeGraph").Check(Production);
 
     [Fact]
+    public void Only_the_fetch_job_writes_as_the_system() =>
+        ArchitectureRules.OnlyTheFetchJobWritesAsTheSystem("LifeGraph").Check(Production);
+
+    [Fact]
     public void Grants_are_read_only_by_subject_or_id() =>
         ArchitectureRules.GrantsAreReadOnlyBySubjectOrId("LifeGraph").Check(Production);
 

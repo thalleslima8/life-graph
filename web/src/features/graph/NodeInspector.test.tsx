@@ -3,9 +3,9 @@ import { render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
-import { aNode, aType, NODE_ID, ontologyHandlers, OTHER_NODE_ID, RELATION_ID } from "@/test/graphFixtures";
+import { aDefinition, aNode, aType, NODE_ID, ontologyHandlers, OTHER_NODE_ID, RELATION_ID } from "@/test/graphFixtures";
 import { server } from "@/test/msw/server";
-import type { RelationItem } from "./graphData";
+import type { NodeDetail, PropertyDefinitionItem, RelationItem } from "./graphData";
 import { NodeInspector } from "./NodeInspector";
 
 const citation: RelationItem = {
@@ -22,11 +22,15 @@ const citation: RelationItem = {
   createdAt: "2026-10-05T12:00:00Z",
 };
 
-function renderInspector(props: { headingLevel?: 1 | 2 | 3 | 4 | 5; readOnly?: boolean }) {
+function renderInspector(
+  props: { headingLevel?: 1 | 2 | 3 | 4 | 5; readOnly?: boolean },
+  node: NodeDetail = aNode({ body: "Notas de leitura", inInbox: true }),
+  definitions: PropertyDefinitionItem[] = [],
+) {
   server.use(
-    ...ontologyHandlers({ types: [aType()] }),
+    ...ontologyHandlers({ types: [aType()], definitions }),
     http.get("/api/nodes", () => HttpResponse.json({ data: [], page: { nextCursor: null } })),
-    http.get("/api/nodes/:nodeId", () => HttpResponse.json(aNode({ body: "Notas de leitura", inInbox: true }))),
+    http.get("/api/nodes/:nodeId", () => HttpResponse.json(node)),
     http.get("/api/nodes/:nodeId/relations", () => HttpResponse.json({ data: [citation], page: { nextCursor: null } })),
   );
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -59,5 +63,39 @@ describe("embedded node inspector", () => {
     expect(screen.queryByRole("button", { name: "Arquivar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Remover/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Ver no grafo" })).not.toBeInTheDocument();
+  });
+
+  describe("a Resource", () => {
+    const KIND_ID = "01920000-0000-7000-8000-0000000000b3";
+    const URL_ID = "01920000-0000-7000-8000-0000000000b4";
+    const CANONICAL_ID = "01920000-0000-7000-8000-0000000000b5";
+    const definitions = [
+      aDefinition({ id: KIND_ID, name: "resource_kind", isSystem: true }),
+      aDefinition({ id: URL_ID, name: "url", valueKind: "url", isSystem: true }),
+      aDefinition({ id: CANONICAL_ID, name: "canonical_url", valueKind: "url", isSystem: true }),
+    ];
+    const resource = aNode({
+      properties: [
+        { propertyDefinitionId: KIND_ID, name: "resource_kind", valueKind: "text", value: "podcast" },
+        { propertyDefinitionId: URL_ID, name: "url", valueKind: "url", value: "https://example.com/a" },
+        { propertyDefinitionId: CANONICAL_ID, name: "canonical_url", valueKind: "url", value: "https://example.com/a" },
+      ],
+    });
+
+    it("shows a kind outside the closed list as other", async () => {
+      renderInspector({ readOnly: true }, resource, definitions);
+
+      const content = await screen.findByRole("region", { name: "Conteúdo" });
+      expect(await within(content).findByText("other")).toBeInTheDocument();
+      expect(within(content).queryByText("podcast")).not.toBeInTheDocument();
+    });
+
+    it("lets the person edit url but not the canonical URL the server sets", async () => {
+      renderInspector({}, resource, definitions);
+
+      expect(await screen.findByRole("textbox", { name: "url" })).toBeInTheDocument();
+      expect(screen.queryByRole("textbox", { name: "canonical_url" })).not.toBeInTheDocument();
+      expect(screen.getByText("canonical_url")).toBeInTheDocument();
+    });
   });
 });
