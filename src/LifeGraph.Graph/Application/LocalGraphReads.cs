@@ -123,15 +123,15 @@ public static class LocalGraphLimits
 }
 
 /// <summary>
-/// The caps of the local graph (DA-138). The defaults are provisional: raising the Nodes to
-/// 1 000 waits for the FPS measurement of DA-137, and is only this configuration.
+/// The caps of the local graph (DA-138). The default is the load measured at 60 FPS by DA-137
+/// (1 000 Nodes / 1 500 edges), under the ceiling of <see cref="LocalGraphLimits"/>.
 /// </summary>
 public sealed class LocalGraphOptions
 {
     public const string SectionName = "Graph:LocalGraph";
 
     [Range(1, LocalGraphLimits.NodesCeiling)]
-    public int MaxNodes { get; set; } = 500;
+    public int MaxNodes { get; set; } = 1_000;
 
     [Range(1, LocalGraphLimits.EdgesCeiling)]
     public int MaxEdges { get; set; } = 1_500;

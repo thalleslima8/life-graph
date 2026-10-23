@@ -3,15 +3,15 @@ using LifeGraph.Graph.Application;
 
 namespace LifeGraph.UnitTests.Graph;
 
-/// <summary>The caps of the local graph (DA-138): a provisional default under a ceiling no configuration passes.</summary>
+/// <summary>The caps of the local graph (DA-138): the measured default under a ceiling no configuration passes.</summary>
 public sealed class LocalGraphOptionsTests
 {
     [Fact]
-    public void The_default_caps_are_500_nodes_and_1500_edges()
+    public void The_default_caps_are_1000_nodes_and_1500_edges()
     {
         var options = new LocalGraphOptions();
 
-        Assert.Equal((500, 1_500), (options.MaxNodes, options.MaxEdges));
+        Assert.Equal((1_000, 1_500), (options.MaxNodes, options.MaxEdges));
         Assert.True(IsValid(options));
     }
 

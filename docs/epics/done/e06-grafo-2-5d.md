@@ -2,7 +2,7 @@
 
 - **Ordem:** 6
 - **Depende de:** E2
-- **Última revisão:** 2026-10-21
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
@@ -76,13 +76,15 @@ Semantic Zoom básico e o Node Inspector, sem o universo visual inteiro.
     o mesmo grafo semeado e o mesmo trajeto de pan e zoom.
   - Candidata a ADR: escolha provisória com o risco não medido.
 - **DA-138 — Grafo local por `GET /api/nodes/{nodeId}/graph?depth=1..3`, com
-  exceção à API-060** (consenso na estrutura; o teto padrão é **provisório**,
-  decidido pelo arquiteto). A rota é nova, em GraphReads, reaproveita o
+  exceção à API-060** (consenso na estrutura; o teto padrão nasceu
+  provisório, decidido pelo arquiteto, e foi revisto pelo usuário em
+  2026-10-21, ver abaixo). A rota é nova, em GraphReads, reaproveita o
   `ContextWalk` e passa pelo filtro central com principal Human. Não é auditada
   como a leitura de agente nem expõe o `get_context`, que tem orçamento de
   50 KB com bodies e foi feito para agentes.
   - O payload é enxuto, sem body. O teto é de 20 vizinhos por Node e o teto
-    total vem de configuração: padrão de 500 Nodes / 1.500 arestas e teto
+    total vem de configuração: padrão original de 500 Nodes / 1.500 arestas
+    (revisto em 2026-10-21 para 1.000 / 1.500, ver abaixo) e teto
     rígido de 1.000 / 3.000, que nenhuma requisição nem configuração de runtime
     ultrapassa.
   - **Revisão do teto padrão (usuário, 2026-10-21):** com a medição da DA-137
@@ -98,10 +100,10 @@ Semantic Zoom básico e o Node Inspector, sem o universo visual inteiro.
   - **Exceção à API-060 (DEVE):** o subgrafo limitado por profundidade e teto
     não é uma coleção paginável, porque um cursor sobre a travessia quebraria a
     consistência visual. Quem precisa de mais re-centra o grafo em outro Node.
-  - Subir o padrão para 1.000 depende da medição de FPS da DA-137 e é só uma
-    mudança de configuração. Outra visão (analista, que depois trocou de lado
-    com o arquiteto): começar em 1.000, alinhado ao alvo da DA-052. Para
-    reverter, muda-se o padrão na configuração e o teste que o fixa.
+  - (Histórico, antes da revisão) Subir o padrão para 1.000 dependia da
+    medição de FPS da DA-137 e era só uma mudança de configuração. Outra visão
+    (analista, que depois trocou de lado com o arquiteto): começar em 1.000,
+    alinhado ao alvo da DA-052.
 - **DA-139 — Tamanho do Node = grau de Relations Hard visíveis no grafo
   inteiro** (consenso). A contagem vem do servidor, em lote, no padrão do
   `NodeViews`, e passa pelo mesmo filtro de visibilidade do principal. Assim o
@@ -222,7 +224,9 @@ Semantic Zoom básico e o Node Inspector, sem o universo visual inteiro.
     (+38,6 KiB) e Semantic Zoom pela câmera e pelos reducers.
 
 ### Ajuste depois do aceite
-- [ ] Subir o padrão do grafo local para 1.000 Nodes / 1.500 arestas (revisão da DA-138, usuário): `LocalGraphReads` (`MaxNodes`) e o teste que fixa os padrões
+- [x] Subir o padrão do grafo local para 1.000 Nodes / 1.500 arestas (revisão da DA-138, usuário): `LocalGraphReads` (`MaxNodes`) e o teste que fixa os padrões
+  - Feito em 2026-10-23: `LocalGraphOptions` tem padrão de 1 000 Nodes /
+    1 500 arestas, e o `LocalGraphOptionsTests` fixa esses valores.
 
 ## Critérios de saída
 
