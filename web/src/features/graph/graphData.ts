@@ -19,6 +19,7 @@ export type TypeItem = Schemas["TypeItem"];
 export type PropertyDefinitionItem = Schemas["PropertyDefinitionItem"];
 export type PropertyValueKind = Schemas["PropertyValueKind"];
 export type SelectOption = Schemas["SelectOption"];
+export type PropertyDefinitionUsageResponse = Schemas["PropertyDefinitionUsage"];
 export type GraphWriteReceipt = Schemas["GraphWriteReceipt"];
 
 /** The Type choice for "every Type", in the list filter. */
@@ -33,6 +34,8 @@ export type NodeListFilter = { type: typeof ANY_TYPE | typeof NO_TYPE | string; 
 export const TITLE_MAX_LENGTH = 500;
 export const BODY_MAX_LENGTH = 100_000;
 export const NAME_MAX_LENGTH = 100;
+export const SELECT_OPTIONS_MAX_COUNT = 100;
+export const SELECT_OPTION_LABEL_MAX_LENGTH = 100;
 export const RELATION_KIND_MAX_LENGTH = 100;
 
 // The ontology of a personal graph fits one page; the API caps a page at 100.
@@ -47,6 +50,13 @@ export const graphKeys = {
   localGraph: (id: string, depth: number) => ["graph", "local-graph", id, depth] as const,
   types: ["graph", "types"] as const,
   propertyDefinitions: ["graph", "property-definitions"] as const,
+  propertyDefinitionUsage: (id: string) => ["graph", "property-definition-usage", id] as const,
+  tags: ["graph", "tags"] as const,
+  collections: ["graph", "collections"] as const,
+  collection: (id: string) => ["graph", "collection", id] as const,
+  /** Every Collection's members, the prefix the change probe refreshes. */
+  allCollectionMembers: ["graph", "collection-members"] as const,
+  collectionMembers: (id: string) => ["graph", "collection-members", id] as const,
 };
 
 /** The feed of GraphChangeSets; every write of this SPA adds one to it. */
@@ -278,11 +288,14 @@ export function useDetachPropertyFromType(typeId: string) {
   );
 }
 
-/** `options`: the full list; an option without `id` is new, an existing one keeps its id. */
+/**
+ * `options`: the full list; an option without `id` is new, an existing one keeps its id. An
+ * archived option stays on the values that chose it and is no longer offered (DA-167).
+ */
 export type PropertyDefinitionInput = {
   name: string;
   valueKind: PropertyValueKind;
-  options?: { id?: string; label: string }[];
+  options?: { id?: string; label: string; archived?: boolean }[];
 };
 
 export function useCreatePropertyDefinition() {
@@ -297,10 +310,81 @@ export function useUpdatePropertyDefinition(id: string) {
   );
 }
 
-export function useDeletePropertyDefinition(id: string) {
-  return useGraphWrite(async () =>
-    unwrap(await api.DELETE("/api/property-definitions/{propertyDefinitionId}", { params: { path: { propertyDefinitionId: id } } })),
+/** Archives or restores the definition (DA-167): it stays on its Types, its values stay visible and editable. */
+export function useArchivePropertyDefinition(id: string) {
+  return useGraphWrite(async (archived: boolean) =>
+    unwrap(
+      await api.PATCH("/api/property-definitions/{propertyDefinitionId}", { params: { path: { propertyDefinitionId: id } }, body: { archived } }),
+    ),
   );
+}
+
+/**
+ * Deletes a definition no Type attaches, removing the values of the `expectedCount` live Nodes
+ * the person confirmed (DA-066, DA-168). Another count answers `graph.property_usage_changed`:
+ * read the usage again and confirm.
+ */
+export function useDeletePropertyDefinition(id: string) {
+  return useGraphWrite(async ({ expectedCount }: { expectedCount: number }) =>
+    unwrap(
+      await api.DELETE("/api/property-definitions/{propertyDefinitionId}", {
+        params: { path: { propertyDefinitionId: id }, query: { expectedValueCount: expectedCount } },
+      }),
+    ),
+  );
+}
+
+export const isPropertyUsageChanged = (error: unknown): error is ApiError => isApiError(error, "graph.property_usage_changed");
+
+/** How much a definition is used: live Nodes with a value, Types, deleted Nodes in their window, Nodes per option. */
+export type PropertyDefinitionUsage = {
+  nodeCount: number;
+  typeCount: number;
+  tombstoneCount: number;
+  lastPurgeAt: string | null;
+  optionCounts: Record<string, number>;
+};
+
+export function usageOf(response: PropertyDefinitionUsageResponse): PropertyDefinitionUsage {
+  return {
+    nodeCount: Number(response.nodeCount),
+    typeCount: Number(response.typeCount),
+    tombstoneCount: Number(response.tombstoneCount),
+    lastPurgeAt: response.lastPurgeAt ?? null,
+    optionCounts: Object.fromEntries(Object.entries(response.optionCounts).map(([optionId, count]) => [optionId, Number(count)])),
+  };
+}
+
+/** Read on demand (an expanded row, an open delete dialog), never for the whole list. */
+export const propertyDefinitionUsageQuery = (id: string, { enabled }: { enabled: boolean }) =>
+  queryOptions({
+    queryKey: graphKeys.propertyDefinitionUsage(id),
+    queryFn: async ({ signal }) =>
+      usageOf(
+        unwrap(await api.GET("/api/property-definitions/{propertyDefinitionId}/usage", { params: { path: { propertyDefinitionId: id } }, signal })),
+      ),
+    enabled,
+    retry: retryUnlessNotFound,
+  });
+
+/**
+ * The value kind changes the server allows while Nodes hold values, deleted ones included
+ * (DA-065, DA-165). It only narrows the choice: the server checks again (DA-169).
+ */
+export const ALLOWED_KIND_TRANSITIONS: Readonly<Record<PropertyValueKind, readonly PropertyValueKind[]>> = {
+  text: [],
+  number: ["text"],
+  boolean: [],
+  date: ["date_time", "text"],
+  date_time: [],
+  url: ["text"],
+  select: ["multi_select"],
+  multi_select: [],
+};
+
+/** Whether the usage shows any value, deleted Nodes included: then only the safe changes apply. */
+export function holdsValues(usage: PropertyDefinitionUsage): boolean {
+  return usage.nodeCount > 0 || usage.tombstoneCount > 0;
 }
 
 /** Why a change to the ontology was refused (DA-023, DA-115, DA-117). */

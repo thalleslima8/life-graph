@@ -11,8 +11,8 @@ import type { NodeDetail, RelationItem } from "./graphData";
 import { graphKeys } from "./graphData";
 
 const OPTIONS = [
-  { id: "01920000-0000-7000-8000-0000000000e1", label: "Lendo" },
-  { id: "01920000-0000-7000-8000-0000000000e2", label: "Lido" },
+  { id: "01920000-0000-7000-8000-0000000000e1", label: "Lendo", archived: false },
+  { id: "01920000-0000-7000-8000-0000000000e2", label: "Lido", archived: false },
 ];
 const PAGES_ID = "01920000-0000-7000-8000-0000000000b2";
 const RELATION_ID = "01920000-0000-7000-8000-0000000000f1";

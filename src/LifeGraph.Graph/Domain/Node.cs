@@ -315,6 +315,17 @@ public sealed class Node
     }
 
     /// <summary>
+    /// Rewrites, or with <c>null</c> removes, the value a Property Definition change converts or
+    /// deletes (DA-165, DA-168), on a live Node or a tombstone alike. The new value was made by
+    /// the definition, so it is not checked again.
+    /// </summary>
+    public void RewriteValue(Guid propertyId, JsonElement? value, DateTimeOffset now)
+    {
+        Properties = value is { } rewritten ? Properties.With(propertyId, rewritten) : Properties.Without(propertyId);
+        Changed(now);
+    }
+
+    /// <summary>
     /// Leaves a deleted Node without its Type, when an Undo removes that Type: the tombstone
     /// cannot keep a reference to it. The history keeps the Type the Node had.
     /// </summary>
@@ -372,7 +383,7 @@ public sealed class Node
                 continue;
             }
 
-            var normalized = definition.Normalize(value);
+            var normalized = definition.NormalizeSet(value, current.Values.TryGetValue(propertyId, out var held) ? held : null);
             if (normalized.IsSuccess)
             {
                 updated = updated.With(propertyId, normalized.Value);

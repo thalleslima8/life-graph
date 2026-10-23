@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProposedOperation } from "./agentChanges";
+import { anOperation } from "../../test/graphFixtures";
 import { fieldLabel, operationTitle } from "./agentChangeMessages";
 
 function capture(overrides: Partial<ProposedOperation> = {}): ProposedOperation {
@@ -16,6 +17,16 @@ function capture(overrides: Partial<ProposedOperation> = {}): ProposedOperation 
     ...overrides,
   } as ProposedOperation;
 }
+
+describe("operationTitle of a Tag change", () => {
+  it("names the Tag and the Node it is applied to", () => {
+    expect(operationTitle(anOperation({ op: "tag_node", nodeTitle: "Duna", tag: "Ficção", fields: [] }))).toBe("Aplicar Tag «Ficção» em Node «Duna»");
+  });
+
+  it("names the Tag and the Node it is removed from", () => {
+    expect(operationTitle(anOperation({ op: "untag_node", nodeTitle: "Duna", tag: "Ficção", fields: [] }))).toBe("Remover Tag «Ficção» de Node «Duna»");
+  });
+});
 
 describe("operationTitle of a capture", () => {
   it("names the Resource by its title", () => {

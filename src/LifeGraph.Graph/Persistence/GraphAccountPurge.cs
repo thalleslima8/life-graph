@@ -25,6 +25,10 @@ internal sealed class GraphAccountPurge(LifeGraphDbContext db) : IAccountPurgePa
             .ExecuteUpdateAsync(changeSet => changeSet.SetProperty(entity => entity.RevertsChangeSetId, (Guid?)null), cancellationToken);
         await db.Set<GraphChangeSet>().Where(changeSet => changeSet.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
 
+        await db.Set<CollectionMember>().Where(member => member.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
+        await db.Set<Collection>().Where(collection => collection.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
+        await db.Set<NodeTag>().Where(link => link.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
+        await db.Set<Tag>().Where(tag => tag.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<Relation>().Where(relation => relation.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<Node>().Where(node => node.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<TypeProperty>().Where(property => property.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);

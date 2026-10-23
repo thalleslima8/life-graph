@@ -23,6 +23,12 @@ internal sealed class WriteInProgress(
 
     public const string PropertyNameTakenMessage = "A property with this name already exists.";
 
+    public const string TagNameTakenMessage = "A tag with this name already exists.";
+
+    private const string TagNotFoundMessage = "The tag was not found.";
+
+    private const string CollectionNotFoundMessage = "The collection was not found.";
+
     private const string AlreadyExistsMessage = "An entity with this id already exists. Send the write again.";
 
     private const string TypeNotFoundMessage = "The type was not found.";
@@ -42,7 +48,7 @@ internal sealed class WriteInProgress(
     /// <summary>The entities this write creates, to be inserted with the GraphChangeSet.</summary>
     public IReadOnlyList<object> Added => _added;
 
-    /// <summary>The Types and Property Definitions this write removes; they have no tombstone.</summary>
+    /// <summary>The Types, Property Definitions, Tags, Tag links, Collections and memberships this write removes; they have no tombstone.</summary>
     public IReadOnlyList<object> Removed => _removed;
 
     public IReadOnlyList<GraphEntityChange> Changes => _changes;
@@ -372,8 +378,18 @@ internal sealed class WriteInProgress(
 
         var before = ChangeSnapshots.Of(definition);
         var previousName = definition.Name;
-        var edit = new PropertyDefinitionEdit(update.Name, update.ValueKind, update.Options);
-        var updated = definition.Update(edit, workingSet.ValuesOf(definition.Id), now);
+        var previousKind = definition.ValueKind;
+        var edit = new PropertyDefinitionEdit(update.Name, update.ValueKind, update.Options, update.Archived);
+        var inUse = workingSet.ValuesOf(definition.Id);
+        var rewritten = definition.ValueKind != (update.ValueKind ?? definition.ValueKind) && inUse.AnyValue
+            ? workingSet.NodesHoldingToRewrite(definition.Id)
+            : [];
+        if (rewritten is null)
+        {
+            return Result.Fail(RewriteTooLarge());
+        }
+
+        var updated = definition.Update(edit, inUse, now);
         if (!updated.IsSuccess)
         {
             return Result.Fail(updated.Error!);
@@ -382,6 +398,14 @@ internal sealed class WriteInProgress(
         if (!updated.Value)
         {
             return Result.Ok();
+        }
+
+        // The values go first, so Undo puts the definition back before it checks them (DA-165).
+        foreach (var node in rewritten)
+        {
+            var nodeBefore = ChangeSnapshots.Of(node);
+            node.RewriteValue(definition.Id, definition.ConvertStoredValue(node.Properties.Values[definition.Id], previousKind), now);
+            Record(GraphEntityKind.Node, node.Id, GraphChangeOperation.Updated, nodeBefore, ChangeSnapshots.Of(node), node.Version);
         }
 
         if (definition.Name != previousName)
@@ -394,7 +418,26 @@ internal sealed class WriteInProgress(
         }
 
         Record(GraphEntityKind.PropertyDefinition, definition.Id, GraphChangeOperation.Updated, before, ChangeSnapshots.Of(definition));
+        if (definition.ValueKind != previousKind)
+        {
+            FollowKindChange(definition, previousKind);
+        }
+
         return Result.Ok();
+    }
+
+    // The saved criteria follow the kind change after the definition, in the same ChangeSet, so
+    // its Undo puts them back before the definition (DA-171). A Collection never blocks the change.
+    private void FollowKindChange(PropertyDefinition definition, PropertyValueKind previousKind)
+    {
+        foreach (var collection in workingSet.CollectionsWithCriteriaOn(definition.Id))
+        {
+            var before = ChangeSnapshots.Of(collection);
+            if (collection.FollowKindChange(definition, previousKind, now))
+            {
+                Record(GraphEntityKind.Collection, collection.Id, GraphChangeOperation.Updated, before, ChangeSnapshots.Of(collection));
+            }
+        }
     }
 
     public Result Apply(DeletePropertyDefinition delete)
@@ -415,12 +458,13 @@ internal sealed class WriteInProgress(
         }
 
         var holding = workingSet.UsageOfDefinition(definition.Id);
-        if (holding.LiveCount > 0)
+        if (holding.LiveCount > 0 && delete.ExpectedValueCount is null)
         {
-            return Result.Fail(GraphErrors.PropertyInUse.ToError("Nodes hold values for this property. Remove the values first."));
+            return Result.Fail(GraphErrors.PropertyInUse.ToError("Nodes hold values for this property. Confirm how many to remove them along."));
         }
 
-        if (holding.IsInUse)
+        // Values on restorable Nodes are never removed silently (DA-168).
+        if (holding.DeletedCount > 0)
         {
             return Result.Fail(InUseByDeletedNodes(
                 GraphErrors.PropertyInUseByDeletedNodes,
@@ -428,11 +472,35 @@ internal sealed class WriteInProgress(
                 holding));
         }
 
+        if (delete.ExpectedValueCount is { } expected && expected != holding.LiveCount)
+        {
+            return Result.Fail(GraphErrors.PropertyUsageChanged.ToError(
+                $"{holding.LiveCount} nodes hold values for this property now, not {expected}. Check the count again."));
+        }
+
+        if (holding.LiveCount > 0)
+        {
+            if (workingSet.NodesHoldingToRewrite(definition.Id) is not { } cleared)
+            {
+                return Result.Fail(RewriteTooLarge());
+            }
+
+            foreach (var node in cleared)
+            {
+                var nodeBefore = ChangeSnapshots.Of(node);
+                node.RewriteValue(definition.Id, value: null, now);
+                Record(GraphEntityKind.Node, node.Id, GraphChangeOperation.Updated, nodeBefore, ChangeSnapshots.Of(node), node.Version);
+            }
+        }
+
         workingSet.Removed(definition);
         _removed.Add(definition);
         Record(GraphEntityKind.PropertyDefinition, definition.Id, GraphChangeOperation.Deleted, ChangeSnapshots.Of(definition), after: null);
         return Result.Ok();
     }
+
+    private static Error RewriteTooLarge() => GraphErrors.PropertyRewriteTooLarge.ToError(
+        $"More than {GraphLimits.PropertyRewriteMaxNodes} nodes hold values for this property: the change would rewrite too many at once.");
 
     public Result Apply(RenameType rename)
     {
@@ -559,6 +627,264 @@ internal sealed class WriteInProgress(
         _removed.Add(type);
         Record(GraphEntityKind.Type, type.Id, GraphChangeOperation.Deleted, ChangeSnapshots.Of(type), after: null);
         return Result.Ok();
+    }
+
+    public Result Apply(CreateTag create)
+    {
+        if (workingSet.Knows(create.TagId))
+        {
+            return Result.Fail(GraphErrors.WriteConflict.ToError(AlreadyExistsMessage));
+        }
+
+        var created = Tag.Create(create.TagId, accountId, create.Name, now);
+        if (!created.IsSuccess)
+        {
+            return Result.Fail(created.Error!);
+        }
+
+        var tag = created.Value!;
+        if (!workingSet.TryTakeTagNameKey(tag.NameKey))
+        {
+            return Result.Fail(GraphErrors.TagNameTaken.ToError(TagNameTakenMessage));
+        }
+
+        workingSet.Created(tag);
+        _added.Add(tag);
+        Record(GraphEntityKind.Tag, tag.Id, GraphChangeOperation.Created, before: null, ChangeSnapshots.Of(tag));
+        return Result.Ok();
+    }
+
+    public Result Apply(RenameTag rename)
+    {
+        if (workingSet.FindTag(rename.TagId) is not { } tag)
+        {
+            return Result.Fail(GraphErrors.TagNotFound.ToError(TagNotFoundMessage));
+        }
+
+        var before = ChangeSnapshots.Of(tag);
+        var previousKey = tag.NameKey;
+        var renamed = tag.Rename(rename.Name, now);
+        if (!renamed.IsSuccess)
+        {
+            return Result.Fail(renamed.Error!);
+        }
+
+        if (!renamed.Value)
+        {
+            return Result.Ok();
+        }
+
+        workingSet.ReleaseTagNameKey(previousKey);
+        if (!workingSet.TryTakeTagNameKey(tag.NameKey))
+        {
+            return Result.Fail(GraphErrors.TagNameTaken.ToError(TagNameTakenMessage));
+        }
+
+        Record(GraphEntityKind.Tag, tag.Id, GraphChangeOperation.Updated, before, ChangeSnapshots.Of(tag));
+        return Result.Ok();
+    }
+
+    // The links go first, so an Undo brings the Tag back before them (it walks back), and as
+    // cascades of the Tag: a link whose Node was purged since just stays gone.
+    public Result Apply(DeleteTag delete)
+    {
+        if (workingSet.FindTag(delete.TagId) is not { } tag)
+        {
+            return Result.Fail(GraphErrors.TagNotFound.ToError(TagNotFoundMessage));
+        }
+
+        var cascaded = workingSet.LinksOf(tag.Id).ToList().Select(Unlink).ToList();
+        workingSet.Removed(tag);
+        _removed.Add(tag);
+        var root = Record(GraphEntityKind.Tag, tag.Id, GraphChangeOperation.Deleted, ChangeSnapshots.Of(tag), after: null);
+        foreach (var entry in cascaded)
+        {
+            entry.CascadesFrom(root);
+        }
+
+        return Result.Ok();
+    }
+
+    public Result Apply(TagNode tagNode)
+    {
+        if (workingSet.FindNode(tagNode.NodeId) is null)
+        {
+            return Result.Fail(GraphErrors.NodeNotFound.ToError("The node was not found."));
+        }
+
+        if (workingSet.FindTag(tagNode.TagId) is null)
+        {
+            return Result.Fail(GraphErrors.TagNotFound.ToError(TagNotFoundMessage));
+        }
+
+        if (workingSet.FindLink(tagNode.NodeId, tagNode.TagId) is not null)
+        {
+            return Result.Ok();
+        }
+
+        var link = NodeTag.Link(Guid.CreateVersion7(now), accountId, tagNode.NodeId, tagNode.TagId, now);
+        workingSet.Created(link);
+        _added.Add(link);
+        Record(GraphEntityKind.NodeTag, link.Id, GraphChangeOperation.Created, before: null, ChangeSnapshots.Of(link));
+        return Result.Ok();
+    }
+
+    public Result Apply(UntagNode untag)
+    {
+        if (workingSet.FindNode(untag.NodeId) is null)
+        {
+            return Result.Fail(GraphErrors.NodeNotFound.ToError("The node was not found."));
+        }
+
+        if (workingSet.FindTag(untag.TagId) is null)
+        {
+            return Result.Fail(GraphErrors.TagNotFound.ToError(TagNotFoundMessage));
+        }
+
+        if (workingSet.FindLink(untag.NodeId, untag.TagId) is { } link)
+        {
+            _ = Unlink(link);
+        }
+
+        return Result.Ok();
+    }
+
+    public Result Apply(CreateCollection create)
+    {
+        if (workingSet.Knows(create.CollectionId))
+        {
+            return Result.Fail(GraphErrors.WriteConflict.ToError(AlreadyExistsMessage));
+        }
+
+        var created = Collection.Create(create.CollectionId, accountId, new CollectionDraft(create.Name, create.Criteria, create.Pinned), workingSet, now);
+        if (!created.IsSuccess)
+        {
+            return Result.Fail(created.Error!);
+        }
+
+        var collection = created.Value!;
+        workingSet.Created(collection);
+        _added.Add(collection);
+        Record(GraphEntityKind.Collection, collection.Id, GraphChangeOperation.Created, before: null, ChangeSnapshots.Of(collection));
+        return Result.Ok();
+    }
+
+    public Result Apply(UpdateCollection update)
+    {
+        if (workingSet.FindCollection(update.CollectionId) is not { } collection)
+        {
+            return Result.Fail(GraphErrors.CollectionNotFound.ToError(CollectionNotFoundMessage));
+        }
+
+        var before = ChangeSnapshots.Of(collection);
+        var updated = collection.Update(new CollectionDraft(update.Name, update.Criteria, update.Pinned), workingSet, now);
+        if (!updated.IsSuccess)
+        {
+            return Result.Fail(updated.Error!);
+        }
+
+        if (updated.Value)
+        {
+            Record(GraphEntityKind.Collection, collection.Id, GraphChangeOperation.Updated, before, ChangeSnapshots.Of(collection));
+        }
+
+        return Result.Ok();
+    }
+
+    // As for a Tag: the memberships go first, as cascades of the Collection, so an Undo brings
+    // the Collection back before them, and one whose Node was purged since just stays gone.
+    public Result Apply(DeleteCollection delete)
+    {
+        if (workingSet.FindCollection(delete.CollectionId) is not { } collection)
+        {
+            return Result.Fail(GraphErrors.CollectionNotFound.ToError(CollectionNotFoundMessage));
+        }
+
+        var cascaded = workingSet.MembersOf(collection.Id).ToList().Select(RemoveMember).ToList();
+        workingSet.Removed(collection);
+        _removed.Add(collection);
+        var root = Record(GraphEntityKind.Collection, collection.Id, GraphChangeOperation.Deleted, ChangeSnapshots.Of(collection), after: null);
+        foreach (var entry in cascaded)
+        {
+            entry.CascadesFrom(root);
+        }
+
+        return Result.Ok();
+    }
+
+    public Result Apply(AddToCollection add)
+    {
+        var manual = FindManualCollection(add.CollectionId, add.NodeId);
+        if (!manual.IsSuccess)
+        {
+            return Result.Fail(manual.Error!);
+        }
+
+        if (workingSet.FindMember(add.CollectionId, add.NodeId) is not null)
+        {
+            return Result.Ok();
+        }
+
+        var member = CollectionMember.Add(Guid.CreateVersion7(now), accountId, add.CollectionId, add.NodeId, now);
+        workingSet.Created(member);
+        _added.Add(member);
+        Record(GraphEntityKind.CollectionMember, member.Id, GraphChangeOperation.Created, before: null, ChangeSnapshots.Of(member));
+        return Result.Ok();
+    }
+
+    public Result Apply(RemoveFromCollection remove)
+    {
+        var manual = FindManualCollection(remove.CollectionId, remove.NodeId);
+        if (!manual.IsSuccess)
+        {
+            return Result.Fail(manual.Error!);
+        }
+
+        if (workingSet.FindMember(remove.CollectionId, remove.NodeId) is { } member)
+        {
+            _ = RemoveMember(member);
+        }
+
+        return Result.Ok();
+    }
+
+    private Result FindManualCollection(Guid collectionId, Guid nodeId)
+    {
+        if (workingSet.FindCollection(collectionId) is not { } collection)
+        {
+            return Result.Fail(GraphErrors.CollectionNotFound.ToError(CollectionNotFoundMessage));
+        }
+
+        if (workingSet.FindNode(nodeId) is null)
+        {
+            return Result.Fail(GraphErrors.NodeNotFound.ToError("The node was not found."));
+        }
+
+        return collection.IsManual
+            ? Result.Ok()
+            : Result.Fail(GraphErrors.CollectionNotManual.ToError("Nodes are added to a manual collection only; a dynamic one follows its criteria."));
+    }
+
+    private ChangeEntry RemoveMember(CollectionMember member)
+    {
+        workingSet.Removed(member);
+        if (!_added.Remove(member))
+        {
+            _removed.Add(member);
+        }
+
+        return Record(GraphEntityKind.CollectionMember, member.Id, GraphChangeOperation.Deleted, ChangeSnapshots.Of(member), after: null);
+    }
+
+    private ChangeEntry Unlink(NodeTag link)
+    {
+        workingSet.Removed(link);
+        if (!_added.Remove(link))
+        {
+            _removed.Add(link);
+        }
+
+        return Record(GraphEntityKind.NodeTag, link.Id, GraphChangeOperation.Deleted, ChangeSnapshots.Of(link), after: null);
     }
 
     /// <summary>The 409 with the version the Node has now, so the caller never guesses it (DA-117).</summary>

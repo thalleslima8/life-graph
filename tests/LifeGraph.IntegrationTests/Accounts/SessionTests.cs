@@ -118,28 +118,25 @@ public sealed class SessionTests(PostgresDatabase database) : IAsyncLifetime
     }
 
     // No lockout outlives the window: right after it, an existing and an unknown e-mail get
-    // the same answer again, so the end of the 429 reveals nothing either.
+    // the same answer again, so the end of the 429 reveals nothing either. The test clock steps
+    // past the window the refusal names, so nothing depends on how fast the machine runs.
     [Theory]
     [InlineData(Email)]
     [InlineData("nobody@example.test")]
     public async Task After_the_window_an_existing_and_an_unknown_email_answer_the_same_again(string email)
     {
-        await using var oneSecondWindow = new LifeGraphApiFactory(database, new Dictionary<string, string>
-        {
-            ["Accounts:RateLimits:WindowSeconds"] = "1",
-        });
-        using var spa = new SpaClient(oneSecondWindow.CreateClient());
+        using var spa = new SpaClient(_factory.CreateClient());
         for (var attempt = 0; attempt < 5; attempt++)
         {
             await spa.LoginAsync(email, "wrong password for ada");
         }
 
         var limited = await spa.LoginAsync(email, "wrong password for ada");
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        _factory.Clock.Advance(DefaultWindow);
         var afterTheWindow = await spa.LoginAsync(email, "wrong password for ada");
 
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
-        Assert.Equal(TimeSpan.FromSeconds(1), limited.Headers.RetryAfter?.Delta);
+        Assert.Equal(DefaultWindow, limited.Headers.RetryAfter?.Delta);
         Assert.Equal(HttpStatusCode.BadRequest, afterTheWindow.StatusCode);
         Assert.Equal(AccountsErrors.InvalidCredentials.Code, await ProblemCode.ReadAsync(afterTheWindow));
     }
@@ -147,19 +144,17 @@ public sealed class SessionTests(PostgresDatabase database) : IAsyncLifetime
     [Fact]
     public async Task After_the_window_the_user_signs_in_with_the_right_password()
     {
-        await using var oneSecondWindow = new LifeGraphApiFactory(database, new Dictionary<string, string>
-        {
-            ["Accounts:RateLimits:WindowSeconds"] = "1",
-        });
-        using var spa = new SpaClient(oneSecondWindow.CreateClient());
-        for (var attempt = 0; attempt < 6; attempt++)
+        using var spa = new SpaClient(_factory.CreateClient());
+        for (var attempt = 0; attempt < 5; attempt++)
         {
             await spa.LoginAsync(Email, "wrong password for ada");
         }
 
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        var limited = await spa.LoginAsync(Email, TestAccounts.Password);
+        _factory.Clock.Advance(DefaultWindow);
         var login = await spa.LoginAsync(Email, TestAccounts.Password);
 
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
     }
 

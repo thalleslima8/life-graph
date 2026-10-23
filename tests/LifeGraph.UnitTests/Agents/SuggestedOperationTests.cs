@@ -19,6 +19,8 @@ public sealed class SuggestedOperationTests
             new SuggestedOperation { Op = SuggestedOperation.CreateRelation, SourceNodeId = node, TargetRef = "s", Kind = "about" },
             new SuggestedOperation { Op = SuggestedOperation.RemoveRelation, RelationId = relation },
             new SuggestedOperation { Op = SuggestedOperation.DeleteNode, NodeId = node, ExpectedVersion = 2 },
+            new SuggestedOperation { Op = SuggestedOperation.TagNode, NodeId = node, Tag = "livro" },
+            new SuggestedOperation { Op = SuggestedOperation.UntagNode, NodeId = node, Tag = "livro" },
         ]);
 
         Assert.True(parsed.IsSuccess);
@@ -28,7 +30,9 @@ public sealed class SuggestedOperationTests
             operation => Assert.Equal(2, Assert.IsType<AgentUpdateNode>(operation).ExpectedVersion),
             operation => Assert.Equal(new NodeRef(null, "s"), Assert.IsType<AgentCreateRelation>(operation).Target),
             operation => Assert.Equal(relation, Assert.IsType<AgentRemoveRelation>(operation).RelationId),
-            operation => Assert.Equal(node, Assert.IsType<AgentDeleteNode>(operation).NodeId));
+            operation => Assert.Equal(node, Assert.IsType<AgentDeleteNode>(operation).NodeId),
+            operation => Assert.Equal(new AgentTagNode(node, "livro"), operation),
+            operation => Assert.Equal(new AgentUntagNode(node, "livro"), operation));
     }
 
     [Fact]
@@ -39,11 +43,12 @@ public sealed class SuggestedOperationTests
             new SuggestedOperation { Op = SuggestedOperation.UpdateNode, Title = "x" },
             new SuggestedOperation { Op = "share_node" },
             null,
+            new SuggestedOperation { Op = SuggestedOperation.UntagNode, NodeId = Guid.CreateVersion7() },
         ]);
 
         Assert.False(parsed.IsSuccess);
         Assert.Equal(
-            ["operations[0].expectedVersion", "operations[0].nodeId", "operations[1].op", "operations[2]"],
+            ["operations[0].expectedVersion", "operations[0].nodeId", "operations[1].op", "operations[2]", "operations[3].tag"],
             parsed.Error!.Details!.Keys.Order(StringComparer.Ordinal));
     }
 }

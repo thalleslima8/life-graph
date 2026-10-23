@@ -40,6 +40,14 @@ const WRITE_ERRORS: Readonly<Record<string, string>> = {
   "graph.write_conflict": "Outra alteração chegou ao mesmo tempo. Tente novamente.",
   "graph.resource_url_invalid": "Use um link http ou https completo, sem usuário e senha.",
   "graph.resource_url_taken": "Outro Resource já guarda esse link.",
+  "graph.tag_name_taken": "Já existe uma Tag com esse nome.",
+  "graph.tag_not_found": "Esta Tag não está mais disponível.",
+  "graph.collection_not_found": "Esta Collection não está mais disponível.",
+  "graph.property_kind_change_blocked":
+    "Há Nodes com valores nesta propriedade, apagados incluídos, e esta mudança de tipo de valor não os converte sem perda. Crie uma nova propriedade.",
+  "graph.property_rewrite_too_large": "Nodes demais guardam valores nesta propriedade para converter de uma vez. Crie uma nova propriedade.",
+  "graph.property_usage_changed": "A quantidade de Nodes com valores mudou. Confira a nova contagem e confirme de novo.",
+  "graph.collection_not_manual": "Só é possível adicionar ou remover Nodes de uma Collection manual; a dinâmica segue os critérios.",
   payload_too_large: "O conteúdo é grande demais para salvar de uma vez.",
 };
 
@@ -179,7 +187,7 @@ export function writeErrorMessage(error: unknown): string {
 
 export function schemaRefusalMessage(refusal: SchemaRefusal): string {
   if (refusal.kind === "has_values") {
-    return "Há Nodes com valores nesta propriedade, apagados incluídos: o tipo de valor não muda e uma opção escolhida não sai.";
+    return "Uma opção que você tirou ainda é escolhida por Nodes, apagados incluídos: mantenha a opção ou arquive-a.";
   }
 
   const subject = refusal.entity === "type" ? "Este Type" : "Esta propriedade";
@@ -251,6 +259,10 @@ const ENTITY_LABELS: Readonly<Record<ChangeSetItem["entries"][number]["entityKin
   relation: "Relation",
   type: "Type",
   property_definition: "Propriedade",
+  tag: "Tag",
+  node_tag: "Tag em Node",
+  collection: "Collection",
+  collection_member: "Node em Collection",
 };
 
 export function entryDescription(entry: ChangeSetItem["entries"][number]): string {

@@ -41,7 +41,16 @@ internal static class ChangeSnapshots
     public static string Of(PropertyDefinition definition) => Serialize(new PropertyDefinitionSnapshot(
         definition.Name,
         definition.ValueKind,
-        definition.Options));
+        definition.Options,
+        definition.IsArchived));
+
+    public static string Of(Tag tag) => Serialize(new TagSnapshot(tag.Name));
+
+    public static string Of(NodeTag link) => Serialize(new NodeTagSnapshot(link.NodeId, link.TagId));
+
+    public static string Of(Collection collection) => Serialize(new CollectionSnapshot(collection.Name, collection.Criteria, collection.Pinned));
+
+    public static string Of(CollectionMember member) => Serialize(new CollectionMemberSnapshot(member.CollectionId, member.NodeId));
 
     /// <summary>The name a member of a snapshot record has in the recorded JSON.</summary>
     public static string FieldNameOf(string memberName) => Options.PropertyNamingPolicy!.ConvertName(memberName);
@@ -53,6 +62,14 @@ internal static class ChangeSnapshots
     public static TypeSnapshot ReadType(string json) => Deserialize<TypeSnapshot>(json);
 
     public static PropertyDefinitionSnapshot ReadPropertyDefinition(string json) => Deserialize<PropertyDefinitionSnapshot>(json);
+
+    public static TagSnapshot ReadTag(string json) => Deserialize<TagSnapshot>(json);
+
+    public static NodeTagSnapshot ReadNodeTag(string json) => Deserialize<NodeTagSnapshot>(json);
+
+    public static CollectionSnapshot ReadCollection(string json) => Deserialize<CollectionSnapshot>(json);
+
+    public static CollectionMemberSnapshot ReadCollectionMember(string json) => Deserialize<CollectionMemberSnapshot>(json);
 
     /// <summary>
     /// Whether two recorded states are the same, compared as JSON values: Postgres stores
@@ -112,4 +129,20 @@ internal sealed record TypeSnapshot(
     IReadOnlyList<Guid> PropertyDefinitionIds,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HiddenFromAgents = false);
 
-internal sealed record PropertyDefinitionSnapshot(string Name, PropertyValueKind ValueKind, IReadOnlyList<SelectOption> Options);
+// Archived is left out while false, so states recorded before DA-167 still compare equal.
+internal sealed record PropertyDefinitionSnapshot(
+    string Name,
+    PropertyValueKind ValueKind,
+    IReadOnlyList<SelectOption> Options,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Archived = false)
+{
+    public PropertyDefinitionState ToState() => new(Name, ValueKind, Options, Archived);
+}
+
+internal sealed record TagSnapshot(string Name);
+
+internal sealed record NodeTagSnapshot(Guid NodeId, Guid TagId);
+
+internal sealed record CollectionSnapshot(string Name, CollectionCriteria? Criteria, bool Pinned);
+
+internal sealed record CollectionMemberSnapshot(Guid CollectionId, Guid NodeId);

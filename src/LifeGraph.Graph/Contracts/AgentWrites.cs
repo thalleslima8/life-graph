@@ -49,7 +49,8 @@ public sealed record AgentWriteRequest(IReadOnlyList<AgentOperation> Operations,
 
 /// <summary>
 /// One operation of an agent write: the vocabulary an agent may use. It never changes Types,
-/// Property Definitions, the hidden flag, the Inbox flag or shares (DA-042). Each item counts
+/// Property Definitions, Tags themselves, the hidden flag, the Inbox flag or shares (DA-042,
+/// DA-162). Each item counts
 /// as one operation for the limits (DA-045), whatever number of fields it changes.
 /// </summary>
 public abstract record AgentOperation;
@@ -99,6 +100,18 @@ public sealed record AgentCaptureResource(string Url) : AgentOperation
     /// <summary>The kind of that Relation; <see cref="CaptureResource.DefaultRelationKind"/> when not given.</summary>
     public string? RelationKind { get; init; }
 }
+
+/// <summary>
+/// Links an existing Tag to a Node the agent sees (DA-162). The Tag is named as
+/// <c>list_tags</c> answers it, compared without regard to case or accents (DA-161); agents
+/// never create Tags, so a name the Account does not have, or a Tag the agent may not see, is
+/// not found. One operation, counted as a change to the person's entity unless the Node is the
+/// agent's own (DA-132).
+/// </summary>
+public sealed record AgentTagNode(Guid NodeId, string Tag) : AgentOperation;
+
+/// <summary>Removes a Tag, named as in <see cref="AgentTagNode"/>, from a Node the agent sees (DA-162).</summary>
+public sealed record AgentUntagNode(Guid NodeId, string Tag) : AgentOperation;
 
 /// <summary>A Node by id, or by the <see cref="AgentCreateNode.Ref"/> of a Node created earlier in the same write.</summary>
 public sealed record NodeRef(Guid? NodeId, string? Ref)

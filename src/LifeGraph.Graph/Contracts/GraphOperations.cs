@@ -84,8 +84,9 @@ public sealed record DefineProperty(
 public sealed record CreateType(Guid TypeId, string Name, IReadOnlyList<Guid>? PropertyDefinitionIds = null) : GraphOperation;
 
 /// <summary>
-/// Changes what is given of a Property Definition. Until the full editor (E8), the value
-/// kind cannot change while Nodes hold values for it (DA-023).
+/// Changes what is given of a Property Definition. With values, the kind changes only along
+/// the safe matrix and the values, tombstones included, are rewritten in the same
+/// GraphChangeSet (DA-065, DA-165); an option a value chose cannot be removed (DA-166).
 /// </summary>
 public sealed record UpdatePropertyDefinition(Guid PropertyDefinitionId) : GraphOperation
 {
@@ -95,10 +96,18 @@ public sealed record UpdatePropertyDefinition(Guid PropertyDefinitionId) : Graph
 
     /// <summary>The full new list of options of a Select or MultiSelect, replacing the current one.</summary>
     public IReadOnlyList<SelectOption>? Options { get; init; }
+
+    /// <summary>Archives (<c>true</c>) or restores (<c>false</c>) the Property Definition (DA-167).</summary>
+    public bool? Archived { get; init; }
 }
 
-/// <summary>Removes a Property Definition no Type attaches and no Node, deleted ones included, holds a value for.</summary>
-public sealed record DeletePropertyDefinition(Guid PropertyDefinitionId) : GraphOperation;
+/// <summary>
+/// Removes a Property Definition no Type attaches. Live Nodes' values go with it only when
+/// <paramref name="ExpectedValueCount"/> is how many live Nodes hold one (DA-168); values on
+/// deleted Nodes still in their window keep it.
+/// </summary>
+/// <param name="ExpectedValueCount">The count of live Nodes holding a value the person confirmed; <c>null</c> refuses any.</param>
+public sealed record DeletePropertyDefinition(Guid PropertyDefinitionId, int? ExpectedValueCount = null) : GraphOperation;
 
 public sealed record RenameType(Guid TypeId, string Name) : GraphOperation;
 
@@ -120,6 +129,50 @@ public sealed record DetachProperty(Guid TypeId, Guid PropertyDefinitionId) : Gr
 
 /// <summary>Removes a Type no Node, deleted ones included, has.</summary>
 public sealed record DeleteType(Guid TypeId) : GraphOperation;
+
+/// <summary>A Tag of the Account; its name follows DA-161 and is unique ignoring case and accents.</summary>
+public sealed record CreateTag(Guid TagId, string Name) : GraphOperation;
+
+public sealed record RenameTag(Guid TagId, string Name) : GraphOperation;
+
+/// <summary>
+/// Deletes a Tag and unlinks it from every Node, deleted ones included, in the same
+/// GraphChangeSet, so one Undo brings both back (DA-160).
+/// </summary>
+public sealed record DeleteTag(Guid TagId) : GraphOperation;
+
+/// <summary>
+/// Links the Tag to a live Node; linking it again changes nothing. The link is not Node state,
+/// so it asks for no version and leaves the Node's version as it is (DA-160).
+/// </summary>
+public sealed record TagNode(Guid NodeId, Guid TagId) : GraphOperation;
+
+/// <summary>Removes the Tag from a live Node; a Node without it changes nothing (DA-160).</summary>
+public sealed record UntagNode(Guid NodeId, Guid TagId) : GraphOperation;
+
+/// <summary>
+/// A Collection (DA-063, DA-164): <see cref="Criteria"/> <c>null</c> makes a manual one, whose
+/// Nodes the person adds; criteria make a dynamic one, whose Nodes are always evaluated.
+/// </summary>
+public sealed record CreateCollection(Guid CollectionId, string Name, CollectionCriteria? Criteria, bool Pinned) : GraphOperation;
+
+/// <summary>
+/// Renames the Collection, changes its criteria or pins it to the navigation (DA-173). Its kind
+/// never changes: a manual one takes no criteria, a dynamic one needs them.
+/// </summary>
+public sealed record UpdateCollection(Guid CollectionId, string Name, CollectionCriteria? Criteria, bool Pinned) : GraphOperation;
+
+/// <summary>
+/// Deletes a Collection and, for a manual one, its memberships in the same GraphChangeSet, so
+/// one Undo brings both back. The Nodes stay as they are (DA-063).
+/// </summary>
+public sealed record DeleteCollection(Guid CollectionId) : GraphOperation;
+
+/// <summary>Adds a live Node to a manual Collection; adding it again changes nothing.</summary>
+public sealed record AddToCollection(Guid CollectionId, Guid NodeId) : GraphOperation;
+
+/// <summary>Removes a Node from a manual Collection; a Node not in it changes nothing.</summary>
+public sealed record RemoveFromCollection(Guid CollectionId, Guid NodeId) : GraphOperation;
 
 /// <summary>Whether a Relation was asserted (Hard) or inferred by the system (Soft), DA-014.</summary>
 public enum RelationAssertion
@@ -150,4 +203,8 @@ public enum PropertyValueKind
     MultiSelect,
 }
 
-public sealed record SelectOption(Guid Id, string Label);
+/// <param name="Archived">An archived option is no longer chosen anew; values that chose it keep it (DA-167).</param>
+public sealed record SelectOption(
+    Guid Id,
+    string Label,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] bool Archived = false);

@@ -193,6 +193,21 @@ describe("useChangeSetProbe", () => {
     await waitFor(() => expect(probes).toEqual(["cursor-1", "cursor-2"]));
     await waitFor(() => expect(result.current.hasNewer).toBe(false));
   });
+
+  it("reads the members of an open Collection again when it finds a change", async () => {
+    feedApi(aFeed([aChangeSet()], "cursor-1"), () =>
+      HttpResponse.json(aFeed([aChangeSet({ id: "01920000-0000-7000-8000-0000000000c2" })], "cursor-2")),
+    );
+    const { queryClient, wrapper } = setup();
+    queryClient.setQueryData(graphKeys.collectionMembers("collection-1"), { pages: [], pageParams: [] });
+    queryClient.setQueryData(graphKeys.node(NODE_ID), {});
+    const { result } = renderHook(() => useChangeSetProbe(), { wrapper });
+
+    await waitFor(() => expect(result.current.hasNewer).toBe(true));
+    // Members are evaluated on the server: any change may move a Node in or out (DA-163).
+    expect(queryClient.getQueryState(graphKeys.collectionMembers("collection-1"))?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(graphKeys.node(NODE_ID))?.isInvalidated).toBe(false);
+  });
 });
 
 describe("useUndoChangeSet", () => {

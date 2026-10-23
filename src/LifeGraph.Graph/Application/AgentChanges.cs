@@ -156,7 +156,11 @@ internal sealed class AgentChanges(
                 var approved = chosen.Value!;
                 var rejected = Enumerable.Range(0, operations.Count).Except(approved).ToList();
                 var provenance = new Provenance(new GraphActor.AgentIdentity(proposal.AgentIdentityId), WriteChannel.Mcp, proposal.Source);
-                var (graphOperations, createdNodes) = AgentOperations.ToGraphOperations([.. approved.Select(index => operations[index])], now);
+                List<AgentOperation> approvedOperations = [.. approved.Select(index => operations[index])];
+
+                // A Tag named by a tag operation is looked up now: renamed or deleted since, it is not found.
+                var tagIds = await AgentOperations.TagIdsAsync(filter.Tags(), approvedOperations, token);
+                var (graphOperations, createdNodes) = AgentOperations.ToGraphOperations(approvedOperations, now, tagIds);
 
                 // Approving is reviewing: the GraphChangeSet it becomes is born reviewed (DA-135).
                 var written = await writer.WriteInTransactionAsync(
@@ -363,6 +367,18 @@ internal sealed class AgentChanges(
             {
                 Target = capture.RelatedNodeId is { } related ? EndpointOf(NodeRef.Of(related)) : null,
                 Kind = capture.RelatedNodeId is null ? null : capture.RelationKind ?? CaptureResource.DefaultRelationKind,
+            },
+            AgentTagNode tag => new ProposedOperationItem(index, ProposedOperationKind.TagNode, IsSensitive: false, isRejected, [], dependsOn)
+            {
+                NodeId = tag.NodeId,
+                NodeTitle = TitleOf(tag.NodeId),
+                Tag = tag.Tag,
+            },
+            AgentUntagNode untag => new ProposedOperationItem(index, ProposedOperationKind.UntagNode, IsSensitive: false, isRejected, [], dependsOn)
+            {
+                NodeId = untag.NodeId,
+                NodeTitle = TitleOf(untag.NodeId),
+                Tag = untag.Tag,
             },
             _ => throw new NotSupportedException($"Unknown agent operation {operation.GetType().Name}."),
         };

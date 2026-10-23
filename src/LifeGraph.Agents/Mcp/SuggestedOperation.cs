@@ -17,11 +17,13 @@ public sealed record SuggestedOperation
     public const string CreateRelation = "create_relation";
     public const string RemoveRelation = "remove_relation";
     public const string DeleteNode = "delete_node";
+    public const string TagNode = "tag_node";
+    public const string UntagNode = "untag_node";
 
-    [Description("create_node, update_node, create_relation, remove_relation or delete_node.")]
+    [Description("create_node, update_node, create_relation, remove_relation, delete_node, tag_node or untag_node.")]
     public string? Op { get; init; }
 
-    [Description("update_node, delete_node: the Node.")]
+    [Description("update_node, delete_node, tag_node, untag_node: the Node.")]
     public Guid? NodeId { get; init; }
 
     [Description("update_node, delete_node: the version you read.")]
@@ -62,6 +64,9 @@ public sealed record SuggestedOperation
 
     [Description("remove_relation: the Relation.")]
     public Guid? RelationId { get; init; }
+
+    [Description("tag_node, untag_node: the Tag's name, from list_tags.")]
+    public string? Tag { get; init; }
 
     /// <summary>The operations, or the fields each one misses, keyed <c>operations[i].field</c>.</summary>
     public static Result<IReadOnlyList<AgentOperation>> ToAgentOperations(IReadOnlyList<SuggestedOperation?>? operations)
@@ -138,8 +143,27 @@ public sealed record SuggestedOperation
 
                     parsed.Add(new AgentRemoveRelation(relationId));
                     break;
+                case TagNode:
+                case UntagNode:
+                    if (operation.NodeId is null)
+                    {
+                        Missing("nodeId");
+                    }
+
+                    if (operation.Tag is null)
+                    {
+                        Missing("tag");
+                    }
+
+                    if (operation.NodeId is not { } taggedNodeId || operation.Tag is not { } tag)
+                    {
+                        break;
+                    }
+
+                    parsed.Add(operation.Op == TagNode ? new AgentTagNode(taggedNodeId, tag) : new AgentUntagNode(taggedNodeId, tag));
+                    break;
                 default:
-                    errors[OperationKeys.Of(index, "op")] = [$"Use {CreateNode}, {UpdateNode}, {CreateRelation}, {RemoveRelation} or {DeleteNode}."];
+                    errors[OperationKeys.Of(index, "op")] = [$"Use {CreateNode}, {UpdateNode}, {CreateRelation}, {RemoveRelation}, {DeleteNode}, {TagNode} or {UntagNode}."];
                     break;
             }
         }

@@ -66,8 +66,8 @@ internal sealed class GraphPurge(LifeGraphDbContext db, TimeProvider clock) : IJ
         }
     }
 
-    // A Node takes along the Relations that touch it; they are all tombstones by then, since
-    // a Relation only lives between live Nodes.
+    // A Node takes along the Relations that touch it, all tombstones by then since a Relation
+    // only lives between live Nodes, its Tag links and its Collection memberships.
     private async Task<IReadOnlyList<Guid>> RemoveNodeAsync(PurgePayload purge, CancellationToken cancellationToken)
     {
         var node = await db.Set<Node>().SingleOrDefaultAsync(entity => entity.Id == purge.EntityId, cancellationToken);
@@ -84,9 +84,17 @@ internal sealed class GraphPurge(LifeGraphDbContext db, TimeProvider clock) : IJ
             throw new InvalidOperationException("A live Relation touches a Node past its delete window.");
         }
 
+        // Its Tag links stayed with the tombstone, so a restore brought them back (DA-160).
+        var links = await db.Set<NodeTag>().Where(link => link.NodeId == node.Id).ToListAsync(cancellationToken);
+
+        // So did its memberships in manual Collections.
+        var members = await db.Set<CollectionMember>().Where(member => member.NodeId == node.Id).ToListAsync(cancellationToken);
+
+        db.RemoveRange(links);
+        db.RemoveRange(members);
         db.RemoveRange(relations);
         db.Remove(node);
-        return [node.Id, .. relations.Select(relation => relation.Id)];
+        return [node.Id, .. relations.Select(relation => relation.Id), .. links.Select(link => link.Id), .. members.Select(member => member.Id)];
     }
 
     private async Task<IReadOnlyList<Guid>> RemoveRelationAsync(PurgePayload purge, CancellationToken cancellationToken)

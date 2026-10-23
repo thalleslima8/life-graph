@@ -73,6 +73,10 @@ export function operationTitle(operation: ProposedOperation): string {
       const capture = `Capturar Resource ${quoted(typeof title === "string" ? title : null, "sem título")}`;
       return operation.target ? `${capture} → ${endpointLabel(operation.target)}${operation.kind ? ` (${operation.kind})` : ""}` : capture;
     }
+    case "tag_node":
+      return `Aplicar Tag ${quoted(operation.tag, "sem nome")} em Node ${quoted(operation.nodeTitle, "indisponível")}`;
+    case "untag_node":
+      return `Remover Tag ${quoted(operation.tag, "sem nome")} de Node ${quoted(operation.nodeTitle, "indisponível")}`;
   }
 }
 

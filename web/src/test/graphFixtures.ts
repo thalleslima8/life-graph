@@ -2,6 +2,8 @@ import { http, HttpResponse } from "msw";
 import type { components } from "@/api/schema.gen";
 import type { NodeDetail, PropertyDefinitionItem, TypeItem } from "@/features/graph/graphData";
 import type { ChangeSetFeed, ChangeSetItem } from "@/features/graph/recentChanges";
+import type { TagItem } from "@/features/tags/tagsData";
+import type { CollectionItem } from "@/features/collections/collectionsData";
 import type { ChangeSetDetail, ProposalDetail, ProposalItem, ProposedOperation } from "@/features/agents/agentChanges";
 
 /** Builders of API bodies for the graph screens; each test overrides only what it is about. */
@@ -31,6 +33,7 @@ export function aNode(overrides: Partial<NodeDetail> = {}): NodeDetail {
     properties: [],
     otherProperties: [],
     hiddenFromAgents: false,
+    tags: [],
     ...overrides,
   };
 }
@@ -40,7 +43,7 @@ export function aType(overrides: Partial<TypeItem> = {}): TypeItem {
 }
 
 export function aDefinition(overrides: Partial<PropertyDefinitionItem> = {}): PropertyDefinitionItem {
-  return { id: DEFINITION_ID, name: "Status", valueKind: "text", options: [], createdAt: INSTANT, updatedAt: INSTANT, isSystem: false, ...overrides };
+  return { id: DEFINITION_ID, name: "Status", valueKind: "text", options: [], createdAt: INSTANT, updatedAt: INSTANT, isSystem: false, typeCount: 0, isArchived: false, ...overrides };
 }
 
 export function aChangeSet(overrides: Partial<ChangeSetItem> = {}): ChangeSetItem {
@@ -71,6 +74,19 @@ export function aReceipt(changeSetId = CHANGESET_ID, changes: { kind: "node"; en
   return { changeSetId, changes: changes.map((change) => ({ ...change, operation: "updated" as const })), relationsLeftDeleted: [] };
 }
 
+export const TAG_ID = "01920000-0000-7000-8000-0000000000a7";
+
+export function aTag(overrides: Partial<TagItem> = {}): TagItem {
+  return { id: TAG_ID, name: "leitura", nodeCount: 0, createdAt: INSTANT, updatedAt: INSTANT, ...overrides };
+}
+
+export const COLLECTION_ID = "01920000-0000-7000-8000-0000000000a8";
+
+/** A manual Collection unless criteria are given. */
+export function aCollection(overrides: Partial<CollectionItem> = {}): CollectionItem {
+  return { id: COLLECTION_ID, name: "Quero ler", criteria: null, pinned: false, needsReview: null, createdAt: INSTANT, updatedAt: INSTANT, ...overrides };
+}
+
 /** The ontology reads every graph screen makes, answered empty unless given. */
 export function ontologyHandlers({ types = [], definitions = [] }: { types?: TypeItem[]; definitions?: PropertyDefinitionItem[] } = {}) {
   return [
@@ -88,7 +104,7 @@ export function aProposal(overrides: Partial<ProposalItem> = {}): ProposalItem {
     requiresUser: true,
     reasons: ["sensitive"],
     operationCount: 1,
-    summary: { createNode: 0, updateNode: 0, createRelation: 0, removeRelation: 0, deleteNode: 1, captureResource: 0 },
+    summary: { createNode: 0, updateNode: 0, createRelation: 0, removeRelation: 0, deleteNode: 1, captureResource: 0, tagNode: 0, untagNode: 0 },
     source: null,
     createdAt: INSTANT,
     expiresAt: "2026-10-12T12:00:00Z",
@@ -116,6 +132,7 @@ export function anOperation(overrides: Partial<ProposedOperation> = {}): Propose
     target: null,
     kind: null,
     relationId: null,
+    tag: null,
     fields: [{ field: "title", before: "Leituras", after: "Leituras de 2026", overwritesYourValue: true }],
     dependsOn: [],
     ...overrides,

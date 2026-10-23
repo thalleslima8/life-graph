@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
+using Microsoft.EntityFrameworkCore;
 
 namespace LifeGraph.Graph.Application;
 
@@ -44,8 +45,37 @@ internal static class AgentOperations
             AgentDeleteNode delete => [delete.NodeId],
             AgentCreateRelation relate => new[] { relate.Source.NodeId, relate.Target.NodeId }.OfType<Guid>(),
             AgentCaptureResource { RelatedNodeId: { } related } => [related],
+            AgentTagNode tag => [tag.NodeId],
+            AgentUntagNode untag => [untag.NodeId],
             _ => [],
         }).Distinct()];
+
+    /// <summary>The key of the Tag a tag operation names, as Tags are told apart (DA-161).</summary>
+    public static string TagKeyOf(string tag) => TagName.Read(new FieldErrors(), "tag", tag).Key;
+
+    /// <summary>
+    /// The ids of the Tags the operations name, by <see cref="TagKeyOf"/>, among the given Tags
+    /// (the ones the reader sees). A name without a Tag is left out.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<string, Guid>> TagIdsAsync(
+        IQueryable<Tag> tags,
+        IReadOnlyList<AgentOperation> operations,
+        CancellationToken cancellationToken)
+    {
+        var keys = operations.Select(operation => operation switch
+        {
+            AgentTagNode tag => TagKeyOf(tag.Tag),
+            AgentUntagNode untag => TagKeyOf(untag.Tag),
+            _ => null,
+        }).OfType<string>().Distinct().ToList();
+        if (keys.Count == 0)
+        {
+            return new Dictionary<string, Guid>(StringComparer.Ordinal);
+        }
+
+        return await tags.Where(tag => keys.Contains(tag.NameKey))
+            .ToDictionaryAsync(tag => tag.NameKey, tag => tag.Id, StringComparer.Ordinal, cancellationToken);
+    }
 
     /// <summary>The name a created Node is answered by: its ref, or its operation's place.</summary>
     public static string CreatedKey(AgentCreateNode create, int index) => create.Ref ?? OperationKeys.Of(index);
@@ -53,12 +83,17 @@ internal static class AgentOperations
     /// <summary>
     /// The pipeline's operations, with an id for each new Node and Relation. A Node an agent
     /// creates without Type goes to the Inbox, with its suggested Type as a hint (DA-049); the
-    /// Node drops the hint when it has a Type.
+    /// Node drops the hint when it has a Type. A tag operation takes its Tag from
+    /// <paramref name="tagIds"/> (<see cref="TagIdsAsync"/>); a name without a Tag there names
+    /// none, and the pipeline answers that the Tag was not found.
     /// </summary>
     public static (IReadOnlyList<GraphOperation> Operations, IReadOnlyDictionary<string, Guid> CreatedNodes) ToGraphOperations(
         IReadOnlyList<AgentOperation> operations,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        IReadOnlyDictionary<string, Guid>? tagIds = null)
     {
+        Guid TagIdOf(string tag) => tagIds?.GetValueOrDefault(TagKeyOf(tag)) ?? Guid.Empty;
+
         var created = new Dictionary<string, Guid>(StringComparer.Ordinal);
         var graphOperations = new List<GraphOperation>();
         for (var index = 0; index < operations.Count; index++)
@@ -109,6 +144,12 @@ internal static class AgentOperations
                         RelationId = capture.RelatedNodeId is null ? null : Guid.CreateVersion7(now),
                     });
                     break;
+                case AgentTagNode tag:
+                    graphOperations.Add(new TagNode(tag.NodeId, TagIdOf(tag.Tag)));
+                    break;
+                case AgentUntagNode untag:
+                    graphOperations.Add(new UntagNode(untag.NodeId, TagIdOf(untag.Tag)));
+                    break;
                 default:
                     throw new NotSupportedException($"Unknown agent operation {operations[index].GetType().Name}.");
             }
@@ -155,6 +196,8 @@ internal static class AgentOperations
             NodeId = capture.RelatedNodeId,
             Kind = capture.RelationKind,
         },
+        AgentTagNode tag => new StoredOperation(StoredKind.TagNode) { NodeId = tag.NodeId, Tag = tag.Tag },
+        AgentUntagNode untag => new StoredOperation(StoredKind.UntagNode) { NodeId = untag.NodeId, Tag = untag.Tag },
         _ => throw new NotSupportedException($"Unknown agent operation {operation.GetType().Name}."),
     };
 
@@ -177,6 +220,8 @@ internal static class AgentOperations
             RelatedNodeId = stored.NodeId,
             RelationKind = stored.Kind,
         },
+        StoredKind.TagNode => new AgentTagNode(stored.NodeId!.Value, stored.Tag!),
+        StoredKind.UntagNode => new AgentUntagNode(stored.NodeId!.Value, stored.Tag!),
         _ => throw new NotSupportedException($"Unknown stored operation {stored.Op}."),
     };
 
@@ -192,6 +237,8 @@ internal static class AgentOperations
         RemoveRelation,
         DeleteNode,
         CaptureResource,
+        TagNode,
+        UntagNode,
     }
 
     internal sealed record StoredOperation(StoredKind Op)
@@ -223,5 +270,7 @@ internal static class AgentOperations
         public Guid? RelationId { get; init; }
 
         public string? Url { get; init; }
+
+        public string? Tag { get; init; }
     }
 }

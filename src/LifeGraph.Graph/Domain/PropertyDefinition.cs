@@ -35,6 +35,12 @@ public sealed class PropertyDefinition
     /// <summary>A system Property is locked: no rename, no change, no delete (DA-057).</summary>
     public bool IsSystem => SystemKey is not null;
 
+    /// <summary>
+    /// An archived Property stays attached and its values stay, but no Node takes a new value
+    /// for it and it leaves the attach pickers (DA-167).
+    /// </summary>
+    public bool IsArchived { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -68,9 +74,9 @@ public sealed class PropertyDefinition
     }
 
     /// <summary>
-    /// Changes what is given; <c>null</c> fields stay as they are. Until the full editor (E8),
-    /// the value kind cannot change while Nodes hold values for this property, and an option
-    /// a value chose cannot be removed (DA-023).
+    /// Changes what is given; <c>null</c> fields stay as they are. While Nodes, deleted ones
+    /// included, hold values, the value kind changes only along the safe matrix (DA-065,
+    /// DA-165) and an option a value chose cannot be removed (DA-166): archive it instead.
     /// </summary>
     /// <param name="inUse">What Nodes, deleted ones in their window included, hold for this property.</param>
     /// <returns><c>true</c> when something changed.</returns>
@@ -96,16 +102,20 @@ public sealed class PropertyDefinition
             return Result<bool>.Fail(errors.ToError());
         }
 
-        if (newKind != ValueKind && inUse.AnyValue)
+        if (newKind != ValueKind && inUse.AnyValue && !IsSafeKindChange(ValueKind, newKind))
         {
-            return Result<bool>.Fail(GraphErrors.PropertyHasValues.ToError(
-                "Nodes hold values for this property, deleted ones included. Its value kind cannot change."));
+            return Result<bool>.Fail(GraphErrors.PropertyKindChangeBlocked.ToError(
+                $"Nodes hold values for this property (values on deleted Nodes count too). Its value kind cannot change from {ValueKind} to {newKind}: create a new property instead."));
         }
 
-        if (inUse.OptionIds.Any(optionId => newOptions.All(option => option.Id != optionId)))
+        var removedInUse = Options
+            .Where(option => newOptions.All(kept => kept.Id != option.Id) && inUse.NodeCountsByOption.GetValueOrDefault(option.Id) > 0)
+            .Select(option => $"\"{option.Label}\" by {inUse.NodeCountsByOption[option.Id]} nodes")
+            .ToList();
+        if (removedInUse.Count > 0)
         {
             return Result<bool>.Fail(GraphErrors.PropertyHasValues.ToError(
-                "Nodes chose an option this change removes, deleted ones included. Keep the option."));
+                $"Options this change removes are chosen, deleted nodes included: {string.Join(", ", removedInUse)}. Keep them or archive them."));
         }
 
         if (newName != Name && SystemOntology.IsReservedPropertyName(newName))
@@ -113,14 +123,44 @@ public sealed class PropertyDefinition
             return Result<bool>.Fail(ReservedName());
         }
 
-        var changed = newName != Name || newKind != ValueKind || !SameOptions(newOptions, Options);
+        var newArchived = edit.Archived ?? IsArchived;
+        var changed = newName != Name || newKind != ValueKind || !SameOptions(newOptions, Options) || newArchived != IsArchived;
         if (changed)
         {
-            Revert(newName, newKind, newOptions, now);
+            Revert(new PropertyDefinitionState(newName, newKind, newOptions, newArchived), now);
         }
 
         return Result<bool>.Ok(changed);
     }
+
+    /// <summary>
+    /// The value kind changes a property with values may take (DA-065): Select to MultiSelect,
+    /// Date to DateTime, and Number, URL or Date to Text. Any other change needs a new property.
+    /// </summary>
+    public static bool IsSafeKindChange(PropertyValueKind from, PropertyValueKind to) => (from, to) switch
+    {
+        (PropertyValueKind.Select, PropertyValueKind.MultiSelect) => true,
+        (PropertyValueKind.Date, PropertyValueKind.DateTime) => true,
+        (PropertyValueKind.Number or PropertyValueKind.Url or PropertyValueKind.Date, PropertyValueKind.Text) => true,
+        _ => false,
+    };
+
+    /// <summary>
+    /// A stored value of the <paramref name="from"/> kind rewritten for this definition's
+    /// current kind, along a safe change (DA-165): a Select id becomes a one-item list, a date
+    /// becomes midnight UTC, a number its invariant text, a date or URL its stored text.
+    /// </summary>
+    public JsonElement ConvertStoredValue(JsonElement stored, PropertyValueKind from) => (from, ValueKind) switch
+    {
+        _ when from == ValueKind => stored.Clone(),
+        (PropertyValueKind.Select, PropertyValueKind.MultiSelect) => JsonSerializer.SerializeToElement(new[] { stored.GetString() }),
+        (PropertyValueKind.Date, PropertyValueKind.DateTime) => JsonSerializer.SerializeToElement(
+            new DateTimeOffset(DateOnly.ParseExact(stored.GetString()!, "yyyy-MM-dd", CultureInfo.InvariantCulture), TimeOnly.MinValue, TimeSpan.Zero)
+                .ToString("O", CultureInfo.InvariantCulture)),
+        (PropertyValueKind.Number, PropertyValueKind.Text) => JsonSerializer.SerializeToElement(stored.GetDecimal().ToString(CultureInfo.InvariantCulture)),
+        (PropertyValueKind.Url or PropertyValueKind.Date, PropertyValueKind.Text) => stored.Clone(),
+        _ => throw new InvalidOperationException($"No safe change from {from} to {ValueKind}."),
+    };
 
     /// <summary>A system Property (DA-149), with no options.</summary>
     internal static PropertyDefinition DefineSystem(Guid id, Guid accountId, SystemProperty property, DateTimeOffset now) => new()
@@ -142,13 +182,55 @@ public sealed class PropertyDefinition
     private static Error ReservedName() => GraphErrors.NameReserved.ToError("This name is reserved for a system property.");
 
     /// <summary>Puts back a state the history recorded (Undo, DA-020); the caller checked the values still fit.</summary>
-    public void Revert(string name, PropertyValueKind valueKind, IReadOnlyList<SelectOption> options, DateTimeOffset now)
+    public void Revert(PropertyDefinitionState state, DateTimeOffset now)
     {
-        Name = name;
-        ValueKind = valueKind;
-        Options = [.. options];
+        Name = state.Name;
+        ValueKind = state.ValueKind;
+        Options = [.. state.Options];
+        IsArchived = state.IsArchived;
         UpdatedAt = now;
     }
+
+    /// <summary>
+    /// Checks a value a Node sets, as <see cref="Normalize"/>, and keeps archived things for
+    /// what the Node already holds (DA-167): an archived property takes no value on a Node
+    /// without one, and an archived option can stay chosen but is not chosen anew.
+    /// </summary>
+    /// <param name="current">The value the Node holds now, if any.</param>
+    public Result<JsonElement> NormalizeSet(JsonElement value, JsonElement? current)
+    {
+        if (IsArchived && current is null)
+        {
+            return Invalid("This property is archived. It takes no new values.");
+        }
+
+        var normalized = Normalize(value);
+        if (!normalized.IsSuccess)
+        {
+            return normalized;
+        }
+
+        var archivedIds = Options.Where(option => option.Archived).Select(option => option.Id).ToHashSet();
+        if (archivedIds.Count == 0)
+        {
+            return normalized;
+        }
+
+        var alreadyChosen = current is { } held ? ChosenOptionIds(held) : [];
+        return ChosenOptionIds(normalized.Value).Any(id => archivedIds.Contains(id) && !alreadyChosen.Contains(id))
+            ? Invalid("This option is archived. It cannot be chosen.")
+            : normalized;
+    }
+
+    /// <summary>The option ids a Select or MultiSelect value chose; none for other values.</summary>
+    public static HashSet<Guid> ChosenOptionIds(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String when Guid.TryParse(value.GetString(), out var id) => [id],
+        JsonValueKind.Array => [.. value.EnumerateArray()
+            .Select(choice => choice.ValueKind == JsonValueKind.String && Guid.TryParse(choice.GetString(), out var id) ? id : Guid.Empty)
+            .Where(id => id != Guid.Empty)],
+        _ => [],
+    };
 
     private static bool HasChoices(PropertyValueKind valueKind) =>
         valueKind is PropertyValueKind.Select or PropertyValueKind.MultiSelect;
@@ -302,12 +384,20 @@ public sealed class PropertyDefinition
 
 /// <summary>What an update of a Property Definition changes; <c>null</c> fields stay as they are.</summary>
 /// <param name="Options">The full new list of options, replacing the current one.</param>
-public sealed record PropertyDefinitionEdit(string? Name, PropertyValueKind? ValueKind, IReadOnlyList<SelectOption>? Options);
+/// <param name="Archived">Archives (<c>true</c>) or restores (<c>false</c>) the property (DA-167).</param>
+public sealed record PropertyDefinitionEdit(
+    string? Name,
+    PropertyValueKind? ValueKind,
+    IReadOnlyList<SelectOption>? Options,
+    bool? Archived = null);
 
-/// <summary>What Nodes hold for one Property Definition: whether any value, and the options chosen.</summary>
-public sealed record PropertyValuesInUse(bool AnyValue, IReadOnlySet<Guid> OptionIds)
+/// <summary>A Property Definition as the history records it.</summary>
+public sealed record PropertyDefinitionState(string Name, PropertyValueKind ValueKind, IReadOnlyList<SelectOption> Options, bool IsArchived);
+
+/// <summary>What Nodes hold for one Property Definition: whether any value, and how many Nodes chose each option.</summary>
+public sealed record PropertyValuesInUse(bool AnyValue, IReadOnlyDictionary<Guid, int> NodeCountsByOption)
 {
-    public static readonly PropertyValuesInUse None = new(false, new HashSet<Guid>());
+    public static readonly PropertyValuesInUse None = new(false, new Dictionary<Guid, int>());
 }
 
 /// <summary>What a new Property Definition starts with; options only for the select kinds.</summary>

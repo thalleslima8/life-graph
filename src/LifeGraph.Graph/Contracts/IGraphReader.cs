@@ -26,6 +26,12 @@ public interface IGraphReader
 
     /// <summary>The Types the caller sees, with their properties (DA-039), a page at a time (API-060).</summary>
     Task<Result<GraphTypeList>> ListTypesAsync(GraphTypeListQuery query, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The Tags the caller sees, each with how many live Nodes it sees have it (DA-162), a page
+    /// at a time (API-060).
+    /// </summary>
+    Task<Result<GraphTagList>> ListTagsAsync(GraphTagListQuery query, CancellationToken cancellationToken);
 }
 
 /// <summary>The size limits of the reads (DA-036): small on purpose, "começar devagar".</summary>
@@ -65,6 +71,10 @@ public static class GraphReadLimits
     public const int TypeListDefaultCount = 100;
 
     public const int TypeListMaxCount = 200;
+
+    public const int TagListDefaultCount = 100;
+
+    public const int TagListMaxCount = 200;
 }
 
 /// <param name="Text">Words to find, in title and body, without regard to accents or case.</param>
@@ -126,6 +136,7 @@ public sealed record GraphPropertyValue(string Name, PropertyValueKind ValueKind
 /// are the values the Type does not attach (Outras propriedades, DA-016).
 /// </summary>
 /// <param name="Distance">Relations away from where the read started; 0 for that Node.</param>
+/// <param name="Tags">The names of the Node's Tags (DA-162).</param>
 public sealed record GraphNodeView(
     Guid Id,
     EnvelopedText Title,
@@ -135,6 +146,7 @@ public sealed record GraphNodeView(
     int Distance,
     IReadOnlyList<GraphPropertyValue> Properties,
     IReadOnlyList<GraphPropertyValue> OtherProperties,
+    IReadOnlyList<string> Tags,
     ProvenanceSummary? Provenance,
     DateTimeOffset UpdatedAt);
 
@@ -180,9 +192,16 @@ public sealed record GraphContext(
     int OmittedEdgeCount,
     IReadOnlyList<NodeHeadline> Candidates);
 
-/// <param name="Options">The choices of a Select or MultiSelect, by label.</param>
+/// <param name="Options">The choices of a Select or MultiSelect that can be chosen, by label; archived ones are left out (DA-167).</param>
 /// <param name="IsSystem">A system Property: locked, its name reserved (DA-057, DA-155).</param>
-public sealed record GraphTypeProperty(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind, IReadOnlyList<string> Options, bool IsSystem);
+/// <param name="IsArchived">An archived Property: values stay, it takes no new ones (DA-167).</param>
+public sealed record GraphTypeProperty(
+    Guid PropertyDefinitionId,
+    string Name,
+    PropertyValueKind ValueKind,
+    IReadOnlyList<string> Options,
+    bool IsSystem,
+    bool IsArchived);
 
 /// <param name="IsSystem">A system Type, such as Resource: locked, its name reserved (DA-057, DA-155).</param>
 public sealed record GraphTypeView(Guid Id, string Name, IReadOnlyList<GraphTypeProperty> Properties, bool IsSystem);
@@ -194,3 +213,15 @@ public sealed record GraphTypeListQuery(string? Cursor = null, int? Count = null
 /// <summary>A page of Types, oldest first.</summary>
 /// <param name="NextCursor">Where the next page starts; <c>null</c> on the last page.</param>
 public sealed record GraphTypeList(IReadOnlyList<GraphTypeView> Types, string? NextCursor);
+
+/// <param name="Cursor">Where the previous page ended (its <see cref="GraphTagList.NextCursor"/>); none for the first page.</param>
+/// <param name="Count">How many Tags, <see cref="GraphReadLimits.TagListDefaultCount"/> by default, at most <see cref="GraphReadLimits.TagListMaxCount"/>.</param>
+public sealed record GraphTagListQuery(string? Cursor = null, int? Count = null);
+
+/// <param name="Name">The name to give <c>tag_node</c> and <c>untag_node</c>.</param>
+/// <param name="NodeCount">How many live Nodes the caller sees have it.</param>
+public sealed record GraphTagView(Guid Id, string Name, int NodeCount);
+
+/// <summary>A page of Tags, oldest first.</summary>
+/// <param name="NextCursor">Where the next page starts; <c>null</c> on the last page.</param>
+public sealed record GraphTagList(IReadOnlyList<GraphTagView> Tags, string? NextCursor);

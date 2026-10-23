@@ -7,10 +7,9 @@ import type { PropertyValueKind } from "./graphData";
 import { PropertyValueDisplay, PropertyValueEditor } from "./PropertyValueEditor";
 import { emptyValueOf, type PropertyField, type PropertyValue } from "./propertyValues";
 
-const OPTIONS = [
-  { id: "01920000-0000-7000-8000-0000000000e1", label: "Lendo" },
-  { id: "01920000-0000-7000-8000-0000000000e2", label: "Lido" },
-];
+const READING = { id: "01920000-0000-7000-8000-0000000000e1", label: "Lendo", archived: false };
+const READ = { id: "01920000-0000-7000-8000-0000000000e2", label: "Lido", archived: false };
+const OPTIONS = [READING, READ];
 const REMOVED = "01920000-0000-7000-8000-0000000000ef";
 
 /** A controlled editor with its own state, as a form's Controller would hold it. */
@@ -63,6 +62,29 @@ describe("PropertyValueEditor", () => {
     await userEvent.click(await screen.findByRole("option", { name: "Lido" }));
 
     expect(screen.getByLabelText("valor")).toHaveTextContent(OPTIONS[1]?.id ?? "");
+  });
+
+  it("no longer offers an archived Select option, and keeps its label on the value that chose it", async () => {
+    const archived = [{ ...READING, archived: true }, READ];
+    const { unmount } = render(<Harness definition={{ name: "Status", valueKind: "select", options: archived }} initial={null} />);
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Status" }));
+    expect(screen.queryByRole("option", { name: "Lendo" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Lido" })).toBeInTheDocument();
+    unmount();
+
+    render(<Harness definition={{ name: "Status", valueKind: "select", options: archived }} initial={READING.id} />);
+    expect(screen.getByRole("combobox", { name: "Status" })).toHaveTextContent("Lendo");
+  });
+
+  it("no longer offers an archived Multi Select option unless the value chose it, and lets it be unchecked", async () => {
+    const archived = [{ ...READING, archived: true }, { ...READ, archived: true }];
+    render(<Harness definition={{ name: "Status", valueKind: "multi_select", options: archived }} initial={[READING.id]} />);
+
+    expect(screen.queryByRole("checkbox", { name: "Lido" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Lendo" }));
+
+    expect(screen.getByLabelText("valor")).toHaveTextContent("[]");
   });
 
   it("keeps a removed Select option visible until it is cleared", async () => {

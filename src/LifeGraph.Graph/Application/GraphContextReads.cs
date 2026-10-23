@@ -31,6 +31,8 @@ internal sealed class GraphContextReads(
 
     private static readonly CountRange TypeListCountRange = new(GraphReadLimits.TypeListDefaultCount, GraphReadLimits.TypeListMaxCount);
 
+    private static readonly CountRange TagListCountRange = new(GraphReadLimits.TagListDefaultCount, GraphReadLimits.TagListMaxCount);
+
     public Task<Result<GraphSearchResult>> SearchAsync(GraphSearchQuery query, CancellationToken cancellationToken)
     {
         var errors = new FieldErrors();
@@ -167,11 +169,53 @@ internal sealed class GraphContextReads(
                         [.. type.Properties.OrderBy(property => property.Position).Select(property =>
                         {
                             var definition = definitions[property.PropertyDefinitionId];
-                            return new GraphTypeProperty(definition.Id, definition.Name, definition.ValueKind, [.. definition.Options.Select(option => option.Label)], definition.IsSystem);
+                            return new GraphTypeProperty(
+                                definition.Id,
+                                definition.Name,
+                                definition.ValueKind,
+                                [.. definition.Options.Where(option => !option.Archived).Select(option => option.Label)],
+                                definition.IsSystem,
+                                definition.IsArchived);
                         })],
                         type.IsSystem))],
                     nextCursor);
                 return Read.Of(list, []);
+            },
+            cancellationToken);
+    }
+
+    // A page at a time (API-060), by id as the REST list of Tags, so a cursor survives a rename.
+    // The count is of the live Nodes the agent sees (DA-162).
+    public Task<Result<GraphTagList>> ListTagsAsync(GraphTagListQuery query, CancellationToken cancellationToken)
+    {
+        var errors = new FieldErrors();
+        if (!PageCursor.TryRead(query.Cursor, out var after))
+        {
+            errors.Add("cursor", PageCursor.UnknownCursorMessage);
+        }
+
+        var count = CountWithin(errors, "limit", query.Count, TagListCountRange);
+
+        return RunAsync(
+            AgentReadOperation.ListTags,
+            new { cursor = query.Cursor, limit = count },
+            errors,
+            async (_, token) =>
+            {
+                var visible = filter.Tags();
+                if (after is { } lastId)
+                {
+                    visible = visible.Where(tag => tag.Id.CompareTo(lastId) > 0);
+                }
+
+                // One more than the page tells whether there is a next one.
+                var links = filter.NodeTags();
+                var tags = await visible.OrderBy(tag => tag.Id)
+                    .Take(count + 1)
+                    .Select(tag => new GraphTagView(tag.Id, tag.Name, links.Count(link => link.TagId == tag.Id)))
+                    .ToListAsync(token);
+                var nextCursor = tags.Count > count ? PageCursor.Write(tags[count - 1].Id) : null;
+                return Read.Of(new GraphTagList(tags[..Math.Min(count, tags.Count)], nextCursor), []);
             },
             cancellationToken);
     }

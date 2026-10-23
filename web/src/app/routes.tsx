@@ -1,4 +1,6 @@
 import type { RouteObject } from "react-router";
+import { CollectionPage } from "@/features/collections/CollectionPage";
+import { CollectionsPage } from "@/features/collections/CollectionsPage";
 import { ConfirmEmailPage } from "@/features/account/ConfirmEmailPage";
 import { ForgotPasswordPage } from "@/features/account/ForgotPasswordPage";
 import { LoginPage } from "@/features/account/LoginPage";
@@ -10,6 +12,7 @@ import { OntologyPage } from "@/features/graph/OntologyPage";
 import { RecentChangesPage } from "@/features/graph/RecentChangesPage";
 import { HomePage } from "@/features/home/HomePage";
 import { NotFoundPage } from "@/features/not-found/NotFoundPage";
+import { TagsPage } from "@/features/tags/TagsPage";
 import {
   blockIfAuthenticated,
   linkTokenLoader,
@@ -38,6 +41,9 @@ export const routes: RouteObject[] = [
       },
       { path: "changes", loader: requireSession, element: <RecentChangesPage /> },
       { path: "types", loader: requireSession, element: <OntologyPage /> },
+      { path: "tags", loader: requireSession, element: <TagsPage /> },
+      { path: "collections", loader: requireSession, element: <CollectionsPage /> },
+      { path: "collections/:collectionId", loader: requireSession, element: <CollectionPage /> },
       {
         path: "agent-changes",
         loader: requireSession,

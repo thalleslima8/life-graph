@@ -40,6 +40,11 @@ internal sealed class NodeViews(LifeGraphDbContext db, GraphReadFilter filter)
             .Where(definition => definitionIds.Contains(definition.Id))
             .ToDictionaryAsync(definition => definition.Id, cancellationToken);
         var provenances = await ProvenanceOfAsync([.. nodes.Keys], cancellationToken);
+        var tagsByNode = (await filter.NodeTags()
+                .Where(link => nodeIds.Contains(link.NodeId))
+                .Join(filter.Tags(), link => link.TagId, tag => tag.Id, (link, tag) => new { link.NodeId, tag.Name })
+                .ToListAsync(cancellationToken))
+            .ToLookup(link => link.NodeId, link => link.Name);
 
         var views = new List<GraphNodeView>(nodes.Count);
         foreach (var nodeId in nodeIds)
@@ -72,6 +77,7 @@ internal sealed class NodeViews(LifeGraphDbContext db, GraphReadFilter filter)
                     .Select(ValueOf)
                     .OfType<GraphPropertyValue>()
                     .OrderBy(property => property.Name, StringComparer.Ordinal)],
+                [.. tagsByNode[node.Id].Order(StringComparer.Ordinal)],
                 provenance.Summary,
                 node.UpdatedAt));
         }

@@ -282,6 +282,16 @@ internal sealed class GraphWriter(
         AttachProperty attach => write.Apply(attach),
         DetachProperty detach => write.Apply(detach),
         DeleteType delete => write.Apply(delete),
+        CreateTag create => write.Apply(create),
+        RenameTag rename => write.Apply(rename),
+        DeleteTag delete => write.Apply(delete),
+        TagNode tagNode => write.Apply(tagNode),
+        UntagNode untag => write.Apply(untag),
+        CreateCollection create => write.Apply(create),
+        UpdateCollection update => write.Apply(update),
+        DeleteCollection delete => write.Apply(delete),
+        AddToCollection add => write.Apply(add),
+        RemoveFromCollection remove => write.Apply(remove),
         _ => throw new NotSupportedException($"Unknown graph operation {operation.GetType().Name}."),
     };
 
@@ -409,6 +419,7 @@ internal sealed class GraphWriter(
     {
         GraphConstraints.TypeNameUnique => GraphErrors.TypeNameTaken.ToError(WriteInProgress.TypeNameTakenMessage),
         GraphConstraints.PropertyNameUnique => GraphErrors.PropertyNameTaken.ToError(WriteInProgress.PropertyNameTakenMessage),
+        GraphConstraints.TagNameKeyUnique => GraphErrors.TagNameTaken.ToError(WriteInProgress.TagNameTakenMessage),
         GraphConstraints.NodeCanonicalUrlUnique when actor is GraphActor.AgentIdentity =>
             GraphErrors.ResourceUrlInvalid.ToError(GraphErrors.ResourceUrlInvalidMessage),
         GraphConstraints.NodeCanonicalUrlUnique => GraphErrors.ResourceUrlTaken.ToError(ResourceUrlTakenMessage),

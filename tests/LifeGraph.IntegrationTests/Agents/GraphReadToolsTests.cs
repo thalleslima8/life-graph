@@ -42,12 +42,12 @@ public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifet
 
     // E5 added the write tools beside them; the reads stay read-only, so lifegraph.read is enough.
     [Fact]
-    public async Task The_read_only_tools_are_the_five_reads_and_whoami()
+    public async Task The_read_only_tools_are_the_six_reads_and_whoami()
     {
         var tools = await _agent.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(
-            [GraphReadTools.GetContextName, GraphReadTools.GetNodeName, GraphWriteTools.GetProposalName, GraphReadTools.ListTypesName, GraphReadTools.SearchGraphName, WhoAmITool.Name],
+            [GraphReadTools.GetContextName, GraphReadTools.GetNodeName, GraphWriteTools.GetProposalName, GraphReadTools.ListTagsName, GraphReadTools.ListTypesName, GraphReadTools.SearchGraphName, WhoAmITool.Name],
             tools.Where(tool => tool.ProtocolTool.Annotations?.ReadOnlyHint == true).Select(tool => tool.Name).Order(StringComparer.Ordinal));
     }
 

@@ -43,7 +43,17 @@ public sealed record NodeDetail(
     IReadOnlyList<NodePropertyValue> Properties,
     IReadOnlyList<NodePropertyValue> OtherProperties,
     bool HiddenFromAgents,
-    string? SuggestedType = null);
+    string? SuggestedType = null)
+{
+    /// <summary>The Node's Tags, by name (DA-160).</summary>
+    public IReadOnlyList<NodeTagItem> Tags { get; init; } = [];
+}
+
+/// <summary>A Tag on a Node.</summary>
+public sealed record NodeTagItem(Guid Id, string Name);
+
+/// <summary>A Tag with how many live Nodes the reader sees have it.</summary>
+public sealed record TagItem(Guid Id, string Name, int NodeCount, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
 /// <param name="Value">The stored value; <c>null</c> when the Node has none.</param>
 public sealed record NodePropertyValue(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind, JsonElement? Value);
@@ -106,9 +116,12 @@ public sealed record TypeItem(
     bool IsSystem);
 
 /// <param name="IsSystem">A system Property: locked, it stays attached and cannot change (DA-057).</param>
-public sealed record TypePropertyItem(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind, bool IsSystem);
+/// <param name="IsArchived">An archived Property: values stay, no Node takes a new one (DA-167).</param>
+public sealed record TypePropertyItem(Guid PropertyDefinitionId, string Name, PropertyValueKind ValueKind, bool IsSystem, bool IsArchived);
 
 /// <param name="IsSystem">A system Property: locked, it cannot be renamed, changed nor deleted (DA-057).</param>
+/// <param name="TypeCount">How many Types attach it: an edit affects all of them (DA-066).</param>
+/// <param name="IsArchived">Archived: out of the attach pickers, no new values (DA-167).</param>
 public sealed record PropertyDefinitionItem(
     Guid Id,
     string Name,
@@ -116,7 +129,23 @@ public sealed record PropertyDefinitionItem(
     IReadOnlyList<SelectOption> Options,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    bool IsSystem);
+    bool IsSystem,
+    int TypeCount,
+    bool IsArchived);
+
+/// <summary>
+/// What uses a Property Definition, read before deleting or changing it (DA-066, DA-168).
+/// </summary>
+/// <param name="NodeCount">Live Nodes holding a value: the count a delete confirms.</param>
+/// <param name="TombstoneCount">Deleted Nodes, still restorable, holding a value: they block a delete until purged.</param>
+/// <param name="LastPurgeAt">When the last of those deleted Nodes is purged; <c>null</c> when there is none.</param>
+/// <param name="OptionCounts">By option id, how many Nodes, deleted ones included, chose it.</param>
+public sealed record PropertyDefinitionUsage(
+    int NodeCount,
+    int TypeCount,
+    int TombstoneCount,
+    DateTimeOffset? LastPurgeAt,
+    IReadOnlyDictionary<Guid, int> OptionCounts);
 
 /// <param name="WithoutType">Only the Nodes without a Type (DA-018); exclusive with <see cref="TypeId"/>.</param>
 /// <param name="InInbox">Only the Nodes in the Inbox (DA-019).</param>
@@ -164,3 +193,19 @@ public sealed record ChangeEntryItem(
     string? Label,
     bool IsPurged,
     int? CascadeOf);
+
+/// <summary>
+/// A Collection as the person's views show it. <see cref="Criteria"/> is <c>null</c> for a
+/// manual one; <see cref="NeedsReview"/> lists the criteria that match nothing now (DA-171).
+/// </summary>
+public sealed record CollectionItem(
+    Guid Id,
+    string Name,
+    CollectionCriteria? Criteria,
+    bool Pinned,
+    IReadOnlyList<CollectionReviewItem>? NeedsReview,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+/// <summary>A criterion of a dynamic Collection that matches nothing until it is fixed, and why (DA-171).</summary>
+public sealed record CollectionReviewItem(int CriterionIndex, string Reason);

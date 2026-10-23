@@ -26,6 +26,10 @@ public sealed class GraphWriteTools
 
     public const string RemoveRelationName = "remove_relation";
 
+    public const string TagNodeName = "tag_node";
+
+    public const string UntagNodeName = "untag_node";
+
     public const string SuggestChangesName = "suggest_changes";
 
     public const string ApplyChangesName = "apply_changes";
@@ -124,10 +128,32 @@ public sealed class GraphWriteTools
         CancellationToken cancellationToken = default) =>
         AnswerOf(await writer.WriteAsync(new AgentWriteRequest([new AgentRemoveRelation(relationId)], source), cancellationToken));
 
+    [McpServerTool(Name = TagNodeName, Title = "Aplicar uma Tag", ReadOnly = false, Idempotent = true, Destructive = false, OpenWorld = false)]
+    [Description("Puts one of the person's Tags on a Node. The Tag must already exist: take its name from list_tags; you cannot create Tags."
+        + " A Node that already has it stays as it is." + WriteNote)]
+    public static async Task<CallToolResult> TagNodeAsync(
+        IAgentGraphWriter writer,
+        [Description("The Node's id.")] Guid nodeId,
+        [Description("The Tag's name, from list_tags.")] string tag,
+        [Description(SourceDescription)] string? source = null,
+        CancellationToken cancellationToken = default) =>
+        AnswerOf(await writer.WriteAsync(new AgentWriteRequest([new AgentTagNode(nodeId, tag)], source), cancellationToken));
+
+    [McpServerTool(Name = UntagNodeName, Title = "Remover uma Tag", ReadOnly = false, Idempotent = true, Destructive = false, OpenWorld = false)]
+    [Description("Takes one of the person's Tags off a Node; the Tag itself stays. A Node without it stays as it is. The person can undo it." + WriteNote)]
+    public static async Task<CallToolResult> UntagNodeAsync(
+        IAgentGraphWriter writer,
+        [Description("The Node's id.")] Guid nodeId,
+        [Description("The Tag's name, from list_tags or get_node.")] string tag,
+        [Description(SourceDescription)] string? source = null,
+        CancellationToken cancellationToken = default) =>
+        AnswerOf(await writer.WriteAsync(new AgentWriteRequest([new AgentUntagNode(nodeId, tag)], source), cancellationToken));
+
     [McpServerTool(Name = SuggestChangesName, Title = "Propor alterações", ReadOnly = false, Idempotent = true, Destructive = false, OpenWorld = false)]
     [Description("Proposes several changes at once, applied together or not at all, without applying them: the person reviews them in Agent Changes."
         + " Each operation has `op`: \"create_node\" (title, body, typeId, properties, suggestedType, ref), \"update_node\" (nodeId, expectedVersion, title, body, typeId, properties),"
-        + " \"create_relation\" (sourceNodeId or sourceRef, targetNodeId or targetRef, kind), \"remove_relation\" (relationId) or \"delete_node\" (nodeId, expectedVersion)."
+        + " \"create_relation\" (sourceNodeId or sourceRef, targetNodeId or targetRef, kind), \"remove_relation\" (relationId), \"delete_node\" (nodeId, expectedVersion),"
+        + " \"tag_node\" or \"untag_node\" (nodeId, tag: a name from list_tags)."
         + " `ref` names a Node created by an earlier operation, so a relation can point at it. Too many operations at once are refused, and the refusal tells the limit."
         + " The answer is the proposal's id; when `requiresUser` is false you may apply it yourself with apply_changes, otherwise only the person can (deletes, Type changes, many changes to the person's own content).")]
     public static async Task<CallToolResult> SuggestChangesAsync(

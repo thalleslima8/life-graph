@@ -17,6 +17,10 @@ public static class GraphErrors
 
     public static readonly ErrorCode PropertyDefinitionNotFound = ErrorCode.NotFound("graph.property_definition_not_found");
 
+    public static readonly ErrorCode TagNotFound = ErrorCode.NotFound("graph.tag_not_found");
+
+    public static readonly ErrorCode CollectionNotFound = ErrorCode.NotFound("graph.collection_not_found");
+
     /// <summary>
     /// The Node changed after the caller read it (DA-022): read it again and reapply. The
     /// details carry its current <c>version</c> when the write saw it (DA-117).
@@ -26,6 +30,9 @@ public static class GraphErrors
     public static readonly ErrorCode TypeNameTaken = ErrorCode.Conflict("graph.type_name_taken");
 
     public static readonly ErrorCode PropertyNameTaken = ErrorCode.Conflict("graph.property_name_taken");
+
+    /// <summary>Another Tag of the Account has the same name, ignoring case and accents (DA-161).</summary>
+    public static readonly ErrorCode TagNameTaken = ErrorCode.Conflict("graph.tag_name_taken");
 
     /// <summary>Another write got in first (an id taken, a referenced row gone): send the write again.</summary>
     public static readonly ErrorCode WriteConflict = ErrorCode.Conflict("graph.write_conflict");
@@ -71,11 +78,22 @@ public static class GraphErrors
     public static readonly ErrorCode PropertyInUseByDeletedNodes =
         ErrorCode.BusinessRule("graph.property_in_use_by_deleted_nodes", ErrorRecovery.AskUser).WithPublicDetails();
 
-    /// <summary>
-    /// The value kind of a property with values, or an option a value chose, cannot change
-    /// until the full editor (DA-023).
-    /// </summary>
+    /// <summary>An option a value chose, deleted Nodes included, cannot be removed: archive it (DA-166, DA-169).</summary>
     public static readonly ErrorCode PropertyHasValues = ErrorCode.BusinessRule("graph.property_has_values", ErrorRecovery.AskUser);
+
+    /// <summary>A value kind change outside the safe matrix while Nodes hold values (DA-065, DA-169).</summary>
+    public static readonly ErrorCode PropertyKindChangeBlocked =
+        ErrorCode.BusinessRule("graph.property_kind_change_blocked", ErrorRecovery.AskUser);
+
+    /// <summary>More Nodes than one transaction rewrites hold values for the property (DA-165).</summary>
+    public static readonly ErrorCode PropertyRewriteTooLarge =
+        ErrorCode.BusinessRule("graph.property_rewrite_too_large", ErrorRecovery.NotRecoverable);
+
+    /// <summary>
+    /// The count of live Nodes holding a value differs from the one the person confirmed for
+    /// the delete (DA-168): read the usage again and confirm.
+    /// </summary>
+    public static readonly ErrorCode PropertyUsageChanged = ErrorCode.Conflict("graph.property_usage_changed", ErrorRecovery.AskUser);
 
     /// <summary>
     /// A system Type or Property (the Resource ones, DA-057) cannot be renamed, deleted,
@@ -92,6 +110,9 @@ public static class GraphErrors
     /// never told this: it gets <see cref="ResourceUrlInvalid"/>, so a Node hidden from agents is
     /// never revealed (DA-154).
     /// </summary>
+    /// <summary>Nodes are added to and removed from a manual Collection only; a dynamic one follows its criteria (DA-164).</summary>
+    public static readonly ErrorCode CollectionNotManual = ErrorCode.BusinessRule("graph.collection_not_manual", ErrorRecovery.NotRecoverable);
+
     public static readonly ErrorCode ResourceUrlTaken = ErrorCode.BusinessRule("graph.resource_url_taken", ErrorRecovery.AskUser);
 
     /// <summary>
@@ -111,9 +132,12 @@ public static class GraphErrors
         ChangeSetNotFound,
         TypeNotFound,
         PropertyDefinitionNotFound,
+        TagNotFound,
+        CollectionNotFound,
         NodeVersionConflict,
         TypeNameTaken,
         PropertyNameTaken,
+        TagNameTaken,
         WriteConflict,
         UndoConflict,
         ChangeSetAlreadyReverted,
@@ -124,9 +148,13 @@ public static class GraphErrors
         PropertyInUse,
         PropertyInUseByDeletedNodes,
         PropertyHasValues,
+        PropertyKindChangeBlocked,
+        PropertyRewriteTooLarge,
+        PropertyUsageChanged,
         SystemEntryLocked,
         NameReserved,
         ResourceUrlTaken,
         ResourceUrlInvalid,
+        CollectionNotManual,
     ];
 }

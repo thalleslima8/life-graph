@@ -28,7 +28,15 @@ public sealed record ProposalItem(
     bool IsRedacted);
 
 /// <summary>How many operations of each kind a proposal holds, as Agent Changes lists them (v2 §65).</summary>
-public sealed record ProposalSummary(int CreateNode, int UpdateNode, int CreateRelation, int RemoveRelation, int DeleteNode, int CaptureResource);
+public sealed record ProposalSummary(
+    int CreateNode,
+    int UpdateNode,
+    int CreateRelation,
+    int RemoveRelation,
+    int DeleteNode,
+    int CaptureResource,
+    int TagNode,
+    int UntagNode);
 
 /// <param name="Agent">The agent that proposed it, as the person knows it now.</param>
 /// <param name="ContentPurged">"conteúdo removido por purge": Purge emptied the operations, so there is nothing to approve (DA-135).</param>
@@ -49,6 +57,8 @@ public enum ProposedOperationKind
     RemoveRelation,
     DeleteNode,
     CaptureResource,
+    TagNode,
+    UntagNode,
 }
 
 /// <summary>
@@ -68,11 +78,11 @@ public sealed record ProposedOperationItem(
     IReadOnlyList<FieldChange> Fields,
     IReadOnlyList<int> DependsOn)
 {
-    /// <summary>The Node an edit or a delete names.</summary>
+    /// <summary>The Node an edit, a delete or a tag operation names.</summary>
     [Required]
     public Guid? NodeId { get; init; }
 
-    /// <summary>The current title of the Node it edits or deletes; <c>null</c> when that Node is gone.</summary>
+    /// <summary>The current title of the Node it edits, deletes or tags; <c>null</c> when that Node is gone.</summary>
     [Required]
     public string? NodeTitle { get; init; }
 
@@ -106,6 +116,10 @@ public sealed record ProposedOperationItem(
     /// <summary>The Relation a <c>remove_relation</c> names.</summary>
     [Required]
     public Guid? RelationId { get; init; }
+
+    /// <summary>The Tag a <c>tag_node</c> or <c>untag_node</c> names, as the agent wrote it (DA-162).</summary>
+    [Required]
+    public string? Tag { get; init; }
 }
 
 /// <summary>One end of a proposed Relation: an existing Node (with its title) or a Node the proposal creates (its ref).</summary>
@@ -187,7 +201,9 @@ internal static class ProposalItems
             operations.Count(operation => operation is AgentCreateRelation),
             operations.Count(operation => operation is AgentRemoveRelation),
             operations.Count(operation => operation is AgentDeleteNode),
-            operations.Count(operation => operation is AgentCaptureResource)),
+            operations.Count(operation => operation is AgentCaptureResource),
+            operations.Count(operation => operation is AgentTagNode),
+            operations.Count(operation => operation is AgentUntagNode)),
         proposal.Source,
         proposal.CreatedAt,
         proposal.ExpiresAt,

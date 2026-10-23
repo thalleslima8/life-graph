@@ -61,6 +61,13 @@ internal static class AgentWritePolicy
                     }
 
                     break;
+                case AgentTagNode tag:
+                    // Tagging or untagging the person's Node changes it (DA-132); the agent's own does not.
+                    onPersonsEntities += IsAgentOwned(facts.Nodes[tag.NodeId].CreatedByAgentIdentityId, agentIdentityId) ? 0 : 1;
+                    break;
+                case AgentUntagNode untag:
+                    onPersonsEntities += IsAgentOwned(facts.Nodes[untag.NodeId].CreatedByAgentIdentityId, agentIdentityId) ? 0 : 1;
+                    break;
                 case AgentRemoveRelation remove:
                     if (!IsAgentOwned(facts.Relations[remove.RelationId].CreatedByAgentIdentityId, agentIdentityId))
                     {
@@ -108,10 +115,12 @@ internal sealed record WindowUsage(int ByAgent, int ByAccount);
 /// The links, as the agent gave them, whose capture changes a Resource of the person: restores it
 /// from the tombstone or returns it to the Inbox (DA-154, DA-156).
 /// </param>
+/// <param name="TagIds">The Tags the tag operations name, by their key (<see cref="AgentOperations.TagKeyOf"/>), among the ones the agent sees (DA-162).</param>
 internal sealed record AgentWriteFacts(
     IReadOnlyDictionary<Guid, NodeFact> Nodes,
     IReadOnlyDictionary<Guid, RelationFact> Relations,
-    IReadOnlySet<string>? CapturesOfPersonsResources = null);
+    IReadOnlySet<string>? CapturesOfPersonsResources = null,
+    IReadOnlyDictionary<string, Guid>? TagIds = null);
 
 internal sealed record NodeFact(Guid Id, Guid? TypeId, Guid? CreatedByAgentIdentityId);
 

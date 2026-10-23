@@ -26,6 +26,8 @@ public static class GraphEndpoints
         api.MapNodeEndpoints();
         api.MapRelationEndpoints();
         api.MapOntologyEndpoints();
+        api.MapTagEndpoints();
+        api.MapCollectionEndpoints();
         api.MapChangeSetEndpoints();
         api.MapAgentChangeEndpoints();
 

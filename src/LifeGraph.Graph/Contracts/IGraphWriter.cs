@@ -59,6 +59,18 @@ public enum GraphEntityKind
     Relation,
     Type,
     PropertyDefinition,
+
+    /// <summary>A Tag of the Account (DA-160).</summary>
+    Tag,
+
+    /// <summary>A Node's link to a Tag (DA-160): created and deleted, never updated.</summary>
+    NodeTag,
+
+    /// <summary>A Collection of the Account (DA-163).</summary>
+    Collection,
+
+    /// <summary>A Node added to a manual Collection (DA-163): created and deleted, never updated.</summary>
+    CollectionMember,
 }
 
 public enum GraphChangeOperation
@@ -66,7 +78,7 @@ public enum GraphChangeOperation
     Created,
     Updated,
 
-    /// <summary>A Node or Relation tombstoned, or a Type or Property Definition removed.</summary>
+    /// <summary>A Node or Relation tombstoned, or a Type, Property Definition, Tag, Tag link, Collection or membership removed.</summary>
     Deleted,
 
     /// <summary>A deleted Node or Relation brought back by an Undo.</summary>

@@ -16,7 +16,7 @@ namespace LifeGraph.Graph.Application;
 /// central read filter (<see cref="GraphReadFilter"/>), which never shows tombstones: a
 /// deleted Node or one of another Account reads as not found (DA-104).
 /// </summary>
-internal sealed class GraphReads(
+internal sealed partial class GraphReads(
     LifeGraphDbContext db,
     IAccountContext accountContext,
     GraphReadFilter filter,
@@ -100,6 +100,11 @@ internal sealed class GraphReads(
                 .OrderBy(property => property.Name, StringComparer.Ordinal)
                 .ToList();
 
+            var tags = await filter.NodeTags()
+                .Where(link => link.NodeId == node.Id)
+                .Join(filter.Tags(), link => link.TagId, tag => tag.Id, (link, tag) => new NodeTagItem(tag.Id, tag.Name))
+                .ToListAsync(token);
+
             return Result<NodeDetail>.Ok(new NodeDetail(
                 node.Id,
                 node.Title,
@@ -114,7 +119,10 @@ internal sealed class GraphReads(
                 properties,
                 otherProperties,
                 node.HiddenFromAgents,
-                Node.SuggestedTypeOf(node.TypeId, node.SuggestedType)));
+                Node.SuggestedTypeOf(node.TypeId, node.SuggestedType))
+            {
+                Tags = [.. tags.OrderBy(tag => tag.Name, StringComparer.CurrentCultureIgnoreCase)],
+            });
         }, cancellationToken);
 
     /// <summary>
@@ -201,6 +209,41 @@ internal sealed class GraphReads(
         }, cancellationToken);
     }
 
+    /// <summary>The person's Tags, oldest first, each with how many live Nodes have it (DA-160).</summary>
+    public Task<Result<PagedList<TagItem>>> ListTagsAsync(string? cursor, int? limit, CancellationToken cancellationToken)
+    {
+        var errors = NoErrors();
+        var after = PageCursor.Read(errors, cursor);
+        var pageSize = PageSize(errors, limit, MaxPageSize);
+
+        return RunAsync(errors, async token =>
+        {
+            var tags = filter.Tags();
+            if (after is { } last)
+            {
+                tags = tags.Where(tag => tag.Id.CompareTo(last) > 0);
+            }
+
+            var rows = await ToTagItems(tags.OrderBy(tag => tag.Id).Take(pageSize + 1)).ToListAsync(token);
+            return PageOf(rows, pageSize, item => item.Id);
+        }, cancellationToken);
+    }
+
+    public Task<Result<TagItem>> GetTagAsync(Guid tagId, CancellationToken cancellationToken) =>
+        RunAsync(NoErrors(), async token =>
+        {
+            var tag = await ToTagItems(filter.Tags().Where(tag => tag.Id == tagId)).SingleOrDefaultAsync(token);
+            return tag is null
+                ? Result<TagItem>.Fail(GraphErrors.TagNotFound.ToError("The tag was not found."))
+                : Result<TagItem>.Ok(tag);
+        }, cancellationToken);
+
+    private IQueryable<TagItem> ToTagItems(IQueryable<Tag> tags)
+    {
+        var links = filter.NodeTags();
+        return tags.Select(tag => new TagItem(tag.Id, tag.Name, links.Count(link => link.TagId == tag.Id), tag.CreatedAt, tag.UpdatedAt));
+    }
+
     public Task<Result<TypeItem>> GetTypeAsync(Guid typeId, CancellationToken cancellationToken) =>
         RunAsync(NoErrors(), async token =>
         {
@@ -225,7 +268,8 @@ internal sealed class GraphReads(
             }
 
             var rows = await definitions.OrderBy(definition => definition.Id).Take(pageSize + 1).ToListAsync(token);
-            return PageOf([.. rows.Select(ToItem)], pageSize, item => item.Id);
+            var typeCounts = await TypeCountsAsync([.. rows.Select(definition => definition.Id)], token);
+            return PageOf([.. rows.Select(definition => ToItem(definition, typeCounts))], pageSize, item => item.Id);
         }, cancellationToken);
     }
 
@@ -234,9 +278,68 @@ internal sealed class GraphReads(
         {
             var definition = await db.Set<PropertyDefinition>().AsNoTracking().SingleOrDefaultAsync(definition => definition.Id == definitionId, token);
             return definition is null
-                ? Result<PropertyDefinitionItem>.Fail(GraphErrors.PropertyDefinitionNotFound.ToError("The property was not found."))
-                : Result<PropertyDefinitionItem>.Ok(ToItem(definition));
+                ? Result<PropertyDefinitionItem>.Fail(PropertyNotFound())
+                : Result<PropertyDefinitionItem>.Ok(ToItem(definition, await TypeCountsAsync([definition.Id], token)));
         }, cancellationToken);
+
+    /// <summary>
+    /// What uses the Property Definition: Types, live and deleted Nodes, and each option
+    /// (DA-066, DA-168). RLS keeps every count in the Account.
+    /// </summary>
+    public Task<Result<PropertyDefinitionUsage>> GetPropertyDefinitionUsageAsync(Guid definitionId, CancellationToken cancellationToken) =>
+        RunAsync(NoErrors(), async token =>
+        {
+            var definition = await db.Set<PropertyDefinition>().AsNoTracking().SingleOrDefaultAsync(definition => definition.Id == definitionId, token);
+            if (definition is null)
+            {
+                return Result<PropertyDefinitionUsage>.Fail(PropertyNotFound());
+            }
+
+            var key = definition.Id.ToString();
+            var holding = await db.Database
+                .SqlQuery<HoldingCount>($"""
+                    SELECT count(*) FILTER (WHERE deleted_at IS NULL)::int AS live_count,
+                           count(*) FILTER (WHERE deleted_at IS NOT NULL)::int AS deleted_count,
+                           max(deleted_at) AS last_deleted_at
+                    FROM nodes WHERE jsonb_exists(properties, {key})
+                    """)
+                .SingleAsync(token);
+            var optionCounts = definition.Options.Count == 0
+                ? []
+                : await db.Database
+                    .SqlQuery<OptionCount>($"""
+                        SELECT chosen.option_id, count(*)::int AS node_count
+                        FROM nodes,
+                             LATERAL jsonb_array_elements_text(
+                                 CASE jsonb_typeof(properties -> {key}) WHEN 'array' THEN properties -> {key} ELSE jsonb_build_array(properties -> {key}) END
+                             ) AS chosen(option_id)
+                        WHERE jsonb_exists(properties, {key})
+                        GROUP BY chosen.option_id
+                        """)
+                    .ToListAsync(token);
+            var typeCounts = await TypeCountsAsync([definition.Id], token);
+            return Result<PropertyDefinitionUsage>.Ok(new PropertyDefinitionUsage(
+                holding.LiveCount,
+                typeCounts.GetValueOrDefault(definition.Id),
+                holding.DeletedCount,
+                holding.LastDeletedAt + GraphRetention.DeleteWindow,
+                optionCounts
+                    .Where(count => Guid.TryParse(count.OptionId, out _))
+                    .ToDictionary(count => Guid.Parse(count.OptionId), count => count.NodeCount)));
+        }, cancellationToken);
+
+    private async Task<Dictionary<Guid, int>> TypeCountsAsync(List<Guid> definitionIds, CancellationToken cancellationToken) =>
+        await db.Set<TypeProperty>().AsNoTracking()
+            .Where(property => definitionIds.Contains(property.PropertyDefinitionId))
+            .GroupBy(property => property.PropertyDefinitionId)
+            .Select(group => new { DefinitionId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(row => row.DefinitionId, row => row.Count, cancellationToken);
+
+    private static Error PropertyNotFound() => GraphErrors.PropertyDefinitionNotFound.ToError("The property was not found.");
+
+    private sealed record HoldingCount(int LiveCount, int DeletedCount, DateTimeOffset? LastDeletedAt);
+
+    private sealed record OptionCount(string OptionId, int NodeCount);
 
     /// <summary>
     /// The feed of GraphChangeSets (DA-024). With <paramref name="since"/>, the ones after it,
@@ -349,7 +452,7 @@ internal sealed class GraphReads(
             [.. type.Properties.OrderBy(property => property.Position).Select(property =>
             {
                 var definition = definitions[property.PropertyDefinitionId];
-                return new TypePropertyItem(definition.Id, definition.Name, definition.ValueKind, definition.IsSystem);
+                return new TypePropertyItem(definition.Id, definition.Name, definition.ValueKind, definition.IsSystem, definition.IsArchived);
             })],
             type.CreatedAt,
             type.UpdatedAt,
@@ -428,8 +531,17 @@ internal sealed class GraphReads(
         return snapshot.RootElement.TryGetProperty(field, out var label) ? label.GetString() : null;
     }
 
-    private static PropertyDefinitionItem ToItem(PropertyDefinition definition) =>
-        new(definition.Id, definition.Name, definition.ValueKind, definition.Options, definition.CreatedAt, definition.UpdatedAt, definition.IsSystem);
+    private static PropertyDefinitionItem ToItem(PropertyDefinition definition, Dictionary<Guid, int> typeCounts) =>
+        new(
+            definition.Id,
+            definition.Name,
+            definition.ValueKind,
+            definition.Options,
+            definition.CreatedAt,
+            definition.UpdatedAt,
+            definition.IsSystem,
+            typeCounts.GetValueOrDefault(definition.Id),
+            definition.IsArchived);
 
     private static Dictionary<string, string[]> NoErrors() => new(StringComparer.Ordinal);
 

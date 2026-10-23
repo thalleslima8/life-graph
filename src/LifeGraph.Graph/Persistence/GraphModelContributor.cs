@@ -13,6 +13,10 @@ public sealed class GraphModelContributor : IModelContributor
         modelBuilder.ApplyConfiguration(new TypePropertyConfiguration());
         modelBuilder.ApplyConfiguration(new NodeConfiguration());
         modelBuilder.ApplyConfiguration(new RelationConfiguration());
+        modelBuilder.ApplyConfiguration(new TagConfiguration());
+        modelBuilder.ApplyConfiguration(new NodeTagConfiguration());
+        modelBuilder.ApplyConfiguration(new CollectionConfiguration());
+        modelBuilder.ApplyConfiguration(new CollectionMemberConfiguration());
         modelBuilder.ApplyConfiguration(new GraphChangeSetConfiguration());
         modelBuilder.ApplyConfiguration(new ChangeEntryConfiguration());
         modelBuilder.ApplyConfiguration(new AgentReadConfiguration());

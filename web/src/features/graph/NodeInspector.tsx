@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { AddToCollectionMenu } from "@/features/collections/AddToCollectionMenu";
+import { TagPicker } from "@/features/tags/TagPicker";
 import {
   ANY_TYPE,
   BODY_MAX_LENGTH,
@@ -50,6 +52,7 @@ import {
   writeErrorMessage,
 } from "./graphMessages";
 import { graphPath } from "./localGraph";
+import { PromoteDialog } from "./PromoteDialog";
 import { PropertyValueDisplay, PropertyValueEditor } from "./PropertyValueEditor";
 import { fromWire, propertyValueSchema, toWire, type PropertyField, type PropertyValue } from "./propertyValues";
 
@@ -191,8 +194,37 @@ function ReadyInspector({ node, onNavigate }: { node: NodeDetail; onNavigate?: (
 
       {!readOnly && <NodeActions node={node} />}
       <NodeProperties node={node} />
+      <NodeTags node={node} />
+      {!readOnly && <NodeCollections node={node} />}
       <NodeRelations node={node} />
     </>
+  );
+}
+
+function NodeTags({ node }: { node: NodeDetail }) {
+  const { sectionHeading: Heading, readOnly } = useContext(InspectorOptionsContext);
+
+  return (
+    <section aria-labelledby="node-tags-title" className="space-y-2">
+      <Heading id="node-tags-title" className="text-lg font-semibold">
+        Tags
+      </Heading>
+      <TagPicker nodeId={node.id} tags={node.tags ?? []} readOnly={readOnly} />
+    </section>
+  );
+}
+
+/** Adds the Node to a manual Collection; hidden in the shared, read-only Inspector (Adjustment 1). */
+function NodeCollections({ node }: { node: NodeDetail }) {
+  const { sectionHeading: Heading } = useContext(InspectorOptionsContext);
+
+  return (
+    <section aria-labelledby="node-collections-title" className="space-y-2">
+      <Heading id="node-collections-title" className="text-lg font-semibold">
+        Collections
+      </Heading>
+      <AddToCollectionMenu nodeId={node.id} />
+    </section>
   );
 }
 
@@ -234,7 +266,7 @@ function NodeProperties({ node }: { node: NodeDetail }) {
   return (
     <>
       {readOnly ? <NodeContent node={node} definitionsById={definitionsById} /> : <NodeEditForm node={node} types={types.data} definitionsById={definitionsById} />}
-      <OtherProperties properties={node.otherProperties} definitionsById={definitionsById} />
+      <OtherProperties node={node} definitionsById={definitionsById} />
     </>
   );
 }
@@ -590,14 +622,9 @@ function NodeEditForm({
   );
 }
 
-function OtherProperties({
-  properties,
-  definitionsById,
-}: {
-  properties: NodePropertyValue[];
-  definitionsById: Map<string, PropertyDefinitionItem>;
-}) {
-  const { sectionHeading: Heading } = useContext(InspectorOptionsContext);
+function OtherProperties({ node, definitionsById }: { node: NodeDetail; definitionsById: Map<string, PropertyDefinitionItem> }) {
+  const { sectionHeading: Heading, readOnly } = useContext(InspectorOptionsContext);
+  const properties = node.otherProperties;
   if (properties.length === 0) {
     return null;
   }
@@ -608,7 +635,18 @@ function OtherProperties({
         Outras propriedades
       </Heading>
       <p className="text-sm text-muted-foreground">Valores guardados de um Type anterior. Voltam sozinhos se o Node voltar a um Type que os tenha.</p>
-      <PropertyValues properties={properties} definitionsById={definitionsById} />
+      {readOnly ? (
+        <PropertyValues properties={properties} definitionsById={definitionsById} />
+      ) : (
+        <ul className="space-y-2">
+          {properties.map((property) => (
+            <li key={property.propertyDefinitionId} className="space-y-1 text-sm">
+              <PropertyValues properties={[property]} definitionsById={definitionsById} />
+              <PromoteDialog node={node} property={property} />
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

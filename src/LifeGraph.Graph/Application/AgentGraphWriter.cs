@@ -135,7 +135,7 @@ internal sealed class AgentGraphWriter(
 
                 var applying = ProvenanceOf(agentIdentityId, proposal.Source);
                 var applied = await ApplyAsync(
-                    new AgentApplication(accountId, applying, operations, assessment.OnPersonsEntities, now),
+                    new AgentApplication(accountId, applying, operations, facts.Value!.TagIds, assessment.OnPersonsEntities, now),
                     (changeSet, createdNodes) => proposal.AppliedByTheAgent(new AppliedChanges(changeSet.Id, createdNodes), key, now),
                     token);
 
@@ -260,11 +260,11 @@ internal sealed class AgentGraphWriter(
 
                 if (reasons.Count > 0)
                 {
-                    return await ProposeAsync(new ProposalToMake(accountId, agentIdentityId, provenance, request, reasons, now), token);
+                    return await ProposeAsync(new ProposalToMake(accountId, agentIdentityId, provenance, request, facts.Value!.TagIds, reasons, now), token);
                 }
 
                 return await ApplyAsync(
-                    new AgentApplication(accountId, provenance, request.Operations, assessment.OnPersonsEntities, now),
+                    new AgentApplication(accountId, provenance, request.Operations, facts.Value!.TagIds, assessment.OnPersonsEntities, now),
                     complete: null,
                     token);
             },
@@ -278,7 +278,7 @@ internal sealed class AgentGraphWriter(
         Action<GraphChangeSet, IReadOnlyDictionary<string, Guid>>? complete,
         CancellationToken cancellationToken)
     {
-        var (graphOperations, createdNodes) = AgentOperations.ToGraphOperations(application.Operations, application.Now);
+        var (graphOperations, createdNodes) = AgentOperations.ToGraphOperations(application.Operations, application.Now, application.TagIds);
         var written = await writer.WriteInTransactionAsync(
             new TransactionalWrite(application.AccountId, application.Provenance, graphOperations, application.Now),
             changeSet =>
@@ -298,8 +298,8 @@ internal sealed class AgentGraphWriter(
     // (DA-043 item 8); a full queue stops the agent (DA-130).
     private async Task<Result<ChangeOutcome>> ProposeAsync(ProposalToMake toMake, CancellationToken cancellationToken)
     {
-        var (accountId, agentIdentityId, provenance, request, reasons, now) = toMake;
-        var (graphOperations, _) = AgentOperations.ToGraphOperations(request.Operations, now);
+        var (accountId, agentIdentityId, provenance, request, tagIds, reasons, now) = toMake;
+        var (graphOperations, _) = AgentOperations.ToGraphOperations(request.Operations, now, tagIds);
         var fields = await writer.CheckFieldsInTransactionAsync(new TransactionalWrite(accountId, provenance, graphOperations, now), cancellationToken);
         if (!fields.IsSuccess)
         {
@@ -458,6 +458,7 @@ internal sealed class AgentGraphWriter(
             .Select(relation => new RelationFact(relation.Id, relation.CreatedByAgentIdentityId))
             .ToDictionaryAsync(relation => relation.Id, cancellationToken);
         var types = await filter.Types().Where(type => typeIds.Contains(type.Id)).Select(type => type.Id).ToListAsync(cancellationToken);
+        var tagIds = await AgentOperations.TagIdsAsync(filter.Tags(), operations, cancellationToken);
 
         for (var index = 0; index < operations.Count; index++)
         {
@@ -472,6 +473,10 @@ internal sealed class AgentGraphWriter(
                     GraphErrors.RelationNotFound.ToError("The relation was not found."),
                 AgentCreateNode { TypeId: { } typeId } when !types.Contains(typeId) => TypeNotFound(),
                 AgentUpdateNode { Type.TypeId: { } typeId } when !types.Contains(typeId) => TypeNotFound(),
+                AgentTagNode tag when !nodes.ContainsKey(tag.NodeId) => NodeNotFound(),
+                AgentUntagNode untag when !nodes.ContainsKey(untag.NodeId) => NodeNotFound(),
+                AgentTagNode tag when !tagIds.ContainsKey(AgentOperations.TagKeyOf(tag.Tag)) => TagNotFound(),
+                AgentUntagNode untag when !tagIds.ContainsKey(AgentOperations.TagKeyOf(untag.Tag)) => TagNotFound(),
                 _ => null,
             };
             if (missing is not null)
@@ -481,7 +486,7 @@ internal sealed class AgentGraphWriter(
         }
 
         var capturesOfPersonsResources = await CapturesOfPersonsResourcesAsync(operations, agentIdentityId, cancellationToken);
-        return Result<AgentWriteFacts>.Ok(new AgentWriteFacts(nodes, relations, capturesOfPersonsResources));
+        return Result<AgentWriteFacts>.Ok(new AgentWriteFacts(nodes, relations, capturesOfPersonsResources, tagIds));
     }
 
     // A capture of a link the person's Resource keeps, out of the Inbox or in the tombstone, brings
@@ -530,7 +535,8 @@ internal sealed class AgentGraphWriter(
     }
 
     // The shape of the request, before anything is read: the operation limit (DA-045), the
-    // version every edit carries (DA-050) and refs that name a Node created earlier in it.
+    // version every edit carries (DA-050), refs that name a Node created earlier in it and the
+    // name of each Tag (DA-161).
     private FieldErrors CheckShape(IReadOnlyList<AgentOperation>? operations)
     {
         var errors = new FieldErrors();
@@ -568,6 +574,12 @@ internal sealed class AgentGraphWriter(
                 case AgentCreateRelation relate:
                     CheckRef(errors, new RelationEnd(index, "source"), relate.Source, refs);
                     CheckRef(errors, new RelationEnd(index, "target"), relate.Target, refs);
+                    break;
+                case AgentTagNode tag:
+                    TagName.Read(errors, OperationKeys.Of(index, "tag"), tag.Tag);
+                    break;
+                case AgentUntagNode untag:
+                    TagName.Read(errors, OperationKeys.Of(index, "tag"), untag.Tag);
                     break;
             }
         }
@@ -620,6 +632,8 @@ internal sealed class AgentGraphWriter(
 
     private static Error TypeNotFound() => GraphErrors.TypeNotFound.ToError("The type was not found.");
 
+    private static Error TagNotFound() => GraphErrors.TagNotFound.ToError("The tag was not found. Use a Tag from list_tags: agents do not create Tags.");
+
     /// <summary>What the agent asked for: a write the policy may apply, or a proposal whatever the policy says.</summary>
     private enum WriteMode
     {
@@ -632,6 +646,7 @@ internal sealed class AgentGraphWriter(
         Guid AccountId,
         Provenance Provenance,
         IReadOnlyList<AgentOperation> Operations,
+        IReadOnlyDictionary<string, Guid>? TagIds,
         int WindowOperations,
         DateTimeOffset Now);
 
@@ -641,6 +656,7 @@ internal sealed class AgentGraphWriter(
         Guid AgentIdentityId,
         Provenance Provenance,
         AgentWriteRequest Request,
+        IReadOnlyDictionary<string, Guid>? TagIds,
         IReadOnlyList<ProposalReason> Reasons,
         DateTimeOffset Now);
 

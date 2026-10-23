@@ -149,7 +149,7 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.ToTable("agent_reads", null, t =>
                         {
-                            t.HasCheckConstraint("ck_agent_reads_operation", "operation IN ('get_context', 'get_node', 'list_types', 'search_graph')");
+                            t.HasCheckConstraint("ck_agent_reads_operation", "operation IN ('get_context', 'get_node', 'list_tags', 'list_types', 'search_graph')");
                         });
                 });
 
@@ -224,7 +224,7 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.ToTable("change_entries", null, t =>
                         {
-                            t.HasCheckConstraint("ck_change_entries_entity_kind", "entity_kind IN ('node', 'property_definition', 'relation', 'type')");
+                            t.HasCheckConstraint("ck_change_entries_entity_kind", "entity_kind IN ('collection', 'collection_member', 'node', 'node_tag', 'property_definition', 'relation', 'tag', 'type')");
 
                             t.HasCheckConstraint("ck_change_entries_operation", "operation IN ('created', 'deleted', 'restored', 'updated')");
 
@@ -370,6 +370,94 @@ namespace LifeGraph.Migrations.Migrations
 
                             t.HasCheckConstraint("ck_change_proposals_status", "status IN ('applied', 'expired', 'proposed', 'rejected', 'withdrawn')");
                         });
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.Collection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Criteria")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("criteria");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("Pinned")
+                        .HasColumnType("boolean")
+                        .HasColumnName("pinned");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_collections");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_collections_account_id_id");
+
+                    b.ToTable("collections", (string)null);
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.CollectionMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("CollectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("collection_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_collection_members");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_collection_members_account_id_id");
+
+                    b.HasIndex("AccountId", "CollectionId")
+                        .HasDatabaseName("ix_collection_members_account_id_collection_id");
+
+                    b.HasIndex("AccountId", "NodeId")
+                        .HasDatabaseName("ix_collection_members_account_id_node_id");
+
+                    b.HasIndex("CollectionId", "NodeId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_collection_members_collection_id_node_id");
+
+                    b.ToTable("collection_members", (string)null);
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.GraphChangeSet", b =>
@@ -585,6 +673,47 @@ namespace LifeGraph.Migrations.Migrations
                         });
                 });
 
+            modelBuilder.Entity("LifeGraph.Graph.Domain.NodeTag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<Guid>("TagId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tag_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_node_tags");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_node_tags_account_id_id");
+
+                    b.HasIndex("AccountId", "NodeId")
+                        .HasDatabaseName("ix_node_tags_account_id_node_id");
+
+                    b.HasIndex("AccountId", "TagId")
+                        .HasDatabaseName("ix_node_tags_account_id_tag_id");
+
+                    b.HasIndex("NodeId", "TagId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_node_tags_node_id_tag_id");
+
+                    b.ToTable("node_tags", (string)null);
+                });
+
             modelBuilder.Entity("LifeGraph.Graph.Domain.NodeType", b =>
                 {
                     b.Property<Guid>("Id")
@@ -658,6 +787,10 @@ namespace LifeGraph.Migrations.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_archived");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -814,6 +947,55 @@ namespace LifeGraph.Migrations.Migrations
 
                             t.HasCheckConstraint("ck_relations_strength", "strength >= 0 AND strength <= 1");
                         });
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.Tag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NameKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name_key");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tags");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_tags_account_id_id");
+
+                    b.HasIndex("AccountId", "NameKey")
+                        .IsUnique()
+                        .HasDatabaseName("uq_tags_account_id_name_key");
+
+                    b.ToTable("tags", (string)null);
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.TypeProperty", b =>
@@ -1438,6 +1620,42 @@ namespace LifeGraph.Migrations.Migrations
                         .HasConstraintName("fk_change_proposals_changeset");
                 });
 
+            modelBuilder.Entity("LifeGraph.Graph.Domain.Collection", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_collections_account_id");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.CollectionMember", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_collection_members_account_id");
+
+                    b.HasOne("LifeGraph.Graph.Domain.Collection", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "CollectionId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_collection_members_collection");
+
+                    b.HasOne("LifeGraph.Graph.Domain.Node", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "NodeId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_collection_members_node");
+                });
+
             modelBuilder.Entity("LifeGraph.Graph.Domain.GraphChangeSet", b =>
                 {
                     b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
@@ -1470,6 +1688,32 @@ namespace LifeGraph.Migrations.Migrations
                         .HasPrincipalKey("AccountId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_nodes_type");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.NodeTag", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_tags_account_id");
+
+                    b.HasOne("LifeGraph.Graph.Domain.Node", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "NodeId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_tags_node");
+
+                    b.HasOne("LifeGraph.Graph.Domain.Tag", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "TagId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_tags_tag");
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.NodeType", b =>
@@ -1516,6 +1760,16 @@ namespace LifeGraph.Migrations.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_relations_target_node");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.Tag", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tags_account_id");
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.TypeProperty", b =>

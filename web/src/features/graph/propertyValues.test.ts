@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { fromWire, propertyValueSchema, toWire } from "./propertyValues";
 
 const OPTIONS = [
-  { id: "01920000-0000-7000-8000-0000000000e1", label: "Lendo" },
-  { id: "01920000-0000-7000-8000-0000000000e2", label: "Lido" },
+  { id: "01920000-0000-7000-8000-0000000000e1", label: "Lendo", archived: false },
+  { id: "01920000-0000-7000-8000-0000000000e2", label: "Lido", archived: false },
 ];
 const [READING, READ] = OPTIONS.map((option) => option.id) as [string, string];
 

@@ -10,6 +10,9 @@ internal static class GraphConstraints
 
     public const string PropertyNameUnique = "uq_property_definitions_account_id_name";
 
+    /// <summary>One Tag per folded name and Account (DA-161).</summary>
+    public const string TagNameKeyUnique = "uq_tags_account_id_name_key";
+
     /// <summary>One row per system key and Account (DA-149).</summary>
     public const string TypeSystemKeyUnique = "uq_types_account_id_system_key";
 

@@ -24,6 +24,8 @@ internal sealed class ChangeSetUndo
 
     private const string ChangedLaterMessage = "Changed by a later change.";
 
+    private const string TagNameTakenNowMessage = "A tag with this name exists now.";
+
     private readonly LifeGraphDbContext _db;
     private readonly GraphChangeSet _undone;
     private readonly DateTimeOffset _now;
@@ -31,6 +33,12 @@ internal sealed class ChangeSetUndo
     private readonly Dictionary<Guid, Relation> _relations;
     private readonly Dictionary<Guid, NodeType> _types;
     private readonly Dictionary<Guid, PropertyDefinition> _definitions;
+    private readonly Dictionary<Guid, Tag> _tags;
+    private readonly Dictionary<Guid, NodeTag> _links;
+    private readonly Dictionary<Guid, Collection> _collections;
+    private readonly Dictionary<Guid, CollectionMember> _members;
+    private readonly HashSet<Guid> _existingMemberNodeIds;
+    private readonly HashSet<Guid> _existingNodeIds;
     private readonly Dictionary<Guid, Touched> _touched = [];
     private readonly HashSet<Guid> _removed = [];
     private readonly Dictionary<string, string[]> _conflicts = new(StringComparer.Ordinal);
@@ -39,6 +47,7 @@ internal sealed class ChangeSetUndo
     private readonly HashSet<Guid> _revertedDefinitions = [];
     private HashSet<string> _takenTypeNames = [];
     private HashSet<string> _takenPropertyNames = [];
+    private HashSet<string> _takenTagNameKeys = [];
     private bool _windowClosed;
 
     private ChangeSetUndo(
@@ -48,8 +57,16 @@ internal sealed class ChangeSetUndo
         List<Node> nodes,
         List<Relation> relations,
         List<NodeType> types,
-        List<PropertyDefinition> definitions)
+        List<PropertyDefinition> definitions,
+        TagsInUndo tags,
+        CollectionsInUndo collections)
     {
+        _collections = collections.Collections.ToDictionary(collection => collection.Id);
+        _members = collections.Members.ToDictionary(member => member.Id);
+        _existingMemberNodeIds = collections.ExistingNodeIds;
+        _tags = tags.Tags.ToDictionary(tag => tag.Id);
+        _links = tags.Links.ToDictionary(link => link.Id);
+        _existingNodeIds = tags.ExistingNodeIds;
         _db = db;
         _undone = undone;
         _now = now;
@@ -171,7 +188,9 @@ internal sealed class ChangeSetUndo
             .Where(definition => allDefinitionIds.Contains(definition.Id))
             .ToListAsync(cancellationToken);
 
-        var undo = new ChangeSetUndo(db, undone, now, nodes, relations, types, definitions);
+        var tags = await TagsInUndo.LoadAsync(db, undone, cancellationToken);
+        var collections = await CollectionsInUndo.LoadAsync(db, undone, cancellationToken);
+        var undo = new ChangeSetUndo(db, undone, now, nodes, relations, types, definitions, tags, collections);
         await undo.LoadTakenNamesAsync(cancellationToken);
         return undo;
     }
@@ -191,6 +210,15 @@ internal sealed class ChangeSetUndo
             })
             .Select(entry => ChangeSnapshots.ReadPropertyDefinition(entry.Before!).Name)
             .ToList();
+        var tagNameKeys = _undone.Entries
+            .Where(entry => entry is { EntityKind: GraphEntityKind.Tag, Operation: GraphChangeOperation.Deleted or GraphChangeOperation.Updated })
+            .Select(entry => TagName.KeyOf(ChangeSnapshots.ReadTag(entry.Before!).Name))
+            .ToList();
+        if (tagNameKeys.Count > 0)
+        {
+            _takenTagNameKeys = [.. await _db.Set<Tag>().Where(tag => tagNameKeys.Contains(tag.NameKey)).Select(tag => tag.NameKey).ToListAsync(cancellationToken)];
+        }
+
         if (typeNames.Count > 0)
         {
             _takenTypeNames = [.. await _db.Set<NodeType>().Where(type => typeNames.Contains(type.Name)).Select(type => type.Name).ToListAsync(cancellationToken)];
@@ -313,9 +341,181 @@ internal sealed class ChangeSetUndo
                 RecreateDefinition(entry);
                 break;
 
+            case GraphEntityKind.Tag when entry.Operation == GraphChangeOperation.Created:
+                RemoveWithoutTombstone(GraphEntityKind.Tag, entry.EntityId, ChangeSnapshots.Of(_tags[entry.EntityId]));
+                break;
+
+            case GraphEntityKind.Tag when entry.Operation == GraphChangeOperation.Updated:
+                RevertTag(entry);
+                break;
+
+            case GraphEntityKind.Tag:
+                RecreateTag(entry);
+                break;
+
+            case GraphEntityKind.NodeTag when entry.Operation == GraphChangeOperation.Created:
+                RemoveWithoutTombstone(GraphEntityKind.NodeTag, entry.EntityId, ChangeSnapshots.Of(_links[entry.EntityId]));
+                break;
+
+            case GraphEntityKind.NodeTag:
+                RelinkTag(entry);
+                break;
+
+            case GraphEntityKind.Collection when entry.Operation == GraphChangeOperation.Created:
+                RemoveWithoutTombstone(GraphEntityKind.Collection, entry.EntityId, ChangeSnapshots.Of(_collections[entry.EntityId]));
+                break;
+
+            case GraphEntityKind.Collection when entry.Operation == GraphChangeOperation.Updated:
+                RevertCollection(entry);
+                break;
+
+            case GraphEntityKind.Collection:
+                RecreateCollection(entry);
+                break;
+
+            case GraphEntityKind.CollectionMember when entry.Operation == GraphChangeOperation.Created:
+                RemoveWithoutTombstone(GraphEntityKind.CollectionMember, entry.EntityId, ChangeSnapshots.Of(_members[entry.EntityId]));
+                break;
+
+            case GraphEntityKind.CollectionMember:
+                ReAddMember(entry);
+                break;
+
             default:
                 throw new NotSupportedException($"Unknown entity kind {entry.EntityKind}.");
         }
+    }
+
+    private void RemoveWithoutTombstone(GraphEntityKind kind, Guid id, string before)
+    {
+        Touch(kind, id, before, GraphChangeOperation.Deleted);
+        _removed.Add(id);
+    }
+
+    private void RevertTag(ChangeEntry entry)
+    {
+        var name = ChangeSnapshots.ReadTag(entry.Before!).Name;
+        var tag = _tags[entry.EntityId];
+        var nameKey = TagName.KeyOf(name);
+        if (nameKey != tag.NameKey && !_takenTagNameKeys.Add(nameKey))
+        {
+            Conflict(entry, TagNameTakenNowMessage);
+            return;
+        }
+
+        Touch(GraphEntityKind.Tag, tag.Id, ChangeSnapshots.Of(tag), GraphChangeOperation.Updated);
+        tag.Revert(name, _now);
+    }
+
+    private void RecreateTag(ChangeEntry entry)
+    {
+        var name = ChangeSnapshots.ReadTag(entry.Before!).Name;
+        if (!_takenTagNameKeys.Add(TagName.KeyOf(name)))
+        {
+            Conflict(entry, TagNameTakenNowMessage);
+            return;
+        }
+
+        var tag = Tag.Create(entry.EntityId, _undone.AccountId, name, _now).Value!;
+        _tags[tag.Id] = tag;
+        _removed.Remove(tag.Id);
+        _db.Add(tag);
+        Touch(GraphEntityKind.Tag, tag.Id, before: null, GraphChangeOperation.Created);
+    }
+
+    // A link comes back to its Node, live or deleted, unless Purge removed the Node: a link
+    // that came with its Tag then stays gone, any other refuses the Undo.
+    private void RelinkTag(ChangeEntry entry)
+    {
+        var snapshot = ChangeSnapshots.ReadNodeTag(entry.Before!);
+        if (!_existingNodeIds.Contains(snapshot.NodeId))
+        {
+            if (entry.IsCascade)
+            {
+                _leftBehind.Add(entry.EntityId);
+            }
+            else
+            {
+                Conflict(entry, "The node of the tag no longer exists.");
+            }
+
+            return;
+        }
+
+        if (!_tags.ContainsKey(snapshot.TagId) || _removed.Contains(snapshot.TagId))
+        {
+            Conflict(entry, "The tag no longer exists.");
+            return;
+        }
+
+        if (_links.Values.Any(link => link.NodeId == snapshot.NodeId && link.TagId == snapshot.TagId && !_removed.Contains(link.Id)))
+        {
+            Conflict(entry, "The node has this tag again.");
+            return;
+        }
+
+        var relinked = NodeTag.Link(entry.EntityId, _undone.AccountId, snapshot.NodeId, snapshot.TagId, _now);
+        _links[relinked.Id] = relinked;
+        _removed.Remove(relinked.Id);
+        _db.Add(relinked);
+        Touch(GraphEntityKind.NodeTag, relinked.Id, before: null, GraphChangeOperation.Created);
+    }
+
+    private void RevertCollection(ChangeEntry entry)
+    {
+        var snapshot = ChangeSnapshots.ReadCollection(entry.Before!);
+        var collection = _collections[entry.EntityId];
+        Touch(GraphEntityKind.Collection, collection.Id, ChangeSnapshots.Of(collection), GraphChangeOperation.Updated);
+        collection.Revert(snapshot.Name, snapshot.Criteria, snapshot.Pinned, _now);
+    }
+
+    // The criteria come back as they were: a reference gone since stays, marked for review (DA-171).
+    private void RecreateCollection(ChangeEntry entry)
+    {
+        var snapshot = ChangeSnapshots.ReadCollection(entry.Before!);
+        var collection = Collection.Recreate(entry.EntityId, _undone.AccountId, snapshot.Name, snapshot.Criteria, snapshot.Pinned, _now);
+        _collections[collection.Id] = collection;
+        _removed.Remove(collection.Id);
+        _db.Add(collection);
+        Touch(GraphEntityKind.Collection, collection.Id, before: null, GraphChangeOperation.Created);
+    }
+
+    // A membership comes back to its Node, live or deleted, unless Purge removed the Node: one
+    // that came with its Collection then stays gone, any other refuses the Undo.
+    private void ReAddMember(ChangeEntry entry)
+    {
+        var snapshot = ChangeSnapshots.ReadCollectionMember(entry.Before!);
+        if (!_existingMemberNodeIds.Contains(snapshot.NodeId))
+        {
+            if (entry.IsCascade)
+            {
+                _leftBehind.Add(entry.EntityId);
+            }
+            else
+            {
+                Conflict(entry, "The node of the collection no longer exists.");
+            }
+
+            return;
+        }
+
+        if (!_collections.ContainsKey(snapshot.CollectionId) || _removed.Contains(snapshot.CollectionId))
+        {
+            Conflict(entry, "The collection no longer exists.");
+            return;
+        }
+
+        if (_members.Values.Any(member => member.CollectionId == snapshot.CollectionId && member.NodeId == snapshot.NodeId && !_removed.Contains(member.Id)))
+        {
+            Conflict(entry, "The node is in the collection again.");
+            return;
+        }
+
+        var member = CollectionMember.Add(entry.EntityId, _undone.AccountId, snapshot.CollectionId, snapshot.NodeId, _now);
+        _members[member.Id] = member;
+        _removed.Remove(member.Id);
+        _db.Add(member);
+        Touch(GraphEntityKind.CollectionMember, member.Id, before: null, GraphChangeOperation.Created);
     }
 
     // Undoing a creation deletes the Node, and with it the Relations that touch it, as a
@@ -401,7 +601,7 @@ internal sealed class ChangeSetUndo
         }
 
         Touch(GraphEntityKind.PropertyDefinition, definition.Id, ChangeSnapshots.Of(definition), GraphChangeOperation.Updated);
-        definition.Revert(snapshot.Name, snapshot.ValueKind, snapshot.Options, _now);
+        definition.Revert(snapshot.ToState(), _now);
         _revertedDefinitions.Add(definition.Id);
     }
 
@@ -417,6 +617,7 @@ internal sealed class ChangeSetUndo
         var definition = PropertyDefinition.Define(
             new PropertyDefinitionDraft(entry.EntityId, _undone.AccountId, snapshot.Name, snapshot.ValueKind, snapshot.Options),
             _now).Value!;
+        definition.Revert(snapshot.ToState(), _now);
         _definitions[definition.Id] = definition;
         _removed.Remove(definition.Id);
         _db.Add(definition);
@@ -457,6 +658,22 @@ internal sealed class ChangeSetUndo
             if (_nodes.Values.Any(node => node.TypeId == typeId))
             {
                 Conflict(EntryOf(typeId), "A node still has this type.");
+            }
+        }
+
+        foreach (var tagId in _removed.Where(_tags.ContainsKey))
+        {
+            if (_links.Values.Any(link => link.TagId == tagId && !_removed.Contains(link.Id)))
+            {
+                Conflict(EntryOf(tagId), "A node still has this tag.");
+            }
+        }
+
+        foreach (var collectionId in _removed.Where(_collections.ContainsKey))
+        {
+            if (_members.Values.Any(member => member.CollectionId == collectionId && !_removed.Contains(member.Id)))
+            {
+                Conflict(EntryOf(collectionId), "A node is still in this collection.");
             }
         }
 
@@ -542,7 +759,13 @@ internal sealed class ChangeSetUndo
 
         foreach (var id in _removed)
         {
-            _db.Remove(_types.TryGetValue(id, out var type) ? type : _definitions[id]);
+            object removed = _types.TryGetValue(id, out var type) ? type
+                : _definitions.TryGetValue(id, out var definition) ? definition
+                : _tags.TryGetValue(id, out var tag) ? tag
+                : _collections.TryGetValue(id, out var collection) ? collection
+                : _members.TryGetValue(id, out var member) ? member
+                : _links[id];
+            _db.Remove(removed);
         }
 
         _undone.MarkReverted();
@@ -565,6 +788,10 @@ internal sealed class ChangeSetUndo
         GraphEntityKind.PropertyDefinition => _definitions.TryGetValue(id, out var definition) && !_removed.Contains(id)
             ? ChangeSnapshots.Of(definition)
             : null,
+        GraphEntityKind.Tag => _tags.TryGetValue(id, out var tag) && !_removed.Contains(id) ? ChangeSnapshots.Of(tag) : null,
+        GraphEntityKind.NodeTag => _links.TryGetValue(id, out var link) && !_removed.Contains(id) ? ChangeSnapshots.Of(link) : null,
+        GraphEntityKind.Collection => _collections.TryGetValue(id, out var collection) && !_removed.Contains(id) ? ChangeSnapshots.Of(collection) : null,
+        GraphEntityKind.CollectionMember => _members.TryGetValue(id, out var member) && !_removed.Contains(id) ? ChangeSnapshots.Of(member) : null,
         _ => throw new NotSupportedException($"Unknown entity kind {kind}."),
     };
 
@@ -599,6 +826,72 @@ internal sealed class ChangeSetUndo
 
     private Result<GraphWriteReceipt> Refused() =>
         Result<GraphWriteReceipt>.Fail(GraphErrors.UndoConflict.ToError(ConflictMessage, _conflicts));
+
+    /// <summary>
+    /// The Tags and links the entries name, every link of a Tag whose creation is undone (it
+    /// must have none left), the links that now join the same Node and Tag as a link that comes
+    /// back, and which of their Nodes still exist, tombstones included.
+    /// </summary>
+    private sealed record TagsInUndo(List<Tag> Tags, List<NodeTag> Links, HashSet<Guid> ExistingNodeIds)
+    {
+        public static async Task<TagsInUndo> LoadAsync(LifeGraphDbContext db, GraphChangeSet undone, CancellationToken cancellationToken)
+        {
+            var linkEntries = undone.Entries.Where(entry => entry.EntityKind == GraphEntityKind.NodeTag).ToList();
+            var tagEntries = undone.Entries.Where(entry => entry.EntityKind == GraphEntityKind.Tag).ToList();
+            if (linkEntries.Count == 0 && tagEntries.Count == 0)
+            {
+                return new TagsInUndo([], [], []);
+            }
+
+            var recorded = linkEntries
+                .Where(entry => !entry.IsPurged)
+                .Select(entry => ChangeSnapshots.ReadNodeTag((entry.Before ?? entry.After)!))
+                .ToList();
+            var linkIds = linkEntries.Select(entry => entry.EntityId).ToList();
+            var tagIds = tagEntries.Select(entry => entry.EntityId).Concat(recorded.Select(link => link.TagId)).Distinct().ToList();
+            var nodeIds = recorded.Select(link => link.NodeId).Distinct().ToList();
+
+            var tags = await db.Set<Tag>().Where(tag => tagIds.Contains(tag.Id)).ToListAsync(cancellationToken);
+            var links = await db.Set<NodeTag>()
+                .Where(link => linkIds.Contains(link.Id) || tagIds.Contains(link.TagId))
+                .ToListAsync(cancellationToken);
+            var existingNodeIds = await db.Set<Node>().Where(node => nodeIds.Contains(node.Id)).Select(node => node.Id).ToListAsync(cancellationToken);
+            return new TagsInUndo(tags, links, [.. existingNodeIds]);
+        }
+    }
+
+    /// <summary>
+    /// The Collections and memberships the entries name, every membership of a Collection whose
+    /// creation is undone (it must have none left), the memberships that now join the same
+    /// Collection and Node as one that comes back, and which of their Nodes still exist.
+    /// </summary>
+    private sealed record CollectionsInUndo(List<Collection> Collections, List<CollectionMember> Members, HashSet<Guid> ExistingNodeIds)
+    {
+        public static async Task<CollectionsInUndo> LoadAsync(LifeGraphDbContext db, GraphChangeSet undone, CancellationToken cancellationToken)
+        {
+            var memberEntries = undone.Entries.Where(entry => entry.EntityKind == GraphEntityKind.CollectionMember).ToList();
+            var collectionEntries = undone.Entries.Where(entry => entry.EntityKind == GraphEntityKind.Collection).ToList();
+            if (memberEntries.Count == 0 && collectionEntries.Count == 0)
+            {
+                return new CollectionsInUndo([], [], []);
+            }
+
+            var recorded = memberEntries
+                .Where(entry => !entry.IsPurged)
+                .Select(entry => ChangeSnapshots.ReadCollectionMember((entry.Before ?? entry.After)!))
+                .ToList();
+            var memberIds = memberEntries.Select(entry => entry.EntityId).ToList();
+            var collectionIds = collectionEntries.Select(entry => entry.EntityId).Concat(recorded.Select(member => member.CollectionId)).Distinct().ToList();
+            var nodeIds = recorded.Select(member => member.NodeId).Distinct().ToList();
+
+            var collections = await db.Set<Collection>().Where(collection => collectionIds.Contains(collection.Id)).ToListAsync(cancellationToken);
+            var members = await db.Set<CollectionMember>()
+                .Where(member => memberIds.Contains(member.Id) || collectionIds.Contains(member.CollectionId))
+                .ToListAsync(cancellationToken);
+            var existingNodeIds = await db.Set<Node>().Where(node => nodeIds.Contains(node.Id)).Select(node => node.Id).ToListAsync(cancellationToken);
+            return new CollectionsInUndo(collections, members, [.. existingNodeIds]);
+        }
+    }
 
     private sealed record Touched(GraphEntityKind Kind, Guid Id, string? Before, GraphChangeOperation Operation);
 }

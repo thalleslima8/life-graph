@@ -59,7 +59,8 @@ export function PropertyValueEditor({ id, definition, value, onChange, onBlur, e
 
   if (definition.valueKind === "multi_select") {
     const chosen = Array.isArray(value) ? value : [];
-    const options = definition.options ?? [];
+    // An archived option is no longer offered; one a value already chose stays, so it can be unchecked (DA-167).
+    const options = (definition.options ?? []).filter((option) => !option.archived || chosen.includes(option.id));
     const removed = chosen.filter((choice) => !options.some((option) => option.id === choice));
     const toggle = (optionId: string, checked: boolean) =>
       onChange(checked ? [...chosen, optionId] : chosen.filter((choice) => choice !== optionId));
@@ -93,8 +94,8 @@ export function PropertyValueEditor({ id, definition, value, onChange, onBlur, e
   }
 
   if (definition.valueKind === "select") {
-    const options = definition.options ?? [];
     const selected = typeof value === "string" ? value : "";
+    const options = definition.options ?? [];
     const isRemoved = selected !== "" && !options.some((option) => option.id === selected);
 
     return (
@@ -106,11 +107,14 @@ export function PropertyValueEditor({ id, definition, value, onChange, onBlur, e
               <SelectValue placeholder="Escolha uma opção" />
             </SelectTrigger>
             <SelectContent>
-              {options.map((option) => (
-                <SelectItem key={option.id} value={option.id}>
-                  {option.label}
-                </SelectItem>
-              ))}
+              {/* An archived option is no longer offered; the one already chosen keeps its label (DA-167). */}
+              {options
+                .filter((option) => !option.archived || option.id === selected)
+                .map((option) => (
+                  <SelectItem key={option.id} value={option.id} disabled={option.archived}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               {isRemoved && (
                 <SelectItem value={selected} disabled>
                   {REMOVED_OPTION_LABEL}

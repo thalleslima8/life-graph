@@ -93,11 +93,22 @@ function useProbe(): { hasNewer: boolean; newestProbed: string | null; acknowled
     refetchIntervalInBackground: false,
   });
 
+  const hasNewer = (probe.data?.data.length ?? 0) > 0;
+  const newestProbed = probe.data?.latestCursor ?? null;
+
+  // A Collection's members are evaluated on the server, so any change may move a Node in or
+  // out: an open Collection reads them again without a reload (DA-024, DA-163).
+  useEffect(() => {
+    if (hasNewer) {
+      void queryClient.invalidateQueries({ queryKey: graphKeys.allCollectionMembers });
+    }
+  }, [hasNewer, newestProbed, queryClient]);
+
   const acknowledge = () => {
     void queryClient.resetQueries({ queryKey: feedKey });
   };
 
-  return { hasNewer: (probe.data?.data.length ?? 0) > 0, newestProbed: probe.data?.latestCursor ?? null, acknowledge };
+  return { hasNewer, newestProbed, acknowledge };
 }
 
 export type UndoResult = {

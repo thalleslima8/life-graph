@@ -2,8 +2,11 @@ using System.Globalization;
 using System.Text.Json;
 using LifeGraph.Graph.Application;
 using LifeGraph.Graph.Contracts;
+using LifeGraph.Graph.Domain;
 using LifeGraph.Infrastructure.Errors;
+using LifeGraph.Infrastructure.Identity;
 using LifeGraph.IntegrationTests.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
 namespace LifeGraph.IntegrationTests.Graph;
@@ -121,6 +124,33 @@ public sealed class GraphOntologyTests(PostgresDatabase database) : IAsyncLifeti
     }
 
     [Fact]
+    public async Task Promoting_an_other_property_attaches_it_to_the_type_of_every_node_and_undoing_it_moves_it_back()
+    {
+        var translator = await DefineAsync("Translator", PropertyValueKind.Text);
+        var book = await CreateTypeAsync("Book");
+        var article = await CreateTypeAsync("Article", translator);
+        var promoted = Guid.CreateVersion7();
+        var sibling = Guid.CreateVersion7();
+        await _graph.WrittenAsync(_account, new CreateNode(promoted, "Meditations", TypeId: article, Properties: Values((translator, "Gregory Hays"))));
+        await _graph.WrittenAsync(_account, new UpdateNode(promoted, 1) { Type = new TypeAssignment(book) }, new CreateNode(sibling, "Letters", TypeId: book));
+        Assert.Equal(translator, Assert.Single((await ReadNodeAsync(promoted)).OtherProperties).PropertyDefinitionId);
+
+        var promotion = await _graph.WrittenAsync(_account, new AttachProperty(book, translator));
+
+        var promotedRead = await ReadNodeAsync(promoted);
+        Assert.Empty(promotedRead.OtherProperties);
+        Assert.Equal("Gregory Hays", Assert.Single(promotedRead.Properties).Value?.GetString());
+        var siblingRead = await ReadNodeAsync(sibling);
+        Assert.Equal(translator, Assert.Single(siblingRead.Properties).PropertyDefinitionId);
+        Assert.Null(Assert.Single(siblingRead.Properties).Value);
+
+        Assert.True((await _graph.UndoAsync(_account, promotion)).IsSuccess);
+        Assert.Empty((await ReadNodeAsync(promoted)).Properties);
+        Assert.Equal(translator, Assert.Single((await ReadNodeAsync(promoted)).OtherProperties).PropertyDefinitionId);
+        Assert.Empty((await ReadNodeAsync(sibling)).Properties);
+    }
+
+    [Fact]
     public async Task A_property_without_values_changes_its_kind_and_its_options()
     {
         var status = await DefineAsync("Status", PropertyValueKind.Text);
@@ -139,9 +169,38 @@ public sealed class GraphOntologyTests(PostgresDatabase database) : IAsyncLifeti
             new NpgsqlParameter("id", status)));
     }
 
-    // DA-023: until the full editor (E8), a property with values keeps its kind, deleted Nodes included.
+    // DA-065, DA-165: a safe change rewrites every value, tombstones included, in the same
+    // GraphChangeSet, and its Undo puts back the kind and the values.
     [Fact]
-    public async Task The_kind_of_a_property_with_values_cannot_change_even_when_only_a_deleted_node_holds_one()
+    public async Task A_safe_kind_change_rewrites_live_and_deleted_values_and_undoing_it_restores_them()
+    {
+        var published = await DefineAsync("Published", PropertyValueKind.Date);
+        var book = await CreateTypeAsync("Book", published);
+        var live = Guid.CreateVersion7();
+        var deleted = Guid.CreateVersion7();
+        await _graph.WrittenAsync(
+            _account,
+            new CreateNode(live, "Letters", TypeId: book, Properties: Values((published, "2026-03-04"))),
+            new CreateNode(deleted, "Essays", TypeId: book, Properties: Values((published, "1999-12-31"))));
+        await _graph.WrittenAsync(_account, new DeleteNode(deleted, 1));
+
+        var changed = await _graph.WrittenAsync(_account, new UpdatePropertyDefinition(published) { ValueKind = PropertyValueKind.DateTime });
+
+        Assert.Equal(new DateTimeOffset(2026, 3, 4, 0, 0, 0, TimeSpan.Zero), DateTimeOffset.Parse(await PropertyAsync<string>(live, published), CultureInfo.InvariantCulture));
+        Assert.Equal(new DateTimeOffset(1999, 12, 31, 0, 0, 0, TimeSpan.Zero), DateTimeOffset.Parse(await PropertyAsync<string>(deleted, published), CultureInfo.InvariantCulture));
+        Assert.Equal(1, await EntriesOfAsync(live, "updated"));
+        Assert.Equal(1, await EntriesOfAsync(deleted, "updated"));
+
+        Assert.True((await _graph.UndoAsync(_account, changed)).IsSuccess);
+        Assert.Equal("date", await _graph.ScalarAsync<string>(
+            "SELECT value_kind FROM property_definitions WHERE id = @id", new NpgsqlParameter("id", published)));
+        Assert.Equal("2026-03-04", await PropertyAsync<string>(live, published));
+        Assert.Equal("1999-12-31", await PropertyAsync<string>(deleted, published));
+    }
+
+    // DA-169: outside the matrix the change is blocked while any Node, deleted ones included, holds a value.
+    [Fact]
+    public async Task A_kind_change_outside_the_matrix_is_blocked_even_when_only_a_deleted_node_holds_a_value()
     {
         var pages = await DefineAsync("Pages", PropertyValueKind.Number);
         var book = await CreateTypeAsync("Book", pages);
@@ -149,11 +208,88 @@ public sealed class GraphOntologyTests(PostgresDatabase database) : IAsyncLifeti
         await _graph.WrittenAsync(_account, new CreateNode(node, "Letters", TypeId: book, Properties: Values((pages, 120))));
         await _graph.WrittenAsync(_account, new DeleteNode(node, 1));
 
-        var changed = await _graph.WriteAsync(_account, new UpdatePropertyDefinition(pages) { ValueKind = PropertyValueKind.Text });
+        var changed = await _graph.WriteAsync(_account, new UpdatePropertyDefinition(pages) { ValueKind = PropertyValueKind.Boolean });
         var renamed = await _graph.WriteAsync(_account, new UpdatePropertyDefinition(pages) { Name = "Page count" });
 
-        Assert.Equal(GraphErrors.PropertyHasValues.Code, changed.Error!.Code);
+        Assert.Equal(GraphErrors.PropertyKindChangeBlocked.Code, changed.Error!.Code);
         Assert.True(renamed.IsSuccess, renamed.Error?.Code);
+        Assert.Equal(120, await PropertyAsync<int>(node, pages));
+    }
+
+    // DA-020, DA-165: once a Node edits a rewritten value, the Undo is refused, nothing is changed.
+    [Fact]
+    public async Task Undoing_a_safe_kind_change_is_refused_once_a_node_chose_more_than_one_option()
+    {
+        var reading = Guid.CreateVersion7();
+        var done = Guid.CreateVersion7();
+        var status = Guid.CreateVersion7();
+        var book = Guid.CreateVersion7();
+        var node = Guid.CreateVersion7();
+        await _graph.WrittenAsync(
+            _account,
+            new DefineProperty(status, "Status", PropertyValueKind.Select, [new SelectOption(reading, "Reading"), new SelectOption(done, "Done")]),
+            new CreateType(book, "Book", [status]),
+            new CreateNode(node, "Letters", TypeId: book, Properties: Values((status, done.ToString()))));
+        var changed = await _graph.WrittenAsync(_account, new UpdatePropertyDefinition(status) { ValueKind = PropertyValueKind.MultiSelect });
+        Assert.Equal([done.ToString()], await PropertyAsync<string[]>(node, status));
+        await _graph.WrittenAsync(_account, new UpdateNode(node, 2) { Properties = Values((status, new[] { done.ToString(), reading.ToString() })) });
+
+        var undone = await _graph.UndoAsync(_account, changed);
+
+        Assert.Equal(GraphErrors.UndoConflict.Code, undone.Error!.Code);
+        Assert.Equal("multi_select", await _graph.ScalarAsync<string>(
+            "SELECT value_kind FROM property_definitions WHERE id = @id", new NpgsqlParameter("id", status)));
+    }
+
+    // DA-165: past the cap of rewritten Nodes per transaction the change is refused.
+    [Fact]
+    public async Task A_kind_change_that_would_rewrite_more_nodes_than_the_cap_is_refused()
+    {
+        var pages = await DefineAsync("Pages", PropertyValueKind.Number);
+        var book = await CreateTypeAsync("Book", pages);
+        for (var created = 0; created <= GraphLimits.PropertyRewriteMaxNodes; created += 100)
+        {
+            var batch = Math.Min(100, GraphLimits.PropertyRewriteMaxNodes + 1 - created);
+            await _graph.WrittenAsync(_account, [.. Enumerable.Range(0, batch).Select(index =>
+                (GraphOperation)new CreateNode(Guid.CreateVersion7(), $"Book {created + index}", TypeId: book, Properties: Values((pages, index))))]);
+        }
+
+        var changed = await _graph.WriteAsync(_account, new UpdatePropertyDefinition(pages) { ValueKind = PropertyValueKind.Text });
+
+        Assert.Equal(GraphErrors.PropertyRewriteTooLarge.Code, changed.Error!.Code);
+        Assert.Equal("number", await _graph.ScalarAsync<string>(
+            "SELECT value_kind FROM property_definitions WHERE id = @id", new NpgsqlParameter("id", pages)));
+    }
+
+    // DA-167: archived things keep what Nodes hold and take nothing new.
+    [Fact]
+    public async Task An_archived_property_and_an_archived_option_keep_their_values_and_take_no_new_ones()
+    {
+        var reading = Guid.CreateVersion7();
+        var done = Guid.CreateVersion7();
+        var status = Guid.CreateVersion7();
+        var pages = Guid.CreateVersion7();
+        var book = Guid.CreateVersion7();
+        var held = Guid.CreateVersion7();
+        await _graph.WrittenAsync(
+            _account,
+            new DefineProperty(status, "Status", PropertyValueKind.Select, [new SelectOption(reading, "Reading"), new SelectOption(done, "Done")]),
+            new DefineProperty(pages, "Pages", PropertyValueKind.Number),
+            new CreateType(book, "Book", [status, pages]),
+            new CreateNode(held, "Letters", TypeId: book, Properties: Values((status, done.ToString()), (pages, 120))));
+        await _graph.WrittenAsync(
+            _account,
+            new UpdatePropertyDefinition(status) { Options = [new SelectOption(reading, "Reading"), new SelectOption(done, "Done", Archived: true)] },
+            new UpdatePropertyDefinition(pages) { Archived = true });
+
+        var newChoice = await _graph.WriteAsync(_account, new CreateNode(Guid.CreateVersion7(), "Essays", TypeId: book, Properties: Values((status, done.ToString()))));
+        var newValue = await _graph.WriteAsync(_account, new CreateNode(Guid.CreateVersion7(), "Essays", TypeId: book, Properties: Values((pages, 90))));
+        var kept = await _graph.WriteAsync(_account, new UpdateNode(held, 1) { Properties = Values((status, done.ToString()), (pages, 121)) });
+
+        Assert.Equal(CommonErrors.ValidationFailed.Code, newChoice.Error!.Code);
+        Assert.Equal(CommonErrors.ValidationFailed.Code, newValue.Error!.Code);
+        Assert.True(kept.IsSuccess, kept.Error?.Code);
+        Assert.True(await _graph.ScalarAsync<bool>("SELECT is_archived FROM property_definitions WHERE id = @id", new NpgsqlParameter("id", pages)));
     }
 
     [Fact]
@@ -294,6 +430,54 @@ public sealed class GraphOntologyTests(PostgresDatabase database) : IAsyncLifeti
         Assert.Equal(1, await _graph.CountAsync("property_definitions"));
     }
 
+    // DA-066, DA-168: a loose property goes with live Nodes' values only at the confirmed
+    // count; values on deleted Nodes keep blocking it; the Undo brings the values back.
+    [Fact]
+    public async Task A_loose_property_is_deleted_with_its_values_at_the_confirmed_count_and_undone()
+    {
+        var pages = await DefineAsync("Pages", PropertyValueKind.Number);
+        var book = await CreateTypeAsync("Book", pages);
+        var first = Guid.CreateVersion7();
+        var second = Guid.CreateVersion7();
+        await _graph.WrittenAsync(
+            _account,
+            new CreateNode(first, "Letters", TypeId: book, Properties: Values((pages, 120))),
+            new CreateNode(second, "Essays", TypeId: book, Properties: Values((pages, 80))));
+        await _graph.WrittenAsync(_account, new DetachProperty(book, pages));
+
+        var stale = await _graph.WriteAsync(_account, new DeletePropertyDefinition(pages, ExpectedValueCount: 1));
+        var deleted = await _graph.WrittenAsync(_account, new DeletePropertyDefinition(pages, ExpectedValueCount: 2));
+
+        Assert.Equal(GraphErrors.PropertyUsageChanged.Code, stale.Error!.Code);
+        Assert.Equal(0, await _graph.CountAsync("property_definitions"));
+        Assert.Equal(0L, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes WHERE properties ? @key", new NpgsqlParameter("key", pages.ToString())));
+        Assert.True((await _graph.UndoAsync(_account, deleted)).IsSuccess);
+        Assert.Equal(120, await PropertyAsync<int>(first, pages));
+        Assert.Equal(80, await PropertyAsync<int>(second, pages));
+    }
+
+    // The deleted Nodes answer first, so a stale count is not reported as property_usage_changed (DA-168).
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task Values_on_deleted_nodes_block_a_delete_before_the_confirmed_count_is_compared(int expectedValueCount)
+    {
+        var pages = await DefineAsync("Pages", PropertyValueKind.Number);
+        var book = await CreateTypeAsync("Book", pages);
+        var live = Guid.CreateVersion7();
+        var deleted = Guid.CreateVersion7();
+        await _graph.WrittenAsync(
+            _account,
+            new CreateNode(live, "Letters", TypeId: book, Properties: Values((pages, 120))),
+            new CreateNode(deleted, "Essays", TypeId: book, Properties: Values((pages, 80))));
+        await _graph.WrittenAsync(_account, new DetachProperty(book, pages), new DeleteNode(deleted, 1));
+
+        var refused = await _graph.WriteAsync(_account, new DeletePropertyDefinition(pages, ExpectedValueCount: expectedValueCount));
+
+        Assert.Equal(GraphErrors.PropertyInUseByDeletedNodes.Code, refused.Error!.Code);
+        Assert.Equal(120, await PropertyAsync<int>(live, pages));
+    }
+
     // DA-019: the Inbox is left only by archiving, never by another edit.
     [Fact]
     public async Task A_captured_node_stays_in_the_inbox_until_archived_and_undoing_the_archive_puts_it_back()
@@ -396,6 +580,15 @@ public sealed class GraphOntologyTests(PostgresDatabase database) : IAsyncLifeti
         var id = Guid.CreateVersion7();
         await _graph.WrittenAsync(_account, new CreateType(id, name, definitions));
         return id;
+    }
+
+    private async Task<NodeDetail> ReadNodeAsync(Guid node)
+    {
+        var read = await _graph.AsAsync(
+            new AuthenticatedPrincipal(_account, PrincipalType.Human),
+            services => services.GetRequiredService<GraphReads>().GetNodeAsync(node, TestContext.Current.CancellationToken));
+        Assert.True(read.IsSuccess, read.Error?.Code);
+        return read.Value!;
     }
 
     private Task<string> TypeNameAsync(Guid type) =>

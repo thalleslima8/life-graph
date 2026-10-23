@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 import { Button } from "@/components/ui/button";
+import { CollectionNavLinks } from "@/features/collections/CollectionNavLinks";
 import { useSession } from "@/features/session/session";
 import { useLogout } from "@/features/session/useLogout";
 
@@ -10,6 +11,7 @@ const GRAPH_LINKS = [
   { to: "/changes", label: "Recent Changes" },
   { to: "/agent-changes", label: "Agent Changes" },
   { to: "/types", label: "Types" },
+  { to: "/tags", label: "Tags" },
   { to: "/agentes", label: "Agentes conectados" },
 ];
 
@@ -44,6 +46,7 @@ export function AppLayout() {
                     </Link>
                   </li>
                 ))}
+                <CollectionNavLinks />
               </ul>
             )}
           </div>

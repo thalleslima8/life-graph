@@ -300,15 +300,39 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
 
         var typeInUse = await _spa.DeleteAsync($"/api/types/{book}");
         var propertyInUse = await _spa.DeleteAsync($"/api/property-definitions/{pages}");
-        var kindChange = await SendAsync(HttpMethod.Patch, $"/api/property-definitions/{pages}", new { valueKind = "text" });
+        var kindChange = await SendAsync(HttpMethod.Patch, $"/api/property-definitions/{pages}", new { valueKind = "boolean" });
         var taken = await _spa.PostAsync("/api/types", new { name = "Book" });
 
         Assert.Equal(GraphErrors.TypeInUse.Code, await ProblemCode.ReadAsync(typeInUse));
         Assert.Equal(GraphErrors.PropertyInUse.Code, await ProblemCode.ReadAsync(propertyInUse));
-        Assert.Equal(GraphErrors.PropertyHasValues.Code, await ProblemCode.ReadAsync(kindChange));
+        Assert.Equal(GraphErrors.PropertyKindChangeBlocked.Code, await ProblemCode.ReadAsync(kindChange));
         Assert.Equal(
             [HttpStatusCode.UnprocessableEntity, HttpStatusCode.UnprocessableEntity, HttpStatusCode.UnprocessableEntity, HttpStatusCode.Conflict],
             [typeInUse.StatusCode, propertyInUse.StatusCode, kindChange.StatusCode, taken.StatusCode]);
+    }
+
+    // DA-168: the usage read gives the count the delete confirms; a stale count answers 409.
+    [Fact]
+    public async Task A_property_delete_confirms_the_count_the_usage_read_gave()
+    {
+        var pages = await CreatedIdAsync("/api/property-definitions", new { name = "Pages", valueKind = "number" });
+        var book = await CreatedIdAsync("/api/types", new { name = "Book", propertyDefinitionIds = new[] { pages } });
+        await CreatedIdAsync("/api/nodes", new { title = "Letters", typeId = book, properties = new Dictionary<Guid, object> { [pages] = 120 } });
+        Assert.Equal(HttpStatusCode.OK, (await _spa.DeleteAsync($"/api/types/{book}/properties/{pages}")).StatusCode);
+
+        using var usage = await JsonAsync($"/api/property-definitions/{pages}/usage");
+        var stale = await _spa.DeleteAsync($"/api/property-definitions/{pages}?expectedValueCount=0");
+        var negative = await _spa.DeleteAsync($"/api/property-definitions/{pages}?expectedValueCount=-1");
+        var deleted = await _spa.DeleteAsync($"/api/property-definitions/{pages}?expectedValueCount=1");
+
+        Assert.Equal(
+            [1, 0, 0],
+            [usage.RootElement.GetProperty("nodeCount").GetInt32(), usage.RootElement.GetProperty("typeCount").GetInt32(), usage.RootElement.GetProperty("tombstoneCount").GetInt32()]);
+        Assert.Equal(GraphErrors.PropertyUsageChanged.Code, await ProblemCode.ReadAsync(stale));
+        Assert.Equal(
+            [HttpStatusCode.Conflict, HttpStatusCode.BadRequest, HttpStatusCode.OK],
+            [stale.StatusCode, negative.StatusCode, deleted.StatusCode]);
+        Assert.Equal(HttpStatusCode.NotFound, (await _spa.GetAsync($"/api/property-definitions/{pages}/usage")).StatusCode);
     }
 
     [Fact]
@@ -438,6 +462,79 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
     }
 
     private Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? body) => _spa.SendAsync(method, path, body);
+
+    [Fact]
+    public async Task A_person_creates_fills_and_deletes_collections_and_another_account_sees_none()
+    {
+        var node = await CreatedIdAsync("/api/nodes", new { title = "Meditations" });
+        var created = await _spa.PostAsync("/api/collections", new { name = "Favoritos", pinned = true });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var collection = await EntityIdAsync(created);
+        Assert.Equal($"/api/collections/{collection}", created.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _spa.PostAsync("/api/collections", new { name = " ", criteria = new { version = 1, match = "all", criteria = Array.Empty<object>() } })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Put, $"/api/collections/{collection}/members/{node}", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(HttpMethod.Put, $"/api/collections/{collection}", new { name = "Favoritos" })).StatusCode);
+        using (var stillPinned = await JsonAsync($"/api/collections/{collection}"))
+        {
+            Assert.True(stillPinned.RootElement.GetProperty("pinned").GetBoolean());
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Put, $"/api/collections/{collection}", new { name = "Favoritos", pinned = false })).StatusCode);
+
+        using (var read = await JsonAsync($"/api/collections/{collection}"))
+        {
+            Assert.False(read.RootElement.GetProperty("pinned").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, read.RootElement.GetProperty("criteria").ValueKind);
+        }
+
+        Assert.Equal([node], await ListedIdsAsync($"/api/collections/{collection}/members", _spa));
+
+        using var other = await TestAccounts.SignedInAsync(_factory, EmailB);
+        Assert.Empty(await ListedIdsAsync("/api/collections", other));
+        Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/api/collections/{collection}/members")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.DeleteAsync($"/api/collections/{collection}")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await _spa.DeleteAsync($"/api/collections/{collection}/members/{node}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _spa.DeleteAsync($"/api/collections/{collection}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _spa.GetAsync($"/api/collections/{collection}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_person_creates_renames_applies_and_deletes_tags_and_another_account_sees_none()
+    {
+        var node = await CreatedIdAsync("/api/nodes", new { title = "Meditations" });
+        var created = await _spa.PostAsync("/api/tags", new { name = "#Estoicismo" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var tag = await EntityIdAsync(created);
+        Assert.Equal($"/api/tags/{tag}", created.Headers.Location?.OriginalString);
+
+        Assert.Equal(HttpStatusCode.Conflict, (await _spa.PostAsync("/api/tags", new { name = "estoicismo" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _spa.PostAsync("/api/tags", new { name = "a#b" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Patch, $"/api/tags/{tag}", new { name = "Stoicism" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Put, $"/api/nodes/{node}/tags/{tag}", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Put, $"/api/nodes/{node}/tags/{tag}", new { })).StatusCode);
+
+        using (var listed = await JsonAsync("/api/tags"))
+        {
+            var item = Assert.Single(listed.RootElement.GetProperty("data").EnumerateArray());
+            Assert.Equal(("Stoicism", 1), (item.GetProperty("name").GetString(), item.GetProperty("nodeCount").GetInt32()));
+        }
+
+        using (var inspected = await JsonAsync($"/api/nodes/{node}"))
+        {
+            Assert.Equal("Stoicism", Assert.Single(inspected.RootElement.GetProperty("tags").EnumerateArray()).GetProperty("name").GetString());
+        }
+
+        using var other = await TestAccounts.SignedInAsync(_factory, EmailB);
+        Assert.Empty(await ListedIdsAsync("/api/tags", other));
+        Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/api/tags/{tag}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.DeleteAsync($"/api/tags/{tag}")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await _spa.DeleteAsync($"/api/nodes/{node}/tags/{tag}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _spa.DeleteAsync($"/api/tags/{tag}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _spa.GetAsync($"/api/tags/{tag}")).StatusCode);
+    }
 
     private async Task<Guid> CreatedIdAsync(string path, object body)
     {

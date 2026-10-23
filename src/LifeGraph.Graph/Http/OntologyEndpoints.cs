@@ -60,6 +60,10 @@ internal static class OntologyEndpoints
             .WithName("GetPropertyDefinition")
             .Produces<PropertyDefinitionItem>()
             .ProducesProblem(StatusCodes.Status404NotFound);
+        definitions.MapGet("/{propertyDefinitionId:guid}/usage", GetDefinitionUsageAsync)
+            .WithName("GetPropertyDefinitionUsage")
+            .Produces<PropertyDefinitionUsage>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
         definitions.MapPost("/", DefineAsync)
             .WithName("CreatePropertyDefinition")
             .Produces<GraphWriteReceipt>(StatusCodes.Status201Created)
@@ -75,7 +79,9 @@ internal static class OntologyEndpoints
         definitions.MapDelete("/{propertyDefinitionId:guid}", DeleteDefinitionAsync)
             .WithName("DeletePropertyDefinition")
             .Produces<GraphWriteReceipt>()
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         return endpoints;
@@ -146,6 +152,9 @@ internal static class OntologyEndpoints
     private static async Task<IResult> GetDefinitionAsync(Guid propertyDefinitionId, GraphReads reads, GraphWrites writes, CancellationToken cancellationToken) =>
         writes.Responder.ToHttpResult(await reads.GetPropertyDefinitionAsync(propertyDefinitionId, cancellationToken), definition => TypedResults.Ok(definition));
 
+    private static async Task<IResult> GetDefinitionUsageAsync(Guid propertyDefinitionId, GraphReads reads, GraphWrites writes, CancellationToken cancellationToken) =>
+        writes.Responder.ToHttpResult(await reads.GetPropertyDefinitionUsageAsync(propertyDefinitionId, cancellationToken), usage => TypedResults.Ok(usage));
+
     private static Task<IResult> DefineAsync(CreatePropertyDefinitionRequest request, GraphWrites writes, CancellationToken cancellationToken)
     {
         if (request.ValueKind is not { } valueKind)
@@ -181,12 +190,20 @@ internal static class OntologyEndpoints
             Name = request.Name,
             ValueKind = request.ValueKind,
             Options = request.Options is null ? null : OptionsOf(request.Options),
+            Archived = request.Archived,
         };
         return writes.WriteAsync(update, cancellationToken);
     }
 
-    private static Task<IResult> DeleteDefinitionAsync(Guid propertyDefinitionId, GraphWrites writes, CancellationToken cancellationToken) =>
-        writes.WriteAsync(new DeletePropertyDefinition(propertyDefinitionId), cancellationToken);
+    // The count comes from the usage read the person confirmed (DA-168).
+    private static Task<IResult> DeleteDefinitionAsync(
+        Guid propertyDefinitionId,
+        [FromQuery] int? expectedValueCount,
+        GraphWrites writes,
+        CancellationToken cancellationToken) =>
+        expectedValueCount < 0
+            ? Task.FromResult(writes.Responder.Fail(RequestLimits.Invalid("expectedValueCount", "Must be zero or more.")))
+            : writes.WriteAsync(new DeletePropertyDefinition(propertyDefinitionId, expectedValueCount), cancellationToken);
 
     private static Limaj.Framework.Core.Error? CheckOptions(List<SelectOptionRequest>? options) =>
         options?.Count > GraphLimits.SelectOptionsMaxCount
@@ -195,7 +212,7 @@ internal static class OntologyEndpoints
 
     // A new option gets its id here; an existing one keeps the id its values refer to.
     private static List<SelectOption>? OptionsOf(List<SelectOptionRequest>? options) =>
-        options?.Select(option => new SelectOption(option.Id ?? Guid.CreateVersion7(), option.Label!)).ToList();
+        options?.Select(option => new SelectOption(option.Id ?? Guid.CreateVersion7(), option.Label!, option.Archived ?? false)).ToList();
 }
 
 public sealed record CreateTypeRequest
@@ -229,11 +246,17 @@ public sealed record UpdatePropertyDefinitionRequest
 {
     public string? Name { get; init; }
 
-    /// <summary>Refused with 422 while Nodes hold values for the property (DA-023).</summary>
+    /// <summary>
+    /// With values, only along the safe matrix, rewriting them (DA-065, DA-165); any other
+    /// change answers 422 <c>graph.property_kind_change_blocked</c>.
+    /// </summary>
     public PropertyValueKind? ValueKind { get; init; }
 
-    /// <summary>The full new list; an option a value chose cannot be left out.</summary>
+    /// <summary>The full new list; an option a value chose cannot be left out, only archived.</summary>
     public List<SelectOptionRequest>? Options { get; init; }
+
+    /// <summary>Archives (<c>true</c>) or restores (<c>false</c>) the property (DA-167).</summary>
+    public bool? Archived { get; init; }
 }
 
 public sealed record SelectOptionRequest
@@ -242,4 +265,7 @@ public sealed record SelectOptionRequest
     public Guid? Id { get; init; }
 
     public string? Label { get; init; }
+
+    /// <summary>An archived option is no longer chosen anew (DA-167).</summary>
+    public bool? Archived { get; init; }
 }

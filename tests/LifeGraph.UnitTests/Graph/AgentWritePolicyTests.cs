@@ -98,6 +98,17 @@ public sealed class AgentWritePolicyTests
         Assert.Equal(1, Assess([new AgentRemoveRelation(mine), new AgentRemoveRelation(theirs)], facts).OnPersonsEntities);
     }
 
+    // DA-162, DA-132: tagging or untagging the person's Node changes it; the agent's own Node does not.
+    [Fact]
+    public void Tagging_counts_only_on_the_persons_node()
+    {
+        var (facts, persons, own) = Facts();
+
+        Assert.Equal(2, Assess([new AgentTagNode(persons, "livro"), new AgentUntagNode(persons, "livro")], facts).OnPersonsEntities);
+        Assert.Equal(0, Assess([new AgentTagNode(own, "livro"), new AgentUntagNode(own, "livro")], facts).OnPersonsEntities);
+        Assert.Empty(Assess([new AgentTagNode(persons, "livro")], facts).Reasons);
+    }
+
     [Fact]
     public void A_connection_that_requires_approval_turns_every_write_into_a_proposal()
     {
@@ -180,6 +191,27 @@ public sealed class AgentOperationsTests
 
         Assert.Equal(stored, AgentOperations.Serialize(read));
         Assert.Equal([node], AgentOperations.TargetNodeIds(read));
+    }
+
+    // DA-161, DA-162: a tag operation is stored with the name as the agent gave it, and becomes
+    // the pipeline's operation with the Tag found by its key; a name without a Tag names none.
+    [Fact]
+    public void Tag_operations_round_trip_and_take_the_tag_by_its_key()
+    {
+        var node = Guid.CreateVersion7();
+        var tag = Guid.CreateVersion7();
+        IReadOnlyList<AgentOperation> agentOperations = [new AgentTagNode(node, "#Ficção  Científica"), new AgentUntagNode(node, "unknown")];
+
+        var read = AgentOperations.Deserialize(AgentOperations.Serialize(agentOperations));
+        var (operations, _) = AgentOperations.ToGraphOperations(
+            read,
+            Now,
+            new Dictionary<string, Guid> { [AgentOperations.TagKeyOf("ficcao cientifica")] = tag });
+
+        Assert.Equal(agentOperations, read);
+        Assert.Equal([node], AgentOperations.TargetNodeIds(read));
+        Assert.Equal(new TagNode(node, tag), operations[0]);
+        Assert.Equal(new UntagNode(node, Guid.Empty), operations[1]);
     }
 
     // DA-049: a new Node without Type goes to the Inbox with the hint; refs resolve to the new

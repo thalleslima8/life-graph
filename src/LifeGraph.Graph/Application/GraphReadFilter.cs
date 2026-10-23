@@ -67,6 +67,44 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
             && seenNodes.Any(node => node.Id == relation.TargetNodeId));
     }
 
+    /// <summary>
+    /// The Tags the reader sees: the person sees all of them; an AgentIdentity sees a Tag on at
+    /// least one live Node it sees, or on no live Node at all, so a Tag only Nodes Oculto para
+    /// agentes have does not exist for it (DA-162); anyone else sees none.
+    /// </summary>
+    public IQueryable<Tag> Tags()
+    {
+        var tags = db.Set<Tag>().AsNoTracking();
+        switch (Reader)
+        {
+            case GraphReader.Human:
+                return tags;
+            case GraphReader.AgentIdentity:
+                var liveLinks = db.Set<NodeTag>().Where(link => db.Set<Node>().Any(node => node.Id == link.NodeId && node.DeletedAt == null));
+                var visibleLinks = NodeTags();
+                return tags.Where(tag => !liveLinks.Any(link => link.TagId == tag.Id) || visibleLinks.Any(link => link.TagId == tag.Id));
+            default:
+                return tags.Where(_ => false);
+        }
+    }
+
+    /// <summary>
+    /// The Collections the reader sees: the person sees all of them; an AgentIdentity or anyone
+    /// else sees none, since Collections are the person's navigation (DA-163).
+    /// </summary>
+    public IQueryable<Collection> Collections()
+    {
+        var collections = db.Set<Collection>().AsNoTracking();
+        return Reader == GraphReader.Human ? collections : collections.Where(_ => false);
+    }
+
+    /// <summary>The Tag links of the live Nodes the reader sees (DA-160).</summary>
+    public IQueryable<NodeTag> NodeTags()
+    {
+        var visibleNodes = Nodes();
+        return db.Set<NodeTag>().AsNoTracking().Where(link => visibleNodes.Any(node => node.Id == link.NodeId));
+    }
+
     /// <summary>The Types the reader sees: an agent never sees one that hides its Nodes (DA-039).</summary>
     public IQueryable<NodeType> Types()
     {

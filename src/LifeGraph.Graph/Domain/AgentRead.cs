@@ -63,4 +63,5 @@ public enum AgentReadOperation
     GetNode,
     GetContext,
     ListTypes,
+    ListTags,
 }

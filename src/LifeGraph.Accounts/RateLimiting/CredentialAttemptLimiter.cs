@@ -1,4 +1,3 @@
-using System.Threading.RateLimiting;
 using Limaj.Framework.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
@@ -12,8 +11,11 @@ namespace LifeGraph.Accounts.RateLimiting;
 /// same budget and the same answer, so the limit reveals nothing about which accounts exist.
 /// A refusal carries <c>Error.RetryAfter</c>, written as <c>Retry-After</c> (API-030, DA-102);
 /// it depends only on the window, never on the e-mail, so it reveals nothing either.
+/// A window opens at a budget's first attempt and is read from the injected
+/// <see cref="TimeProvider"/>, so a wait of the whole window always outlasts it and tests can
+/// step past it (GEN-072). Ended windows are dropped once per window, so the counters stay bounded.
 /// </summary>
-internal sealed class CredentialAttemptLimiter : IDisposable
+internal sealed class CredentialAttemptLimiter
 {
     public const string TooManyAttemptsMessage = "Too many attempts. Wait a few minutes and try again.";
 
@@ -21,38 +23,33 @@ internal sealed class CredentialAttemptLimiter : IDisposable
     private const string EmailPartition = "email";
     private const string UnknownClient = "unknown";
 
-    private readonly PartitionedRateLimiter<string> _limiter;
+    private readonly Dictionary<string, AttemptWindow> _windows = new(StringComparer.Ordinal);
+    private readonly Lock _windowsLock = new();
+    private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _window;
+    private readonly int _perClientPermitLimit;
+    private readonly int _perEmailPermitLimit;
+    private DateTimeOffset _nextSweepAt = DateTimeOffset.MinValue;
 
-    public CredentialAttemptLimiter(IOptions<CredentialRateLimitOptions> options)
+    public CredentialAttemptLimiter(IOptions<CredentialRateLimitOptions> options, TimeProvider timeProvider)
     {
         var limits = options.Value;
-        var window = TimeSpan.FromSeconds(limits.WindowSeconds);
-        _window = window;
-        _limiter = PartitionedRateLimiter.Create<string, string>(key => RateLimitPartition.GetFixedWindowLimiter(
-            key,
-            partitionKey => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = partitionKey.StartsWith(EmailPartition, StringComparison.Ordinal)
-                    ? limits.PerEmailPermitLimit
-                    : limits.PerClientPermitLimit,
-                Window = window,
-                QueueLimit = 0,
-                AutoReplenishment = true,
-            }));
+        _window = TimeSpan.FromSeconds(limits.WindowSeconds);
+        _perClientPermitLimit = limits.PerClientPermitLimit;
+        _perEmailPermitLimit = limits.PerEmailPermitLimit;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>
     /// Takes one attempt from the client's budget and, when given, the e-mail's. A refusal is
-    /// <see cref="AccountsErrors.TooManyAttempts"/> with the wait of the refused budget.
+    /// <see cref="AccountsErrors.TooManyAttempts"/> with a wait of the whole window.
     /// </summary>
     public Result TryAcquire(CredentialAttempt attempt, HttpContext httpContext, string? email = null)
     {
         var client = httpContext.Connection.RemoteIpAddress?.ToString() ?? UnknownClient;
-        using var clientLease = _limiter.AttemptAcquire($"{ClientPartition}:{attempt}:{client}");
-        if (!clientLease.IsAcquired)
+        if (!TryTakeOne($"{ClientPartition}:{attempt}:{client}", _perClientPermitLimit))
         {
-            return Refused(clientLease);
+            return Refused();
         }
 
         if (email is null)
@@ -60,17 +57,51 @@ internal sealed class CredentialAttemptLimiter : IDisposable
             return Result.Ok();
         }
 
-        using var emailLease = _limiter.AttemptAcquire($"{EmailPartition}:{attempt}:{NormalizeEmail(email)}");
-        return emailLease.IsAcquired ? Result.Ok() : Refused(emailLease);
+        return TryTakeOne($"{EmailPartition}:{attempt}:{NormalizeEmail(email)}", _perEmailPermitLimit) ? Result.Ok() : Refused();
     }
 
-    private Result Refused(RateLimitLease refusedLease)
+    private bool TryTakeOne(string partitionKey, int permitLimit)
     {
-        var retryAfter = refusedLease.TryGetMetadata(MetadataName.RetryAfter, out var leaseRetryAfter)
-            ? leaseRetryAfter
-            : _window;
-        return Result.Fail(AccountsErrors.TooManyAttempts.ToError(TooManyAttemptsMessage, retryAfter: WholeSecondsAtLeastOne(retryAfter)));
+        lock (_windowsLock)
+        {
+            var now = _timeProvider.GetUtcNow();
+            DropEndedWindows(now);
+            if (!_windows.TryGetValue(partitionKey, out var window) || now >= window.EndsAt)
+            {
+                window = new AttemptWindow(now + _window);
+                _windows[partitionKey] = window;
+            }
+
+            if (window.Attempts >= permitLimit)
+            {
+                return false;
+            }
+
+            window.Attempts++;
+            return true;
+        }
     }
+
+    private void DropEndedWindows(DateTimeOffset now)
+    {
+        if (now < _nextSweepAt)
+        {
+            return;
+        }
+
+        foreach (var (partitionKey, window) in _windows)
+        {
+            if (now >= window.EndsAt)
+            {
+                _windows.Remove(partitionKey);
+            }
+        }
+
+        _nextSweepAt = now + _window;
+    }
+
+    private Result Refused() =>
+        Result.Fail(AccountsErrors.TooManyAttempts.ToError(TooManyAttemptsMessage, retryAfter: WholeSecondsAtLeastOne(_window)));
 
     /// <summary>The header carries whole seconds, rounded up and never zero (API-030).</summary>
     internal static TimeSpan WholeSecondsAtLeastOne(TimeSpan retryAfter) =>
@@ -79,5 +110,10 @@ internal sealed class CredentialAttemptLimiter : IDisposable
     // Same normalization as Identity's default lookup, so "ADA@x" and "ada@x " share a budget.
     private static string NormalizeEmail(string email) => email.Trim().ToUpperInvariant();
 
-    public void Dispose() => _limiter.Dispose();
+    private sealed class AttemptWindow(DateTimeOffset endsAt)
+    {
+        public DateTimeOffset EndsAt { get; } = endsAt;
+
+        public int Attempts { get; set; }
+    }
 }
