@@ -30,6 +30,7 @@ public static class GraphEndpoints
         api.MapCollectionEndpoints();
         api.MapChangeSetEndpoints();
         api.MapAgentChangeEndpoints();
+        api.MapSearchEndpoints();
 
         return endpoints;
     }
@@ -58,6 +59,25 @@ public static class GraphEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        return endpoints;
+    }
+
+    private static IEndpointRouteBuilder MapSearchEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        // By words and by meaning, on submit (DA-183, DA-184); one ranked page with no cursor
+        // (DA-188, exception to API-060); under the read budget like every read.
+        endpoints.MapGet("/search", async (
+                [FromQuery] string? q,
+                [FromQuery] int? limit,
+                GraphReads reads,
+                GraphWrites writes,
+                CancellationToken cancellationToken) =>
+                writes.Responder.ToHttpResult(await reads.SearchAsync(q, limit, cancellationToken), results => TypedResults.Ok(results)))
+            .WithTags("Search")
+            .WithName("SearchNodes")
+            .Produces<NodeSearchResults>()
+            .ProducesValidationProblem();
 
         return endpoints;
     }

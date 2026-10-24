@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { axe } from "vitest-axe";
-import { aNode, aReceipt, aType, NODE_ID, ontologyHandlers, TYPE_ID } from "@/test/graphFixtures";
+import { aNode, aReceipt, aSoftRelation, aType, NODE_ID, ontologyHandlers, TYPE_ID } from "@/test/graphFixtures";
 import { csrfTokenHandler, problem, sessionHandler } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 import { renderRoute } from "@/test/renderRoute";
@@ -109,6 +109,36 @@ describe("node list", () => {
     renderRoute("/nodes?inbox=1");
 
     expect(await screen.findByText("Sugestão do agente: Pessoa")).toBeInTheDocument();
+  });
+
+  // DA-182: the Inbox shows only how many Soft Relations a Node has, linking to its Inspector.
+  it("links an Inbox Node's Soft Relations count to its Inspector section", async () => {
+    nodesApi();
+    server.use(
+      http.get("/api/nodes", () =>
+        HttpResponse.json({
+          data: [
+            { ...aNode({ title: "Sêneca", inInbox: true }), softRelationCount: 2 },
+            { ...aNode({ id: "01920000-0000-7000-8000-000000000003", title: "Duna", inInbox: true }), softRelationCount: 0 },
+          ],
+          page: { nextCursor: null },
+        }),
+      ),
+      http.get("/api/nodes/:nodeId", () => HttpResponse.json(aNode({ title: "Sêneca", inInbox: true }))),
+      http.get("/api/nodes/:nodeId/relations", () => HttpResponse.json({ data: [], page: { nextCursor: null } })),
+      http.get("/api/nodes/:nodeId/soft-relations", () => HttpResponse.json({ data: [aSoftRelation()], page: { nextCursor: null } })),
+    );
+    const { router } = renderRoute("/nodes?inbox=1");
+
+    const list = await screen.findByRole("list", { name: "Inbox" });
+    expect(within(list).getAllByRole("link", { name: /Soft Relation/ }).map((link) => link.textContent)).toEqual(["2 Soft Relations"]);
+    await userEvent.click(within(list).getByRole("link", { name: "2 Soft Relations" }));
+
+    const section = await screen.findByRole("region", { name: "Soft Relations" });
+    expect(router.state.location.pathname).toBe(`/nodes/${NODE_ID}`);
+    expect(router.state.location.hash).toBe("#soft-relations");
+    expect(section).toHaveAttribute("id", "soft-relations");
+    await waitFor(() => expect(section).toHaveFocus());
   });
 
   it("creates a Node and opens it in the Inspector", async () => {

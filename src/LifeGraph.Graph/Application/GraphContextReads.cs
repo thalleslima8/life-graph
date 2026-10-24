@@ -21,6 +21,7 @@ internal sealed class GraphContextReads(
     ICurrentPrincipal currentPrincipal,
     GraphReadFilter filter,
     NodeViews views,
+    HybridSearch hybridSearch,
     TimeProvider clock) : IGraphReader
 {
     public const string NodeNotFoundMessage = "The node was not found.";
@@ -33,21 +34,25 @@ internal sealed class GraphContextReads(
 
     private static readonly CountRange TagListCountRange = new(GraphReadLimits.TagListDefaultCount, GraphReadLimits.TagListMaxCount);
 
-    public Task<Result<GraphSearchResult>> SearchAsync(GraphSearchQuery query, CancellationToken cancellationToken)
+    public async Task<Result<GraphSearchResult>> SearchAsync(GraphSearchQuery query, CancellationToken cancellationToken)
     {
         var errors = new FieldErrors();
         var text = RequireText(errors, "query", query.Text);
         var count = CountWithin(errors, "limit", query.Count, SearchCountRange);
 
-        return RunAsync(
+        // By words and by meaning (DA-183); the model is asked before the transaction opens.
+        var embedding = errors.IsEmpty ? await hybridSearch.EmbedAsync(text, cancellationToken) : null;
+        return await RunAsync(
             AgentReadOperation.SearchGraph,
             new { query = text, typeId = query.TypeId, limit = count },
             errors,
             async (reader, token) =>
             {
-                var ids = await ContextWalk.SearchAsync(db, reader, new NodeSearch(text, query.TypeId, count), token);
-                var hits = await views.HitsAsync(ids, token);
-                return Read.Of(new GraphSearchResult(hits), hits.Select(hit => hit.Id));
+                var outcome = await hybridSearch.SearchAsync(reader, new NodeSearch(text, query.TypeId, count), embedding, token);
+                var matches = outcome.Hits.ToDictionary(hit => hit.NodeId, hit => hit.Match);
+                var hits = await views.HitsAsync([.. outcome.Hits.Select(hit => hit.NodeId)], token);
+                var result = new GraphSearchResult([.. hits.Select(hit => hit with { Match = matches[hit.Id] })]) { Degraded = outcome.Degraded };
+                return Read.Of(result, hits.Select(hit => hit.Id));
             },
             cancellationToken);
     }
@@ -87,7 +92,7 @@ internal sealed class GraphContextReads(
             },
             cancellationToken);
 
-    public Task<Result<GraphContext>> GetContextAsync(GraphContextQuery query, CancellationToken cancellationToken)
+    public async Task<Result<GraphContext>> GetContextAsync(GraphContextQuery query, CancellationToken cancellationToken)
     {
         var errors = new FieldErrors();
         var subject = query.Subject?.Trim();
@@ -103,13 +108,18 @@ internal sealed class GraphContextReads(
 
         var depth = CountWithin(errors, "depth", query.Depth, ContextDepthRange);
 
-        return RunAsync(
+        // The last way to find a subject is by meaning (DA-036); the model is asked before the
+        // transaction opens, as the search does, and only for words that are not an id.
+        var embedding = errors.IsEmpty && query.NodeId is null && !Guid.TryParse(subject, out _)
+            ? await hybridSearch.EmbedAsync(subject!, cancellationToken)
+            : null;
+        return await RunAsync(
             AgentReadOperation.GetContext,
             new { nodeId = query.NodeId, subject, depth, includeSoft = query.IncludeSoft },
             errors,
             async (reader, token) =>
             {
-                var resolved = query.NodeId is { } nodeId ? SubjectResolution.Decide(nodeId, [], []) : await ResolveAsync(reader, subject!, token);
+                var resolved = query.NodeId is { } nodeId ? SubjectResolution.Decide(nodeId, [], [], []) : await ResolveAsync(reader, subject!, embedding, token);
                 if (resolved.Candidates is { } candidateIds)
                 {
                     var candidates = await views.HeadlinesAsync(candidateIds, GraphReadLimits.ContextTextMaxLength, token);
@@ -222,14 +232,17 @@ internal sealed class GraphContextReads(
 
     /// <summary>
     /// A subject, in order: a Node id, then a title equal to it without regard to accents or
-    /// case, then words to find (DA-036). Words are tried only when no title matches, and what
-    /// they find is never confirmed (DA-129).
+    /// case, then words to find, then meaning (DA-036). Each way is tried only when the ones
+    /// before it found nothing, and what words or meaning find is never confirmed (DA-129).
+    /// Meaning goes through the same filter as the search: an agent never meets a Node Oculto
+    /// para agentes there (DA-035); with no <paramref name="embedding"/>, or while the Account
+    /// is being indexed, it finds nothing.
     /// </summary>
-    private async Task<SubjectResolution> ResolveAsync(GraphReader reader, string subject, CancellationToken cancellationToken)
+    private async Task<SubjectResolution> ResolveAsync(GraphReader reader, string subject, QueryEmbedding? embedding, CancellationToken cancellationToken)
     {
         if (Guid.TryParse(subject, out var nodeId) && await filter.Nodes().AnyAsync(node => node.Id == nodeId, cancellationToken))
         {
-            return SubjectResolution.Decide(nodeId, [], []);
+            return SubjectResolution.Decide(nodeId, [], [], []);
         }
 
         var enoughToTell = GraphReadLimits.AmbiguousCandidates + 1;
@@ -237,7 +250,12 @@ internal sealed class GraphContextReads(
         List<Guid> byWords = byTitle.Count > 0
             ? []
             : await ContextWalk.SearchAsync(db, reader, new NodeSearch(subject, TypeId: null, GraphReadLimits.AmbiguousCandidates), cancellationToken);
-        return SubjectResolution.Decide(null, byTitle, byWords);
+        List<Guid> byMeaning = byTitle.Count > 0 || byWords.Count > 0 || embedding is null
+            ? []
+            : [.. (await hybridSearch.SearchAsync(reader, new NodeSearch(subject, TypeId: null, GraphReadLimits.AmbiguousCandidates), embedding, cancellationToken)).Hits
+                .Where(hit => hit.Match == SearchMatch.Semantic)
+                .Select(hit => hit.NodeId)];
+        return SubjectResolution.Decide(null, byTitle, byWords, byMeaning);
     }
 
     // The walk's best step for each Node ranks it; the limits keep the first Nodes. The edges
@@ -289,7 +307,7 @@ internal sealed class GraphContextReads(
         var nodeIds = nodes.Select(node => node.Id).ToList();
         var rootId = scope.RootNodeId;
         var includeSoft = scope.IncludeSoft;
-        var among = filter.Relations().Where(relation =>
+        var among = filter.RelationsWithSoft().Where(relation =>
             nodeIds.Contains(relation.SourceNodeId)
             && nodeIds.Contains(relation.TargetNodeId)
             && (relation.Assertion == RelationAssertion.Hard
@@ -308,7 +326,8 @@ internal sealed class GraphContextReads(
                 relation.Assertion,
                 relation.Origin,
                 relation.Confidence,
-                relation.Strength))],
+                relation.Strength,
+                relation.ExplainInference()))],
             visibleCount);
     }
 
@@ -387,8 +406,8 @@ internal sealed class GraphContextReads(
 
 /// <summary>
 /// What a subject resolved to (DA-129): one Node to expand, candidates to confirm, or nothing.
-/// Only an id or a single exact title is a strong match; anything words found, even a single
-/// Node, comes back as candidates, since a weak hit expanded is the wrong guess DA-036 avoids.
+/// Only an id or a single exact title is a strong match; anything words or meaning found, even a
+/// single Node, comes back as candidates, since a weak hit expanded is the wrong guess DA-036 avoids.
 /// </summary>
 internal sealed record SubjectResolution(Guid? NodeId, IReadOnlyList<Guid>? Candidates)
 {
@@ -397,7 +416,8 @@ internal sealed record SubjectResolution(Guid? NodeId, IReadOnlyList<Guid>? Cand
     /// <param name="byId">The visible Node the subject names by id, if any.</param>
     /// <param name="byExactTitle">The visible Nodes whose title is the subject, without regard to accents or case.</param>
     /// <param name="byWords">The visible Nodes words found, best first.</param>
-    public static SubjectResolution Decide(Guid? byId, IReadOnlyList<Guid> byExactTitle, IReadOnlyList<Guid> byWords)
+    /// <param name="byMeaning">The visible Nodes nearest in meaning, best first; looked at only when words found none.</param>
+    public static SubjectResolution Decide(Guid? byId, IReadOnlyList<Guid> byExactTitle, IReadOnlyList<Guid> byWords, IReadOnlyList<Guid> byMeaning)
     {
         if (byId is { } nodeId)
         {
@@ -408,7 +428,8 @@ internal sealed record SubjectResolution(Guid? NodeId, IReadOnlyList<Guid>? Cand
         {
             1 => new(byExactTitle[0], null),
             > 1 => Unconfirmed(byExactTitle),
-            _ => byWords.Count > 0 ? Unconfirmed(byWords) : NotFound,
+            _ when byWords.Count > 0 => Unconfirmed(byWords),
+            _ => byMeaning.Count > 0 ? Unconfirmed(byMeaning) : NotFound,
         };
     }
 

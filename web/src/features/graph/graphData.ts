@@ -15,6 +15,8 @@ export type NodeSummary = Schemas["NodeSummary"];
 export type NodeDetail = Schemas["NodeDetail"];
 export type NodePropertyValue = Schemas["NodePropertyValue"];
 export type RelationItem = Schemas["RelationItem"];
+export type SoftRelationItem = Schemas["SoftRelationItem"];
+export type SoftRelationExplanation = Schemas["SoftRelationExplanation"];
 export type TypeItem = Schemas["TypeItem"];
 export type PropertyDefinitionItem = Schemas["PropertyDefinitionItem"];
 export type PropertyValueKind = Schemas["PropertyValueKind"];
@@ -47,6 +49,7 @@ export const graphKeys = {
   nodes: (filter: NodeListFilter) => ["graph", "nodes", filter] as const,
   node: (id: string) => ["graph", "node", id] as const,
   relations: (id: string) => ["graph", "node", id, "relations"] as const,
+  softRelations: (id: string) => ["graph", "node", id, "soft-relations"] as const,
   localGraph: (id: string, depth: number) => ["graph", "local-graph", id, depth] as const,
   types: ["graph", "types"] as const,
   propertyDefinitions: ["graph", "property-definitions"] as const,
@@ -110,6 +113,27 @@ export const nodeRelationsQuery = (id: string) =>
     queryFn: async ({ signal }) =>
       unwrap(
         await api.GET("/api/nodes/{nodeId}/relations", {
+          params: { path: { nodeId: id }, query: { limit: RELATIONS_PAGE_SIZE } },
+          signal,
+        }),
+      ),
+    retry: retryUnlessNotFound,
+  });
+
+/** The anchor of the Inspector's Soft Relations section, the target of the Inbox's link. */
+export const SOFT_RELATIONS_SECTION_ID = "soft-relations";
+
+export function softRelationsPath(nodeId: string): string {
+  return `/nodes/${nodeId}#${SOFT_RELATIONS_SECTION_ID}`;
+}
+
+/** The Node's pending Soft Relations with their explanation (DA-070, DA-179): a short top-k, one page. */
+export const nodeSoftRelationsQuery = (id: string) =>
+  queryOptions({
+    queryKey: graphKeys.softRelations(id),
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/api/nodes/{nodeId}/soft-relations", {
           params: { path: { nodeId: id }, query: { limit: RELATIONS_PAGE_SIZE } },
           signal,
         }),
@@ -254,6 +278,20 @@ export function useCreateRelation() {
 export function useDeleteRelation() {
   return useGraphWrite(async (relationId: string) =>
     unwrap(await api.DELETE("/api/relations/{relationId}", { params: { path: { relationId } } })),
+  );
+}
+
+/** Accept: a Hard `related_to` Relation of origin user in one GraphChangeSet (DA-071, DA-177). Takes the Soft Relation id. */
+export function useAcceptSoftRelation(nodeId: string) {
+  return useGraphWrite(async (softRelationId: string) =>
+    unwrap(await api.POST("/api/nodes/{nodeId}/soft-relations/{softRelationId}/acceptance", { params: { path: { nodeId, softRelationId } } })),
+  );
+}
+
+/** Ignore: the pair is not inferred again while the dismissal lives (DA-071); Undo releases it. Takes the Soft Relation id. */
+export function useIgnoreSoftRelation(nodeId: string) {
+  return useGraphWrite(async (softRelationId: string) =>
+    unwrap(await api.POST("/api/nodes/{nodeId}/soft-relations/{softRelationId}/dismissal", { params: { path: { nodeId, softRelationId } } })),
   );
 }
 

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 import { Button } from "@/components/ui/button";
 import { CollectionNavLinks } from "@/features/collections/CollectionNavLinks";
+import { SearchBox } from "@/features/search/SearchBox";
 import { useSession } from "@/features/session/session";
 import { useLogout } from "@/features/session/useLogout";
 
@@ -51,7 +52,8 @@ export function AppLayout() {
             )}
           </div>
           {session && (
-            <div className="flex items-center gap-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <SearchBox />
               <span className="text-muted-foreground">{session.email}</span>
               <Button type="button" variant="secondary" size="sm" onClick={() => logout.mutate()} disabled={logout.isPending}>
                 Sair

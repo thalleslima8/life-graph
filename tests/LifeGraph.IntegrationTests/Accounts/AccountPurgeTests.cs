@@ -4,6 +4,7 @@ using LifeGraph.Infrastructure.Accounts;
 using LifeGraph.Infrastructure.Persistence;
 using LifeGraph.IntegrationTests.Graph;
 using LifeGraph.IntegrationTests.Infrastructure;
+using LifeGraph.IntegrationTests.Semantic;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
@@ -35,6 +36,9 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         var other = await AccountWithDataAsync(OtherEmail);
 
         Assert.True(await CountAsync("agent_reads", purged) > 0);
+        Assert.True(await CountAsync("node_embeddings", purged) > 0);
+        Assert.True(await CountAsync("soft_dismissals", purged) > 0);
+        Assert.True(await SoftRelationsAsync(purged) > 0);
 
         await RunAllParticipantsAsync(purged);
 
@@ -54,6 +58,9 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         Assert.True(await CountAsync("agent_identities", other) > 0);
         Assert.True(await CountAsync("agent_reads", other) > 0);
         Assert.True(await CountAsync("change_proposals", other) > 0);
+        Assert.True(await CountAsync("node_embeddings", other) > 0);
+        Assert.True(await CountAsync("soft_dismissals", other) > 0);
+        Assert.True(await SoftRelationsAsync(other) > 0);
     }
 
     // DA-119: the grants are removed in the Account's transaction, so a later participant's failure brings them back.
@@ -95,8 +102,34 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         var node = Guid.CreateVersion7();
         await graph.WrittenAsync(account, new CreateNode(node, "Leituras"), new CreateNode(Guid.CreateVersion7(), "Notas"));
         await graph.WrittenAsync(account, new DeleteNode(node, 1));
+
+        // The Semantic Layer's derived data (DA-070, DA-071): embeddings, Soft Relations and an Ignore.
+        var embedder = _factory.Services.GetRequiredService<DeterministicEmbedder>();
+        var stoicism = Guid.CreateVersion7();
+        embedder.PinAtAngle("Estoicismo", 0.0);
+        embedder.PinAtAngle("Meditações", 0.1);
+        embedder.PinAtAngle("Sêneca", 0.2);
+        await graph.WrittenAsync(
+            account,
+            new CreateNode(stoicism, "Estoicismo"),
+            new CreateNode(Guid.CreateVersion7(), "Meditações"),
+            new CreateNode(Guid.CreateVersion7(), "Sêneca"));
+        for (var batch = 0; batch < 10 && await graph.RunDueJobsAsync() > 0; batch++)
+        {
+        }
+
+        var softRelation = await database.QueryScalarAsMigratorAsync<Guid>(
+            "SELECT id FROM relations WHERE account_id = @account AND assertion = 'soft' AND (source_node_id = @node OR target_node_id = @node) ORDER BY id LIMIT 1",
+            new NpgsqlParameter("account", account),
+            new NpgsqlParameter("node", stoicism));
+        await graph.WrittenAsync(account, new IgnoreSoftRelation(stoicism, softRelation));
         return account;
     }
+
+    private Task<long> SoftRelationsAsync(Guid accountId) =>
+        database.QueryScalarAsMigratorAsync<long>(
+            "SELECT count(*) FROM relations WHERE account_id = @account AND assertion = 'soft'",
+            new NpgsqlParameter("account", accountId));
 
     private Task RunAllParticipantsAsync(Guid accountId) => RunAllParticipantsAsync(accountId, _factory);
 

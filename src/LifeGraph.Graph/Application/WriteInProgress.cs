@@ -33,6 +33,8 @@ internal sealed class WriteInProgress(
 
     private const string TypeNotFoundMessage = "The type was not found.";
 
+    private const string SoftRelationNotFoundMessage = "The soft relation was not found.";
+
     private const string PropertyNotFoundMessage = "The property was not found.";
 
     private const string VersionDetail = "version";
@@ -48,7 +50,10 @@ internal sealed class WriteInProgress(
     /// <summary>The entities this write creates, to be inserted with the GraphChangeSet.</summary>
     public IReadOnlyList<object> Added => _added;
 
-    /// <summary>The Types, Property Definitions, Tags, Tag links, Collections and memberships this write removes; they have no tombstone.</summary>
+    /// <summary>
+    /// The Types, Property Definitions, Tags, Tag links, Collections, memberships and Ignores this
+    /// write removes, and the Soft Relations an Accept or Ignore took; they have no tombstone.
+    /// </summary>
     public IReadOnlyList<object> Removed => _removed;
 
     public IReadOnlyList<GraphEntityChange> Changes => _changes;
@@ -703,6 +708,65 @@ internal sealed class WriteInProgress(
         }
 
         return Result.Ok();
+    }
+
+    public Result Apply(AcceptSoftRelation accept)
+    {
+        if (workingSet.Knows(accept.RelationId))
+        {
+            return Result.Fail(GraphErrors.WriteConflict.ToError(AlreadyExistsMessage));
+        }
+
+        if (FindSoftRelation(accept.NodeId, accept.SoftRelationId) is not { } soft)
+        {
+            return Result.Fail(GraphErrors.RelationNotFound.ToError(SoftRelationNotFoundMessage));
+        }
+
+        // Same pair, same direction, no input asked (DA-177); the person may edit the kind later.
+        var asserted = Relation.AssertHard(
+            new RelationDraft(accept.RelationId, accountId, soft.SourceNodeId, soft.TargetNodeId, Relation.SoftKind, OriginOf(provenance), AgentOf(provenance)),
+            now);
+        if (!asserted.IsSuccess)
+        {
+            return Result.Fail(asserted.Error!);
+        }
+
+        var relation = asserted.Value!;
+        workingSet.Created(relation);
+        _added.Add(relation);
+        Record(GraphEntityKind.Relation, relation.Id, GraphChangeOperation.Created, before: null, ChangeSnapshots.Of(relation));
+        TakeSoft(soft);
+        return Result.Ok();
+    }
+
+    public Result Apply(IgnoreSoftRelation ignore)
+    {
+        if (FindSoftRelation(ignore.NodeId, ignore.SoftRelationId) is not { } soft)
+        {
+            return Result.Fail(GraphErrors.RelationNotFound.ToError(SoftRelationNotFoundMessage));
+        }
+
+        var dismissal = SoftDismissal.Of(Guid.CreateVersion7(now), accountId, soft.SourceNodeId, soft.TargetNodeId, now);
+        _added.Add(dismissal);
+        Record(GraphEntityKind.SoftDismissal, dismissal.Id, GraphChangeOperation.Created, before: null, ChangeSnapshots.Of(dismissal));
+        TakeSoft(soft);
+        return Result.Ok();
+    }
+
+    // A Soft Relation between two live Nodes the write sees, whose pair has no Hard Relation.
+    private Relation? FindSoftRelation(Guid nodeId, Guid softRelationId) =>
+        workingSet.FindSoftRelation(nodeId, softRelationId) is { } soft
+        && workingSet.FindNode(soft.SourceNodeId) is not null
+        && workingSet.FindNode(soft.TargetNodeId) is not null
+        && !workingSet.HasHardRelationBetween(soft.SourceNodeId, soft.TargetNodeId)
+            ? soft
+            : null;
+
+    // Derived data, outside the log (DA-070): the Soft Relation goes with no entry.
+    private void TakeSoft(Relation soft)
+    {
+        workingSet.RemovedSoft(soft);
+        _removed.Add(soft);
     }
 
     public Result Apply(TagNode tagNode)

@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Routing;
 
 namespace LifeGraph.Graph.Http;
 
-/// <summary>Nodes: list (with the "Sem Type" and Inbox filters), Inspector, local graph, create, edit, delete, archive and restore.</summary>
+/// <summary>Nodes: list (with the "Sem Type" and Inbox filters), Inspector, local graph, create, edit, delete, archive and restore, and the Soft Relations of a Node with Accept and Ignore.</summary>
 internal static class NodeEndpoints
 {
     public static IEndpointRouteBuilder MapNodeEndpoints(this IEndpointRouteBuilder endpoints)
@@ -32,6 +32,27 @@ internal static class NodeEndpoints
             .Produces<PagedList<RelationItem>>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // The pending Soft Relations of a Node, with why each was inferred (DA-184).
+        nodes.MapGet("/{nodeId:guid}/soft-relations", ListSoftRelationsAsync)
+            .WithName("ListNodeSoftRelations")
+            .Produces<PagedList<SoftRelationItem>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // Accept turns the suggestion into a Hard Relation; Ignore stops suggesting the pair
+        // (DA-071, DA-177, DA-184). Both are actions on the suggestion (API-013).
+        nodes.MapPost("/{nodeId:guid}/soft-relations/{softRelationId:guid}/acceptance", AcceptSoftRelationAsync)
+            .WithName("AcceptSoftRelation")
+            .Produces<GraphWriteReceipt>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        nodes.MapPost("/{nodeId:guid}/soft-relations/{softRelationId:guid}/dismissal", IgnoreSoftRelationAsync)
+            .WithName("IgnoreSoftRelation")
+            .Produces<GraphWriteReceipt>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // A depth-bounded, capped subgraph, not a pageable collection (DA-138, exception to API-060).
         nodes.MapGet("/{nodeId:guid}/graph", GetLocalGraphAsync)
@@ -112,6 +133,18 @@ internal static class NodeEndpoints
         return writes.Responder.ToHttpResult(page, value => TypedResults.Ok(value));
     }
 
+    private static async Task<IResult> ListSoftRelationsAsync(
+        Guid nodeId,
+        [FromQuery] string? cursor,
+        [FromQuery] int? limit,
+        GraphReads reads,
+        GraphWrites writes,
+        CancellationToken cancellationToken)
+    {
+        var page = await reads.ListSoftRelationsAsync(nodeId, cursor, limit, cancellationToken);
+        return writes.Responder.ToHttpResult(page, value => TypedResults.Ok(value));
+    }
+
     private static async Task<IResult> GetLocalGraphAsync(
         Guid nodeId,
         [FromQuery] int? depth,
@@ -163,6 +196,12 @@ internal static class NodeEndpoints
 
     private static Task<IResult> ArchiveAsync(Guid nodeId, GraphWrites writes, CancellationToken cancellationToken) =>
         writes.WriteAsync(new ArchiveNode(nodeId), cancellationToken);
+
+    private static Task<IResult> AcceptSoftRelationAsync(Guid nodeId, Guid softRelationId, GraphWrites writes, CancellationToken cancellationToken) =>
+        writes.WriteAsync(new AcceptSoftRelation(nodeId, softRelationId, Guid.CreateVersion7()), cancellationToken);
+
+    private static Task<IResult> IgnoreSoftRelationAsync(Guid nodeId, Guid softRelationId, GraphWrites writes, CancellationToken cancellationToken) =>
+        writes.WriteAsync(new IgnoreSoftRelation(nodeId, softRelationId), cancellationToken);
 }
 
 public sealed record CreateNodeRequest

@@ -1,14 +1,30 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import { axe } from "vitest-axe";
-import { aCollection, aDefinition, aNode, aReceipt, aTag, aType, COLLECTION_ID, NODE_ID, ontologyHandlers, OTHER_NODE_ID, RELATION_ID, TAG_ID, TYPE_ID } from "@/test/graphFixtures";
+import {
+  aCollection,
+  aDefinition,
+  aNode,
+  aReceipt,
+  aSoftRelation,
+  aTag,
+  aType,
+  COLLECTION_ID,
+  NODE_ID,
+  ontologyHandlers,
+  OTHER_NODE_ID,
+  RELATION_ID,
+  SOFT_RELATION_ID,
+  TAG_ID,
+  TYPE_ID,
+} from "@/test/graphFixtures";
 import { csrfTokenHandler, problem } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
-import type { NodeDetail, PropertyDefinitionItem, RelationItem } from "./graphData";
+import type { NodeDetail, PropertyDefinitionItem, RelationItem, SoftRelationItem } from "./graphData";
 import { NodeInspector } from "./NodeInspector";
 
 const citation: RelationItem = {
@@ -29,6 +45,7 @@ function renderInspector(
   props: { headingLevel?: 1 | 2 | 3 | 4 | 5; readOnly?: boolean },
   node: NodeDetail = aNode({ body: "Notas de leitura", inInbox: true }),
   definitions: PropertyDefinitionItem[] = [],
+  initialEntry = "/",
 ) {
   server.use(
     csrfTokenHandler().handler,
@@ -40,7 +57,7 @@ function renderInspector(
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <NodeInspector nodeId={NODE_ID} {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -350,5 +367,141 @@ describe("embedded node inspector", () => {
       expect(await screen.findByText("Gregory Hays")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^Promover/ })).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("Soft Relations in the node inspector", () => {
+  const SECOND_SOFT_ID = "01920000-0000-7000-8000-0000000000f4";
+  const THIRD_NODE_ID = "01920000-0000-7000-8000-000000000003";
+  const second = aSoftRelation({ id: SECOND_SOFT_ID, nodeId: THIRD_NODE_ID, nodeTitle: "Estoicismo", explanation: { method: "coocorrência", modelId: "", score: 0.5 } });
+
+  /** Serves the given rows; each successful action removes its row, as the server does. */
+  function softRelationsApi(initial: SoftRelationItem[]) {
+    const state = { rows: [...initial], posted: [] as string[] };
+    const resolve = (action: string) =>
+      http.post(`/api/nodes/:nodeId/soft-relations/:softRelationId/${action}`, ({ params }) => {
+        state.posted.push(`${action} ${String(params.softRelationId)}`);
+        state.rows = state.rows.filter((row) => row.id !== params.softRelationId);
+        return HttpResponse.json(aReceipt());
+      });
+    server.use(
+      http.get("/api/nodes/:nodeId/soft-relations", () => HttpResponse.json({ data: state.rows, page: { nextCursor: null } })),
+      resolve("acceptance"),
+      resolve("dismissal"),
+    );
+    return state;
+  }
+
+  it("lists each Soft Relation apart from the Hard ones, with its explanation", async () => {
+    softRelationsApi([aSoftRelation(), second]);
+    const { container } = renderInspector({});
+
+    const section = await screen.findByRole("region", { name: "Soft Relations" });
+    const rows = await within(section).findAllByRole("listitem");
+    expect(rows.map((row) => row.textContent?.replace(/AcceptIgnore$/, ""))).toEqual([
+      "Meditações · embedding · score 0,82 · multilingual-e5-small",
+      "Estoicismo · coocorrência · score 0,5",
+    ]);
+    expect(within(screen.getByRole("list", { name: "Relations" })).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(section).queryByRole("button", { name: /^Remover/ })).not.toBeInTheDocument();
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("hides the section when the Node has no Soft Relation", async () => {
+    renderInspector({});
+
+    expect(await screen.findByRole("list", { name: "Relations" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Soft Relations" })).not.toBeInTheDocument();
+  });
+
+  it("shows nothing, and no error, when the Soft Relations are not found", async () => {
+    server.use(http.get("/api/nodes/:nodeId/soft-relations", () => problem(404, "graph.node_not_found")));
+    renderInspector({});
+
+    expect(await screen.findByRole("list", { name: "Relations" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    expect(screen.queryByRole("region", { name: "Soft Relations" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says when the Soft Relations could not be loaded", async () => {
+    server.use(http.get("/api/nodes/:nodeId/soft-relations", () => problem(500, "unexpected")));
+    renderInspector({});
+
+    const section = await screen.findByRole("region", { name: "Soft Relations" });
+    expect(await within(section).findByRole("alert")).toHaveTextContent("Não foi possível carregar.");
+  });
+
+  it("says it is loading while the Soft Relations are on their way", async () => {
+    server.use(http.get("/api/nodes/:nodeId/soft-relations", () => new Promise<never>(() => undefined)));
+    renderInspector({});
+
+    const section = await screen.findByRole("region", { name: "Soft Relations" });
+    expect(within(section).getByRole("status")).toHaveTextContent("Carregando…");
+  });
+
+  it("accepts a Soft Relation and moves focus to the Relations once none is left", async () => {
+    const api = softRelationsApi([aSoftRelation()]);
+    renderInspector({});
+
+    await userEvent.click(await screen.findByRole("button", { name: "Accept Soft Relation com Meditações" }));
+
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Soft Relations" })).not.toBeInTheDocument());
+    expect(api.posted).toEqual([`acceptance ${SOFT_RELATION_ID}`]);
+    expect(screen.getByRole("heading", { name: "Relations" })).toHaveFocus();
+  });
+
+  it("ignores a Soft Relation and moves focus to the section while others remain", async () => {
+    const api = softRelationsApi([aSoftRelation(), second]);
+    renderInspector({});
+
+    await userEvent.click(await screen.findByRole("button", { name: "Ignore Soft Relation com Meditações" }));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Ignore Soft Relation com Meditações" })).not.toBeInTheDocument());
+    expect(api.posted).toEqual([`dismissal ${SOFT_RELATION_ID}`]);
+    expect(screen.getByRole("heading", { name: "Soft Relations" })).toHaveFocus();
+  });
+
+  it("sends one action while it is pending, and shows its error in the row", async () => {
+    let release: () => void = () => undefined;
+    const posts: string[] = [];
+    server.use(
+      http.get("/api/nodes/:nodeId/soft-relations", () => HttpResponse.json({ data: [aSoftRelation()], page: { nextCursor: null } })),
+      http.post("/api/nodes/:nodeId/soft-relations/:softRelationId/acceptance", async ({ params }) => {
+        posts.push(String(params.softRelationId));
+        await new Promise<void>((resolve) => (release = resolve));
+        return problem(404, "graph.relation_not_found");
+      }),
+    );
+    renderInspector({});
+
+    const accept = await screen.findByRole("button", { name: "Accept Soft Relation com Meditações" });
+    await userEvent.click(accept);
+    await waitFor(() => expect(accept).toBeDisabled());
+    expect(screen.getByRole("button", { name: "Ignore Soft Relation com Meditações" })).toBeDisabled();
+    await userEvent.click(accept);
+    release();
+
+    const row = screen.getByRole("button", { name: "Accept Soft Relation com Meditações" }).closest("li");
+    expect(await within(row as HTMLElement).findByRole("alert")).toBeInTheDocument();
+    expect(posts).toEqual([SOFT_RELATION_ID]);
+  });
+
+  it("offers no Accept or Ignore when read only", async () => {
+    softRelationsApi([aSoftRelation()]);
+    renderInspector({ readOnly: true });
+
+    const section = await screen.findByRole("region", { name: "Soft Relations" });
+    expect(await within(section).findByRole("link", { name: "Meditações" })).toBeInTheDocument();
+    expect(within(section).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("focuses the section when opened from the Inbox's link", async () => {
+    softRelationsApi([aSoftRelation()]);
+    renderInspector({}, undefined, [], `/nodes/${NODE_ID}#soft-relations`);
+
+    const section = await screen.findByRole("region", { name: "Soft Relations" });
+    await waitFor(() => expect(section).toHaveFocus());
+    expect(section).toHaveAttribute("id", "soft-relations");
   });
 });

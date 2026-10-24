@@ -175,8 +175,9 @@ Stack: .NET 10 (ASP.NET Core, EF Core, PostgreSQL + pgvector) and React 19
 Requirements: Docker and VS Code with the Dev Containers extension.
 
 1. Open the repository in VS Code and run **Reopen in Container**.
-2. Wait for `post-create.sh`: it restores packages, runs `npm ci` and applies
-   the migrations to the `postgres` service.
+2. Wait for `post-create.sh`: it restores packages, runs `npm ci`, applies
+   the migrations to the `postgres` service and downloads the embedding model
+   (about 470 MB, once; see "Embedding model" below).
 3. Run the API and the frontend in two terminals:
 
    ```bash
@@ -221,6 +222,44 @@ pwsh tests/LifeGraph.IntegrationTests/bin/Debug/net10.0/playwright.ps1 install -
 LIFEGRAPH_BROWSER_TESTS=1 dotnet test --project tests/LifeGraph.IntegrationTests --filter-class "LifeGraph.IntegrationTests.Agents.ConsentInBrowserTests"
 ```
 
+One test class runs the real embedding model (`RealModelEmbeddingTests`,
+DA-175) on a fixed Portuguese fixture. It is skipped when the model files are
+not in `Semantic__Embeddings__ModelDirectory` (by default
+`~/models/multilingual-e5-small`), so the CI does not run it:
+
+```bash
+dotnet test --project tests/LifeGraph.UnitTests --filter-class "LifeGraph.UnitTests.Semantic.RealModelEmbeddingTests"
+```
+
+### Embedding model
+
+The semantic layer embeds Nodes with `intfloat/multilingual-e5-small`, run
+inside the API with ONNX Runtime (DA-174); no text leaves the host. The model
+is never in git: `scripts/download-embedding-model.sh` downloads it at a pinned
+revision and checks the pinned SHA-256 of each file. In the devcontainer it
+lands in the `lifegraph_models_dev` volume and survives rebuilds.
+
+```bash
+scripts/download-embedding-model.sh          # into $Semantic__Embeddings__ModelDirectory or ~/models/multilingual-e5-small
+scripts/download-embedding-model.sh <dir>    # anywhere else
+```
+
+The `Semantic:Embeddings` settings (`Provider`, `ModelId`, `ModelDirectory`,
+`EmbedTimeout`, `ReindexPageSize`) are checked at start: the API does not start without
+`Provider`, nor without `ModelId` and `ModelDirectory` when it is `Onnx`
+(`appsettings.Development.json` sets all three). The model files are read on
+the first embedding: when they are missing, the embedding jobs retry and end
+dead, logged as errors, and the graph works without them. `Provider` `None`
+runs with no model, with the same effect.
+
+The search (`GET /api/search`, MCP `search_graph`) finds by words and by meaning.
+`Semantic:Search:MinimumScores` holds the least similarity a Node needs to be found
+by meaning, per model, and `Semantic:Search:QueryTimeout` (3 s by default) how long
+a search waits for the model. The API does not start with an `Onnx` model that has
+no score there. A model with no score, one that fails or one past the timeout, and
+an Account whose Nodes are being indexed, all search by words only and answer
+`degraded`.
+
 ### Without the devcontainer
 
 The .NET 10 SDK, Node 24 and Docker are enough to build and run every test
@@ -230,3 +269,5 @@ extensions), which the devcontainer does for you. The application connects as
 `lifegraph_app` (`ConnectionStrings__Default`), the owner's `accounts` CLI as
 `lifegraph_provisioner` (`ConnectionStrings__Provisioning`, DA-107) and
 migrations run as `lifegraph_migrator` (`ConnectionStrings__Migrations`).
+For the embeddings, download the model and point
+`Semantic__Embeddings__ModelDirectory` at its directory.

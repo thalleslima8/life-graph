@@ -10,9 +10,10 @@ namespace LifeGraph.Graph.Application;
 /// <summary>
 /// The local graph the person explores in the 2.5D view (DA-138): the walk of the agents'
 /// context (<see cref="ContextWalk"/>, DA-036) from one Node, through the central read filter,
-/// Hard Relations only until Soft ones arrive (E9, DA-014). Slim, with no body, and not
-/// audited: only an agent's read is (DA-037). The Nodes kept are the best ranked; the edges are
-/// every visible Hard Relation among them (DA-128). Each Node carries its Hard degree in the
+/// following Hard Relations and, from the starting Node only, Soft ones (DA-179). Slim, with no
+/// body, and not audited: only an agent's read is (DA-037). The Nodes kept are the best ranked;
+/// the edges are every visible Hard Relation among them and the Soft ones of the starting Node,
+/// with why each was inferred (DA-128, DA-179). Each Node carries its Hard degree in the
 /// whole graph (DA-139), and each Node and Relation whether an agent GraphChangeSet not yet
 /// reviewed changed it (DA-141), both counted in batch over what the reader sees.
 /// </summary>
@@ -21,7 +22,7 @@ internal sealed class LocalGraphReads(LifeGraphDbContext db, GraphReadFilter fil
     /// <returns><c>null</c> when the reader does not see the starting Node.</returns>
     public async Task<LocalGraph?> ExpandAsync(GraphReader reader, Guid rootNodeId, int depth, CancellationToken cancellationToken)
     {
-        var scope = new ContextScope(rootNodeId, depth, IncludeSoft: false);
+        var scope = new ContextScope(rootNodeId, depth, IncludeSoft: true);
         var steps = await ContextWalk.WalkAsync(db, reader, scope, cancellationToken);
         if (steps.Count == 0)
         {
@@ -41,10 +42,10 @@ internal sealed class LocalGraphReads(LifeGraphDbContext db, GraphReadFilter fil
             .ToDictionaryAsync(node => node.Id, cancellationToken);
         var reach = await ContextWalk.CountReachAsync(db, reader, scope, cancellationToken);
 
-        var among = filter.Relations().Where(relation =>
-            relation.Assertion == RelationAssertion.Hard
-            && nodeIds.Contains(relation.SourceNodeId)
-            && nodeIds.Contains(relation.TargetNodeId));
+        var among = filter.RelationsWithSoft().Where(relation =>
+            nodeIds.Contains(relation.SourceNodeId)
+            && nodeIds.Contains(relation.TargetNodeId)
+            && (relation.Assertion == RelationAssertion.Hard || relation.SourceNodeId == rootNodeId || relation.TargetNodeId == rootNodeId));
         var edgeCount = await among.CountAsync(cancellationToken);
         var relations = await among.Ranked().Take(limits.MaxEdges).ToListAsync(cancellationToken);
 
@@ -70,7 +71,8 @@ internal sealed class LocalGraphReads(LifeGraphDbContext db, GraphReadFilter fil
             relation.Assertion,
             relation.Origin,
             relation.Strength,
-            changedByAgents.Contains(relation.Id))).ToList();
+            changedByAgents.Contains(relation.Id),
+            relation.ExplainInference())).ToList();
         var omittedNodes = Math.Max(0, reach - nodes.Count);
         var omittedEdges = edgeCount - edges.Count;
         return new LocalGraph(rootNodeId, nodes, edges, omittedNodes > 0 || omittedEdges > 0, omittedNodes, omittedEdges);

@@ -834,6 +834,196 @@
         }
       }
     },
+    "/api/nodes/{nodeId}/soft-relations": {
+      "get": {
+        "tags": [
+          "Nodes"
+        ],
+        "operationId": "ListNodeSoftRelations",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedListOfSoftRelationItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nodes/{nodeId}/soft-relations/{softRelationId}/acceptance": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "operationId": "AcceptSoftRelation",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "softRelationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphWriteReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nodes/{nodeId}/soft-relations/{softRelationId}/dismissal": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "operationId": "IgnoreSoftRelation",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "softRelationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphWriteReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/nodes/{nodeId}/graph": {
       "get": {
         "tags": [
@@ -3105,6 +3295,57 @@
         }
       }
     },
+    "/api/search": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "operationId": "SearchNodes",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeSearchResults"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/resources": {
       "post": {
         "tags": [
@@ -4160,7 +4401,8 @@
           "tag",
           "node_tag",
           "collection",
-          "collection_member"
+          "collection_member",
+          "soft_dismissal"
         ]
       },
       "GraphWriteReceipt": {
@@ -4338,6 +4580,16 @@
           },
           "agentUnreviewed": {
             "type": "boolean"
+          },
+          "explanation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SoftRelationExplanation"
+              }
+            ]
           }
         }
       },
@@ -4543,6 +4795,55 @@
           }
         }
       },
+      "NodeSearchItem": {
+        "required": [
+          "id",
+          "title",
+          "typeName",
+          "snippet",
+          "match"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "typeName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "match": {
+            "$ref": "#/components/schemas/SearchMatch"
+          }
+        }
+      },
+      "NodeSearchResults": {
+        "required": [
+          "items",
+          "degraded"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeSearchItem"
+            }
+          },
+          "degraded": {
+            "type": "boolean"
+          }
+        }
+      },
       "NodeSummary": {
         "required": [
           "id",
@@ -4551,7 +4852,8 @@
           "version",
           "inInbox",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "softRelationCount"
         ],
         "type": "object",
         "properties": {
@@ -4593,6 +4895,14 @@
               "null",
               "string"
             ]
+          },
+          "softRelationCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -4709,6 +5019,24 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RelationItem"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        }
+      },
+      "PagedListOfSoftRelationItem": {
+        "required": [
+          "data",
+          "page"
+        ],
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SoftRelationItem"
             }
           },
           "page": {
@@ -5423,6 +5751,13 @@
           }
         }
       },
+      "SearchMatch": {
+        "enum": [
+          "text",
+          "semantic",
+          "both"
+        ]
+      },
       "SelectOption": {
         "required": [
           "id",
@@ -5480,6 +5815,63 @@
           },
           "email": {
             "type": "string"
+          }
+        }
+      },
+      "SoftRelationExplanation": {
+        "required": [
+          "method",
+          "modelId",
+          "score"
+        ],
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "SoftRelationItem": {
+        "required": [
+          "id",
+          "nodeId",
+          "nodeTitle",
+          "nodeTypeId",
+          "explanation"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodeTitle": {
+            "type": "string"
+          },
+          "nodeTypeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "explanation": {
+            "$ref": "#/components/schemas/SoftRelationExplanation"
           }
         }
       },
@@ -5777,6 +6169,9 @@
     },
     {
       "name": "Changes"
+    },
+    {
+      "name": "Search"
     },
     {
       "name": "Resources"

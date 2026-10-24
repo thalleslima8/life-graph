@@ -263,6 +263,7 @@ const ENTITY_LABELS: Readonly<Record<ChangeSetItem["entries"][number]["entityKin
   node_tag: "Tag em Node",
   collection: "Collection",
   collection_member: "Node em Collection",
+  soft_dismissal: "Soft Relation ignorada",
 };
 
 export function entryDescription(entry: ChangeSetItem["entries"][number]): string {
@@ -286,4 +287,38 @@ export const CAPTURE_OUTCOME_MESSAGES: Readonly<Record<CaptureOutcome, string>> 
 /** A refused capture: the Account's capture budget has its own text; the link is never echoed. */
 export function captureErrorMessage(error: unknown): string {
   return isApiError(error) && error.status === 429 ? CAPTURE_TOO_MANY_MESSAGE : writeErrorMessage(error);
+}
+
+/** Soft Relations of a Node (DA-070, DA-179, DA-182): the glossary's words, never sugestão/confirmar/promover/remover. */
+export const SOFT_RELATIONS_TITLE = "Soft Relations";
+export const ACCEPT_LABEL = "Accept";
+export const IGNORE_LABEL = "Ignore";
+
+export function acceptSoftRelationLabel(nodeTitle: string): string {
+  return `Accept Soft Relation com ${nodeTitle}`;
+}
+
+export function ignoreSoftRelationLabel(nodeTitle: string): string {
+  return `Ignore Soft Relation com ${nodeTitle}`;
+}
+
+/** How many Soft Relations a Node in the Inbox has, as the link to its Inspector. */
+export function softRelationCountText(count: number): string {
+  return counted(count, "Soft Relation", "Soft Relations");
+}
+
+const scoreFormat = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
+
+/** The explanation of an inferred Relation: what an absent field would print is left out, never "undefined". */
+export type InferenceExplanation = { method: string; modelId?: string | null; score?: number | string | null };
+
+/** `{method} · score {score}`, plus ` · {model}` for an embedding; only the method when the score is missing. */
+export function softRelationExplanationText(explanation: InferenceExplanation): string {
+  const score = explanation.score === null || explanation.score === undefined || explanation.score === "" ? Number.NaN : Number(explanation.score);
+  if (Number.isNaN(score)) {
+    return explanation.method;
+  }
+
+  const model = explanation.method === "embedding" && explanation.modelId ? ` · ${explanation.modelId}` : "";
+  return `${explanation.method} · score ${scoreFormat.format(score)}${model}`;
 }

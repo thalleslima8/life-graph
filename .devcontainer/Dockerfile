@@ -77,5 +77,7 @@ ENV PATH="${PATH}:/home/vscode/.dotnet/tools"
 # exist owned by vscode: an empty named volume copies the ownership of the image
 # directory, otherwise Docker creates it as root and Claude cannot write to it.
 RUN mkdir -p /home/vscode/.claude && chown vscode:vscode /home/vscode/.claude
+# Same for the lifegraph_models_dev volume, where the embedding model is downloaded (DA-174).
+RUN mkdir -p /home/vscode/models && chown vscode:vscode /home/vscode/models
 
 USER vscode

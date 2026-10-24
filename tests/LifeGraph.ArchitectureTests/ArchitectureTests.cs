@@ -49,6 +49,14 @@ public sealed class ArchitectureTests
         ArchitectureRules.OnlyTheFetchJobWritesAsTheSystem("LifeGraph").Check(Production);
 
     [Fact]
+    public void Only_the_semantic_jobs_use_the_semantic_graph() =>
+        ArchitectureRules.OnlyTheSemanticJobsUseTheSemanticGraph("LifeGraph").Check(Production);
+
+    [Fact]
+    public void Only_the_relation_gate_reads_soft_relations_or_names_the_table_in_sql() =>
+        Assert.Empty(ArchitectureRules.RelationsReadPastTheGate());
+
+    [Fact]
     public void Grants_are_read_only_by_subject_or_id() =>
         ArchitectureRules.GrantsAreReadOnlyBySubjectOrId("LifeGraph").Check(Production);
 

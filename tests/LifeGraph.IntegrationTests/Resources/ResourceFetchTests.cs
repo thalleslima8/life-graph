@@ -93,6 +93,19 @@ public sealed class ResourceFetchTests(PostgresDatabase database) : IAsyncLifeti
     }
 
     [Fact]
+    public async Task A_fetch_that_fills_the_text_schedules_an_embedding_of_the_resource()
+    {
+        _script.Html = """<html><head><title>Fetched title</title></head></html>""";
+        var node = await CreateResourceAsync();
+        Assert.Equal(1, await EmbedJobsAsync(node));
+
+        await RunJobsAsync();
+
+        Assert.Equal("Fetched title", await NodeTextAsync(node, "title"));
+        Assert.Equal(2, await EmbedJobsAsync(node));
+    }
+
+    [Fact]
     public async Task A_title_a_human_edited_is_never_overwritten_by_the_fetch()
     {
         _script.Html = """<html><head><title>Fetched title</title></head></html>""";
@@ -166,6 +179,11 @@ public sealed class ResourceFetchTests(PostgresDatabase database) : IAsyncLifeti
     private async Task<long> FetchJobsAsync(Guid node) => await _graph.ScalarAsync<long>(
         "SELECT count(*) FROM jobs WHERE kind = @kind AND payload ->> 'nodeId' = @node",
         new NpgsqlParameter("kind", IResourceFetchGraph.JobKind),
+        new NpgsqlParameter("node", node.ToString()));
+
+    private async Task<long> EmbedJobsAsync(Guid node) => await _graph.ScalarAsync<long>(
+        "SELECT count(*) FROM jobs WHERE kind = @kind AND payload ->> 'nodeId' = @node",
+        new NpgsqlParameter("kind", ISemanticGraph.EmbedJobKind),
         new NpgsqlParameter("node", node.ToString()));
 
     private async Task<long> SystemChangeSetsAsync() => await _graph.ScalarAsync<long>(

@@ -18,6 +18,9 @@
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.12" />
     <!-- Modules -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <!-- Semantic: the local embedding model, multilingual-e5-small in ONNX with its XLM-R SentencePiece tokenizer (DA-174). -->
+    <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
     <!-- Identity -->
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
     <PackageVersion Include="OpenIddict.AspNetCore" Version="7.7.1" />

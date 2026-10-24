@@ -38,9 +38,9 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
 
         Assert.Equal(
             ["node|" + author, "relation|" + writtenBy],
-            await TextsAsync("SELECT (payload ->> 'entityKind') || '|' || (payload ->> 'entityId') FROM jobs ORDER BY 1"));
+            await TextsAsync("SELECT (payload ->> 'entityKind') || '|' || (payload ->> 'entityId') FROM jobs WHERE kind = 'graph.purge' ORDER BY 1"));
         Assert.Equal(2, await _graph.ScalarAsync<long>(
-            "SELECT count(*) FROM jobs j JOIN nodes n ON n.id = @id WHERE j.status = 'pending' AND j.run_after = n.deleted_at + interval '30 days'",
+            "SELECT count(*) FROM jobs j JOIN nodes n ON n.id = @id WHERE j.kind = 'graph.purge' AND j.status = 'pending' AND j.run_after = n.deleted_at + interval '30 days'",
             new NpgsqlParameter("id", author)));
     }
 
@@ -67,7 +67,7 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
             new NpgsqlParameter("author", author),
             new NpgsqlParameter("relation", writtenBy)));
         Assert.Equal(0, await _graph.ScalarAsync<long>("SELECT count(*) FROM change_entries WHERE after::text LIKE '%Marcus%' OR before::text LIKE '%Marcus%'"));
-        Assert.Equal(["done", "done"], await TextsAsync("SELECT status FROM jobs"));
+        Assert.Equal(["done", "done"], await TextsAsync("SELECT status FROM jobs WHERE kind = 'graph.purge'"));
     }
 
     // DA-114: the source is cleared only once every entry of the GraphChangeSet is purged.
@@ -101,7 +101,7 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
 
         Assert.Equal(1, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes WHERE id = @id AND deleted_at IS NULL", new NpgsqlParameter("id", node)));
         Assert.Equal(0, await _graph.ScalarAsync<long>("SELECT count(*) FROM change_entries WHERE purged_at IS NOT NULL"));
-        Assert.Equal(["done"], await TextsAsync("SELECT status FROM jobs"));
+        Assert.Equal(["done"], await TextsAsync("SELECT status FROM jobs WHERE kind = 'graph.purge'"));
     }
 
     // DA-115: redoing a delete is a new tombstone with a new window and a new job; the old job no longer matches.
@@ -120,7 +120,10 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
         Assert.True(redone.IsSuccess);
         var secondDeletedAt = await DeletedAtAsync(node);
         Assert.True(secondDeletedAt > firstDeletedAt.AddDays(9));
-        Assert.Equal(2, await _graph.CountAsync("jobs"));
+        Assert.Equal(2, await _graph.ScalarAsync<long>("SELECT count(*) FROM jobs WHERE kind = 'graph.purge'"));
+
+        // The semantic.embed jobs of the create and the restore run first, so only purge jobs are left (DA-185).
+        await _graph.RunDueJobsAsync();
 
         // Only the first job comes due: it was made for the tombstone the restore removed.
         await database.ExecuteAsMigratorAsync(
@@ -237,6 +240,9 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
         var other = await _graph.CreateAccountAsync();
         var (_, othersAuthor, _) = await CreateBookAndAuthorAsync(other);
         await _graph.WrittenAsync(other, new DeleteNode(othersAuthor, 1));
+        var othersJobs = await _graph.ScalarAsync<long>("SELECT count(*) FROM jobs WHERE account_id = @id", new NpgsqlParameter("id", other));
+        Assert.Equal(2, await _graph.ScalarAsync<long>(
+            "SELECT count(*) FROM jobs WHERE account_id = @id AND kind = 'graph.purge'", new NpgsqlParameter("id", other)));
 
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
@@ -268,7 +274,7 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
         }
 
         Assert.Equal(2, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes WHERE account_id = @id", new NpgsqlParameter("id", other)));
-        Assert.Equal(2, await _graph.ScalarAsync<long>("SELECT count(*) FROM jobs WHERE account_id = @id", new NpgsqlParameter("id", other)));
+        Assert.Equal(othersJobs, await _graph.ScalarAsync<long>("SELECT count(*) FROM jobs WHERE account_id = @id", new NpgsqlParameter("id", other)));
     }
 
     private static Provenance Sourced => GraphWriteHarness.HumanInUi with { Source = Source };

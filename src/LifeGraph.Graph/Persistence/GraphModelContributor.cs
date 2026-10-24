@@ -13,6 +13,8 @@ public sealed class GraphModelContributor : IModelContributor
         modelBuilder.ApplyConfiguration(new TypePropertyConfiguration());
         modelBuilder.ApplyConfiguration(new NodeConfiguration());
         modelBuilder.ApplyConfiguration(new RelationConfiguration());
+        modelBuilder.ApplyConfiguration(new NodeEmbeddingConfiguration());
+        modelBuilder.ApplyConfiguration(new SoftDismissalConfiguration());
         modelBuilder.ApplyConfiguration(new TagConfiguration());
         modelBuilder.ApplyConfiguration(new NodeTagConfiguration());
         modelBuilder.ApplyConfiguration(new CollectionConfiguration());

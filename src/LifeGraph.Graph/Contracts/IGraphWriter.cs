@@ -71,6 +71,9 @@ public enum GraphEntityKind
 
     /// <summary>A Node added to a manual Collection (DA-163): created and deleted, never updated.</summary>
     CollectionMember,
+
+    /// <summary>The Ignore of a pair of Nodes (DA-071): created and deleted, never updated.</summary>
+    SoftDismissal,
 }
 
 public enum GraphChangeOperation
@@ -78,7 +81,7 @@ public enum GraphChangeOperation
     Created,
     Updated,
 
-    /// <summary>A Node or Relation tombstoned, or a Type, Property Definition, Tag, Tag link, Collection or membership removed.</summary>
+    /// <summary>A Node or Relation tombstoned, or a Type, Property Definition, Tag, Tag link, Collection, membership or Ignore removed.</summary>
     Deleted,
 
     /// <summary>A deleted Node or Relation brought back by an Undo.</summary>

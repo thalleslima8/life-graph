@@ -21,8 +21,13 @@ internal sealed partial class GraphReads(
     IAccountContext accountContext,
     GraphReadFilter filter,
     IAgentIdentityDirectory agentDirectory,
-    LocalGraphReads localGraphs)
+    LocalGraphReads localGraphs,
+    NodeViews views,
+    HybridSearch hybridSearch)
 {
+    /// <summary>The fewest characters a search takes (DA-184): one letter finds too much to be useful.</summary>
+    public const int SearchMinLength = 2;
+
     public const int DefaultNodePageSize = 50;
 
     public const int MaxPageSize = 100;
@@ -60,11 +65,45 @@ internal sealed partial class GraphReads(
             }
 
             // Newest first: ids are UUIDv7, so they follow the creation time.
+            var softRelations = filter.SoftRelations();
             var rows = await nodes.OrderByDescending(node => node.Id)
                 .Take(limit + 1)
-                .Select(node => new NodeSummary(node.Id, node.Title, node.TypeId, node.Version, node.InboxEnteredAt != null, node.CreatedAt, node.UpdatedAt, Node.SuggestedTypeOf(node.TypeId, node.SuggestedType)))
+                .Select(node => new NodeSummary(node.Id, node.Title, node.TypeId, node.Version, node.InboxEnteredAt != null, node.CreatedAt, node.UpdatedAt, Node.SuggestedTypeOf(node.TypeId, node.SuggestedType))
+                {
+                    SoftRelationCount = softRelations.Count(soft => soft.SourceNodeId == node.Id || soft.TargetNodeId == node.Id),
+                })
                 .ToListAsync(token);
             return PageOf(rows, limit, summary => summary.Id);
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// The person's search by words and by meaning (DA-183), over the Nodes the central filter
+    /// shows; the model is asked before the transaction opens. The words are never logged (GEN-043).
+    /// </summary>
+    public async Task<Result<NodeSearchResults>> SearchAsync(string? q, int? limit, CancellationToken cancellationToken)
+    {
+        var errors = NoErrors();
+        var text = q?.Trim() ?? string.Empty;
+        if (text.Length < SearchMinLength || text.Length > GraphReadLimits.QueryMaxLength)
+        {
+            errors["q"] = [$"Must have between {SearchMinLength} and {GraphReadLimits.QueryMaxLength} characters."];
+        }
+
+        var count = limit ?? GraphReadLimits.SearchDefaultCount;
+        if (count is < 1 or > GraphReadLimits.SearchMaxCount)
+        {
+            errors["limit"] = [$"Must be between 1 and {GraphReadLimits.SearchMaxCount}."];
+        }
+
+        var embedding = errors.Count == 0 ? await hybridSearch.EmbedAsync(text, cancellationToken) : null;
+        return await RunAsync(errors, async token =>
+        {
+            var outcome = await hybridSearch.SearchAsync(GraphReader.Human, new NodeSearch(text, TypeId: null, count), embedding, token);
+            var matches = outcome.Hits.ToDictionary(hit => hit.NodeId, hit => hit.Match);
+            var hits = await views.HitsAsync([.. outcome.Hits.Select(hit => hit.NodeId)], token);
+            var items = hits.Select(hit => new NodeSearchItem(hit.Id, hit.Title.Text, hit.TypeName, hit.Excerpt.Text, matches[hit.Id])).ToList();
+            return Result<NodeSearchResults>.Ok(new NodeSearchResults(items, outcome.Degraded));
         }, cancellationToken);
     }
 
@@ -186,6 +225,49 @@ internal sealed partial class GraphReads(
                 .Take(pageSize + 1)
                 .ToListAsync(token);
             return Result<PagedList<RelationItem>>.Ok(PageOf(rows, pageSize, item => item.Id).Value!);
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// The Soft Relations of a live Node the person may Accept or Ignore, newest first, each
+    /// seen from the Node, with why it was inferred (DA-070, DA-179).
+    /// </summary>
+    public Task<Result<PagedList<SoftRelationItem>>> ListSoftRelationsAsync(Guid nodeId, string? cursor, int? limit, CancellationToken cancellationToken)
+    {
+        var errors = NoErrors();
+        var after = PageCursor.Read(errors, cursor);
+        var pageSize = PageSize(errors, limit, DefaultNodePageSize);
+
+        return RunAsync(errors, async token =>
+        {
+            var nodes = filter.Nodes();
+            if (!await nodes.AnyAsync(node => node.Id == nodeId, token))
+            {
+                return Result<PagedList<SoftRelationItem>>.Fail(GraphErrors.NodeNotFound.ToError("The node was not found."));
+            }
+
+            var softRelations = filter.SoftRelations()
+                .Where(relation => relation.SourceNodeId == nodeId || relation.TargetNodeId == nodeId);
+            if (after is { } last)
+            {
+                softRelations = softRelations.Where(relation => relation.Id.CompareTo(last) < 0);
+            }
+
+            var rows = await (
+                from relation in softRelations
+                join other in nodes on (relation.SourceNodeId == nodeId ? relation.TargetNodeId : relation.SourceNodeId) equals other.Id
+                orderby relation.Id descending
+                select new { relation.Id, OtherId = other.Id, other.Title, other.TypeId, relation.InferenceMethod, relation.InferenceModelId, relation.Confidence })
+                .Take(pageSize + 1)
+                .ToListAsync(token);
+            var items = rows.Select(row => new SoftRelationItem(
+                    row.Id,
+                    row.OtherId,
+                    row.Title,
+                    row.TypeId,
+                    new SoftRelationExplanation(row.InferenceMethod!, row.InferenceModelId!, row.Confidence!.Value)))
+                .ToList();
+            return Result<PagedList<SoftRelationItem>>.Ok(PageOf(items, pageSize, item => item.Id).Value!);
         }, cancellationToken);
     }
 

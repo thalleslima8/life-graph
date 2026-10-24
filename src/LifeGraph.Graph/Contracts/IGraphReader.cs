@@ -77,7 +77,7 @@ public static class GraphReadLimits
     public const int TagListMaxCount = 200;
 }
 
-/// <param name="Text">Words to find, in title and body, without regard to accents or case.</param>
+/// <param name="Text">Words to find, in title and body without regard to accents or case, and by meaning (DA-183).</param>
 /// <param name="TypeId">Only Nodes of this Type.</param>
 /// <param name="Count">How many hits, at most <see cref="GraphReadLimits.SearchMaxCount"/>.</param>
 public sealed record GraphSearchQuery(string? Text, Guid? TypeId = null, int? Count = null);
@@ -118,9 +118,34 @@ public enum TextSource
 public sealed record NodeHeadline(Guid Id, EnvelopedText Title, string? TypeName, DateTimeOffset UpdatedAt);
 
 /// <param name="Excerpt">The start of the body.</param>
-public sealed record SearchHit(Guid Id, EnvelopedText Title, string? TypeName, EnvelopedText Excerpt, DateTimeOffset UpdatedAt);
+public sealed record SearchHit(Guid Id, EnvelopedText Title, string? TypeName, EnvelopedText Excerpt, DateTimeOffset UpdatedAt)
+{
+    /// <summary>Whether the Node was found by its words, by meaning or by both (DA-183).</summary>
+    public SearchMatch Match { get; init; } = SearchMatch.Text;
+}
 
-public sealed record GraphSearchResult(IReadOnlyList<SearchHit> Hits);
+/// <summary>The hits, best first. <see cref="Degraded"/>: the search found by words only (DA-183).</summary>
+public sealed record GraphSearchResult(IReadOnlyList<SearchHit> Hits)
+{
+    /// <summary>
+    /// True when the search could not look by meaning: no model answered, or the Account's
+    /// Nodes are being indexed. The hits are then those found by words.
+    /// </summary>
+    public bool Degraded { get; init; }
+}
+
+/// <summary>How a search found a Node (DA-183).</summary>
+public enum SearchMatch
+{
+    /// <summary>By its words (full-text search).</summary>
+    Text,
+
+    /// <summary>By meaning (the embeddings), with none of the words.</summary>
+    Semantic,
+
+    /// <summary>By its words and by meaning.</summary>
+    Both,
+}
 
 /// <summary>Who changed a Node, by which way, when (DA-013).</summary>
 public sealed record ProvenanceStamp(ChangeActorKind Actor, Guid? AgentIdentityId, WriteChannel Channel, DateTimeOffset At);
@@ -151,7 +176,23 @@ public sealed record GraphNodeView(
     DateTimeOffset UpdatedAt);
 
 /// <summary>A Relation between two Nodes of the context, with what says how much to rely on it (DA-128).</summary>
-public sealed record GraphEdge(Guid Id, Guid SourceNodeId, Guid TargetNodeId, string Kind, RelationAssertion Assertion, RelationOrigin Origin, double? Confidence, double Strength);
+/// <param name="Explanation">Why the system inferred it: present on a Soft Relation only (DA-070).</param>
+public sealed record GraphEdge(
+    Guid Id,
+    Guid SourceNodeId,
+    Guid TargetNodeId,
+    string Kind,
+    RelationAssertion Assertion,
+    RelationOrigin Origin,
+    double? Confidence,
+    double Strength,
+    SoftRelationExplanation? Explanation = null);
+
+/// <summary>
+/// Why the system inferred a Soft Relation (DA-070): how (<see cref="Method"/>, such as
+/// <c>embedding_similarity</c>), with which model, and the score the pair reached.
+/// </summary>
+public sealed record SoftRelationExplanation(string Method, string ModelId, double Score);
 
 /// <summary>A Relation of a Node read on its own, seen from that Node.</summary>
 public sealed record NodeLink(Guid RelationId, string Kind, LinkDirection Direction, RelationAssertion Assertion, double Strength, NodeHeadline OtherNode);
@@ -171,7 +212,7 @@ public enum GraphContextStatus
 
     /// <summary>
     /// Not confirmed (DA-129): no single match by id or exact title. The candidates come back
-    /// and nothing is expanded, even when words found only one Node.
+    /// and nothing is expanded, even when words or meaning found only one Node.
     /// </summary>
     Ambiguous,
 }

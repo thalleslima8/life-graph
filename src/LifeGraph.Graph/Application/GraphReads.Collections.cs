@@ -72,9 +72,13 @@ internal sealed partial class GraphReads
                 nodes = nodes.Where(node => node.Id.CompareTo(last) < 0);
             }
 
+            var softRelations = filter.SoftRelations();
             var rows = await nodes.OrderByDescending(node => node.Id)
                 .Take(pageSize + 1)
-                .Select(node => new NodeSummary(node.Id, node.Title, node.TypeId, node.Version, node.InboxEnteredAt != null, node.CreatedAt, node.UpdatedAt, Node.SuggestedTypeOf(node.TypeId, node.SuggestedType)))
+                .Select(node => new NodeSummary(node.Id, node.Title, node.TypeId, node.Version, node.InboxEnteredAt != null, node.CreatedAt, node.UpdatedAt, Node.SuggestedTypeOf(node.TypeId, node.SuggestedType))
+                {
+                    SoftRelationCount = softRelations.Count(soft => soft.SourceNodeId == node.Id || soft.TargetNodeId == node.Id),
+                })
                 .ToListAsync(token);
             return PageOf(rows, pageSize, summary => summary.Id);
         }, cancellationToken);

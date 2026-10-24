@@ -1,5 +1,6 @@
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
+using LifeGraph.Graph.Persistence;
 using LifeGraph.Infrastructure.Persistence;
 using Limaj.Framework.Core;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,7 @@ internal sealed class ChangeSetUndo
     private readonly Dictionary<Guid, CollectionMember> _members;
     private readonly HashSet<Guid> _existingMemberNodeIds;
     private readonly HashSet<Guid> _existingNodeIds;
+    private readonly DismissalsInUndo _dismissals;
     private readonly Dictionary<Guid, Touched> _touched = [];
     private readonly HashSet<Guid> _removed = [];
     private readonly Dictionary<string, string[]> _conflicts = new(StringComparer.Ordinal);
@@ -59,8 +61,10 @@ internal sealed class ChangeSetUndo
         List<NodeType> types,
         List<PropertyDefinition> definitions,
         TagsInUndo tags,
-        CollectionsInUndo collections)
+        CollectionsInUndo collections,
+        DismissalsInUndo dismissals)
     {
+        _dismissals = dismissals;
         _collections = collections.Collections.ToDictionary(collection => collection.Id);
         _members = collections.Members.ToDictionary(member => member.Id);
         _existingMemberNodeIds = collections.ExistingNodeIds;
@@ -190,7 +194,8 @@ internal sealed class ChangeSetUndo
 
         var tags = await TagsInUndo.LoadAsync(db, undone, cancellationToken);
         var collections = await CollectionsInUndo.LoadAsync(db, undone, cancellationToken);
-        var undo = new ChangeSetUndo(db, undone, now, nodes, relations, types, definitions, tags, collections);
+        var dismissals = await DismissalsInUndo.LoadAsync(db, undone, cancellationToken);
+        var undo = new ChangeSetUndo(db, undone, now, nodes, relations, types, definitions, tags, collections, dismissals);
         await undo.LoadTakenNamesAsync(cancellationToken);
         return undo;
     }
@@ -373,6 +378,14 @@ internal sealed class ChangeSetUndo
                 RecreateCollection(entry);
                 break;
 
+            case GraphEntityKind.SoftDismissal when entry.Operation == GraphChangeOperation.Created:
+                RemoveWithoutTombstone(GraphEntityKind.SoftDismissal, entry.EntityId, ChangeSnapshots.Of(_dismissals.Dismissals[entry.EntityId]));
+                break;
+
+            case GraphEntityKind.SoftDismissal:
+                RecreateDismissal(entry);
+                break;
+
             case GraphEntityKind.CollectionMember when entry.Operation == GraphChangeOperation.Created:
                 RemoveWithoutTombstone(GraphEntityKind.CollectionMember, entry.EntityId, ChangeSnapshots.Of(_members[entry.EntityId]));
                 break;
@@ -459,6 +472,33 @@ internal sealed class ChangeSetUndo
         _removed.Remove(relinked.Id);
         _db.Add(relinked);
         Touch(GraphEntityKind.NodeTag, relinked.Id, before: null, GraphChangeOperation.Created);
+    }
+
+    // An Ignore comes back while both Nodes exist and the pair has no other Ignore; the Soft
+    // Relation the projection made of the pair since goes again, outside the log (DA-070).
+    private void RecreateDismissal(ChangeEntry entry)
+    {
+        var snapshot = ChangeSnapshots.ReadSoftDismissal(entry.Before!);
+        if (!_dismissals.ExistingNodeIds.Contains(snapshot.FirstNodeId) || !_dismissals.ExistingNodeIds.Contains(snapshot.SecondNodeId))
+        {
+            Conflict(entry, "A node of the pair no longer exists.");
+            return;
+        }
+
+        if (_dismissals.Dismissals.Values.Any(dismissal => dismissal.FirstNodeId == snapshot.FirstNodeId
+            && dismissal.SecondNodeId == snapshot.SecondNodeId
+            && !_removed.Contains(dismissal.Id)))
+        {
+            Conflict(entry, "The pair was ignored again.");
+            return;
+        }
+
+        var dismissal = SoftDismissal.Of(entry.EntityId, _undone.AccountId, snapshot.FirstNodeId, snapshot.SecondNodeId, _now);
+        _dismissals.Dismissals[dismissal.Id] = dismissal;
+        _removed.Remove(dismissal.Id);
+        _db.Add(dismissal);
+        _db.RemoveRange(_dismissals.SoftRelations.Where(soft => soft.Touches(snapshot.FirstNodeId) && soft.Touches(snapshot.SecondNodeId)));
+        Touch(GraphEntityKind.SoftDismissal, dismissal.Id, before: null, GraphChangeOperation.Created);
     }
 
     private void RevertCollection(ChangeEntry entry)
@@ -764,6 +804,7 @@ internal sealed class ChangeSetUndo
                 : _tags.TryGetValue(id, out var tag) ? tag
                 : _collections.TryGetValue(id, out var collection) ? collection
                 : _members.TryGetValue(id, out var member) ? member
+                : _dismissals.Dismissals.TryGetValue(id, out var dismissal) ? dismissal
                 : _links[id];
             _db.Remove(removed);
         }
@@ -771,6 +812,8 @@ internal sealed class ChangeSetUndo
         _undone.MarkReverted();
         _db.Add(undo);
         GraphPurge.ScheduleFor(_db, undo, _now);
+        EmbeddingScheduling.ScheduleFor(_db, undo, _now);
+        SoftRelationScheduling.ScheduleFor(_db, undo, _now);
         return new GraphWriteReceipt(undo.Id, changes)
         {
             RelationsLeftDeleted = [.. _leftBehind],
@@ -792,6 +835,7 @@ internal sealed class ChangeSetUndo
         GraphEntityKind.NodeTag => _links.TryGetValue(id, out var link) && !_removed.Contains(id) ? ChangeSnapshots.Of(link) : null,
         GraphEntityKind.Collection => _collections.TryGetValue(id, out var collection) && !_removed.Contains(id) ? ChangeSnapshots.Of(collection) : null,
         GraphEntityKind.CollectionMember => _members.TryGetValue(id, out var member) && !_removed.Contains(id) ? ChangeSnapshots.Of(member) : null,
+        GraphEntityKind.SoftDismissal => _dismissals.Dismissals.TryGetValue(id, out var dismissal) && !_removed.Contains(id) ? ChangeSnapshots.Of(dismissal) : null,
         _ => throw new NotSupportedException($"Unknown entity kind {kind}."),
     };
 
@@ -890,6 +934,37 @@ internal sealed class ChangeSetUndo
                 .ToListAsync(cancellationToken);
             var existingNodeIds = await db.Set<Node>().Where(node => nodeIds.Contains(node.Id)).Select(node => node.Id).ToListAsync(cancellationToken);
             return new CollectionsInUndo(collections, members, [.. existingNodeIds]);
+        }
+    }
+
+    /// <summary>
+    /// The Ignores the entries name, every Ignore of the pairs they recorded (one may have come
+    /// since), which of their Nodes still exist, and the Soft Relations of those pairs.
+    /// </summary>
+    private sealed record DismissalsInUndo(Dictionary<Guid, SoftDismissal> Dismissals, HashSet<Guid> ExistingNodeIds, List<Relation> SoftRelations)
+    {
+        public static async Task<DismissalsInUndo> LoadAsync(LifeGraphDbContext db, GraphChangeSet undone, CancellationToken cancellationToken)
+        {
+            var entries = undone.Entries.Where(entry => entry.EntityKind == GraphEntityKind.SoftDismissal).ToList();
+            if (entries.Count == 0)
+            {
+                return new DismissalsInUndo([], [], []);
+            }
+
+            var pairs = entries
+                .Where(entry => !entry.IsPurged)
+                .Select(entry => ChangeSnapshots.ReadSoftDismissal((entry.Before ?? entry.After)!))
+                .ToList();
+            var dismissalIds = entries.Select(entry => entry.EntityId).ToList();
+            var firstIds = pairs.Select(pair => pair.FirstNodeId).Distinct().ToList();
+            var nodeIds = pairs.SelectMany(pair => new[] { pair.FirstNodeId, pair.SecondNodeId }).Distinct().ToList();
+
+            var dismissals = await db.Set<SoftDismissal>()
+                .Where(dismissal => dismissalIds.Contains(dismissal.Id) || firstIds.Contains(dismissal.FirstNodeId))
+                .ToDictionaryAsync(dismissal => dismissal.Id, cancellationToken);
+            var existingNodeIds = await db.Set<Node>().Where(node => nodeIds.Contains(node.Id)).Select(node => node.Id).ToListAsync(cancellationToken);
+            var softRelations = await RelationReadGate.SoftRelations(db).Where(relation => firstIds.Contains(relation.SourceNodeId)).ToListAsync(cancellationToken);
+            return new DismissalsInUndo(dismissals, [.. existingNodeIds], softRelations);
         }
     }
 

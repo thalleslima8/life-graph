@@ -1,5 +1,6 @@
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
+using LifeGraph.Graph.Persistence;
 using LifeGraph.Infrastructure.Persistence;
 using Npgsql;
 using NpgsqlTypes;
@@ -36,23 +37,23 @@ internal static class ContextWalk
                    step.is_hard, step.strength, step.linked_at
             FROM walk w
             CROSS JOIN LATERAL (
-                SELECT n.id AS node_id, r.id AS relation_id, r.assertion = 'hard' AS is_hard,
+                SELECT n.id AS node_id, r.id AS relation_id, r.assertion = '{RelationReadGate.HardAssertion}' AS is_hard,
                        r.strength, r.created_at AS linked_at
-                FROM relations r
+                FROM {RelationReadGate.ShownRelationsSql} r
                 JOIN nodes n ON n.id = CASE WHEN r.source_node_id = w.node_id THEN r.target_node_id ELSE r.source_node_id END
                 WHERE (r.source_node_id = w.node_id OR r.target_node_id = w.node_id)
                   AND r.deleted_at IS NULL
-                  AND (r.assertion = 'hard' OR (w.distance = 0 AND @include_soft))
+                  AND (r.assertion = '{RelationReadGate.HardAssertion}' OR (w.distance = 0 AND @include_soft))
                   AND n.id <> ALL (w.path)
                   AND (w.distance = 0 OR NOT EXISTS (
-                        SELECT 1 FROM relations rr
+                        SELECT 1 FROM {RelationReadGate.ShownRelationsSql} rr
                         WHERE rr.deleted_at IS NULL
-                          AND (rr.assertion = 'hard' OR @include_soft)
+                          AND (rr.assertion = '{RelationReadGate.HardAssertion}' OR @include_soft)
                           AND ((rr.source_node_id = n.id AND rr.target_node_id = w.path[1])
                                OR (rr.target_node_id = n.id AND rr.source_node_id = w.path[1]))))
                   AND {GraphReadFilter.VisibleNodeSql}
                 -- RelationRanking.Ranked in SQL (DA-036): keep the two in step.
-                ORDER BY (r.assertion = 'hard') DESC, r.strength DESC, r.created_at DESC, r.id
+                ORDER BY (r.assertion = '{RelationReadGate.HardAssertion}') DESC, r.strength DESC, r.created_at DESC, r.id
                 LIMIT @neighbors
             ) step
             WHERE w.distance < @depth
@@ -69,11 +70,11 @@ internal static class ContextWalk
           UNION
             SELECT n.id, w.distance + 1
             FROM reach w
-            JOIN relations r ON r.source_node_id = w.node_id OR r.target_node_id = w.node_id
+            JOIN {RelationReadGate.ShownRelationsSql} r ON r.source_node_id = w.node_id OR r.target_node_id = w.node_id
             JOIN nodes n ON n.id = CASE WHEN r.source_node_id = w.node_id THEN r.target_node_id ELSE r.source_node_id END
             WHERE w.distance < @depth
               AND r.deleted_at IS NULL
-              AND (r.assertion = 'hard' OR (w.distance = 0 AND @include_soft))
+              AND (r.assertion = '{RelationReadGate.HardAssertion}' OR (w.distance = 0 AND @include_soft))
               AND {GraphReadFilter.VisibleNodeSql}
         )
         SELECT count(DISTINCT node_id)::integer FROM reach
@@ -88,6 +89,55 @@ internal static class ContextWalk
           AND {SearchVector} @@ {SearchQuery}
           AND (@type_id IS NULL OR n.type_id = @type_id)
         ORDER BY ts_rank_cd({SearchVector}, {SearchQuery}) DESC, n.updated_at DESC, n.id
+        LIMIT @count
+        """;
+
+    // The hybrid search (DA-183): the best Nodes by words and the nearest by meaning (the HNSW
+    // index, by the query's model and above its least similarity), each list ranked, fused by
+    // Reciprocal Rank Fusion. Only ranks are added, never the two uncalibrated scores; ties go
+    // to the most recently changed, then by id, so the same question over the same graph always
+    // gives the same answer. With no @query_embedding the meaning list is empty: words only.
+    private static readonly string HybridSearchSql = $"""
+        WITH by_words AS (
+            SELECT n.id, row_number() OVER (ORDER BY ts_rank_cd({SearchVector}, {SearchQuery}) DESC, n.updated_at DESC, n.id) AS rank
+            FROM nodes n
+            WHERE {GraphReadFilter.VisibleNodeSql}
+              AND {SearchVector} @@ {SearchQuery}
+              AND (@type_id IS NULL OR n.type_id = @type_id)
+            ORDER BY rank
+            LIMIT @candidates
+        ),
+        nearest AS (
+            SELECT e.node_id, e.embedding <=> @query_embedding::vector AS distance
+            FROM node_embeddings e
+            JOIN nodes n ON n.id = e.node_id
+            WHERE @query_embedding IS NOT NULL
+              AND e.model_id = @model_id
+              AND e.embedding <=> @query_embedding::vector <= @max_distance
+              AND {GraphReadFilter.VisibleNodeSql}
+              AND (@type_id IS NULL OR n.type_id = @type_id)
+            ORDER BY e.embedding <=> @query_embedding::vector
+            LIMIT @candidates
+        ),
+        by_meaning AS (
+            SELECT node_id AS id, row_number() OVER (ORDER BY distance, node_id) AS rank FROM nearest
+        ),
+        fused AS (
+            SELECT hits.id,
+                   sum(1.0 / (@fusion_k + hits.rank)) AS score,
+                   bool_or(hits.by_words) AS by_words,
+                   bool_or(NOT hits.by_words) AS by_meaning
+            FROM (
+                SELECT id, rank, true AS by_words FROM by_words
+              UNION ALL
+                SELECT id, rank, false AS by_words FROM by_meaning
+            ) hits
+            GROUP BY hits.id
+        )
+        SELECT f.id, f.by_words, f.by_meaning
+        FROM fused f
+        JOIN nodes n ON n.id = f.id
+        ORDER BY f.score DESC, n.updated_at DESC, n.id
         LIMIT @count
         """;
 
@@ -130,6 +180,40 @@ internal static class ContextWalk
             reader => reader.GetGuid(0),
             cancellationToken);
 
+    /// <summary>
+    /// The hybrid search (DA-183): the Nodes the reader sees by words and, with an embedding of
+    /// the query, by meaning; each says how it was found.
+    /// </summary>
+    public static Task<List<HybridHit>> HybridSearchAsync(
+        LifeGraphDbContext db,
+        GraphReader graphReader,
+        NodeSearch search,
+        QueryEmbedding? byMeaning,
+        CancellationToken cancellationToken) =>
+        SqlRows.QueryAsync(
+            db,
+            HybridSearchSql,
+            [
+                ForAgents(graphReader),
+                new NpgsqlParameter("text", NpgsqlDbType.Text) { Value = search.Text },
+                new NpgsqlParameter("type_id", NpgsqlDbType.Uuid) { Value = search.TypeId is { } id ? id : DBNull.Value },
+                Integer("count", search.Count),
+                Integer("candidates", HybridSearch.CandidatesPerList),
+                Integer("fusion_k", HybridSearch.FusionRankOffset),
+                new NpgsqlParameter("query_embedding", NpgsqlDbType.Text) { Value = byMeaning is null ? DBNull.Value : HybridSearch.VectorLiteral(byMeaning.Vector) },
+                new NpgsqlParameter("model_id", NpgsqlDbType.Text) { Value = byMeaning is null ? DBNull.Value : byMeaning.ModelId },
+                new NpgsqlParameter("max_distance", NpgsqlDbType.Double) { Value = byMeaning is null ? 0.0 : 1.0 - byMeaning.MinimumScore },
+            ],
+            reader => new HybridHit(
+                reader.GetGuid(0),
+                (reader.GetBoolean(1), reader.GetBoolean(2)) switch
+                {
+                    (true, true) => SearchMatch.Both,
+                    (true, false) => SearchMatch.Text,
+                    _ => SearchMatch.Semantic,
+                }),
+            cancellationToken);
+
     /// <summary>The Nodes whose title is the text, without regard to accents or case.</summary>
     public static Task<List<Guid>> FindByTitleAsync(LifeGraphDbContext db, GraphReader graphReader, string text, int count, CancellationToken cancellationToken) =>
         SqlRows.QueryAsync(
@@ -170,6 +254,9 @@ internal static class RelationRanking
 
 /// <summary>What a search looks for: the words, optionally only Nodes of a Type, and how many Nodes at most.</summary>
 internal sealed record NodeSearch(string Text, Guid? TypeId, int Count);
+
+/// <summary>A Node the hybrid search found, and how.</summary>
+internal sealed record HybridHit(Guid NodeId, SearchMatch Match);
 
 /// <summary>Where a walk starts, how far it goes, and whether it leaves by Soft Relations.</summary>
 internal sealed record ContextScope(Guid RootNodeId, int Depth, bool IncludeSoft);

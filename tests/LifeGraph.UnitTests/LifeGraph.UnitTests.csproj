@@ -17,6 +17,12 @@
     <ProjectReference Include="..\..\src\LifeGraph.Graph\LifeGraph.Graph.csproj" />
     <ProjectReference Include="..\..\src\LifeGraph.Agents\LifeGraph.Agents.csproj" />
     <ProjectReference Include="..\..\src\LifeGraph.Resources\LifeGraph.Resources.csproj" />
+    <ProjectReference Include="..\..\src\LifeGraph.Semantic\LifeGraph.Semantic.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The calibrated thresholds the real-model tests check (DA-175) are read from the Host's settings. -->
+    <None Include="..\..\src\LifeGraph.Host\appsettings.json" Link="HostSettings\appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

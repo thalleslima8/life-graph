@@ -26,6 +26,11 @@
         "resolved": "2.0.0",
         "contentHash": "iQb2Nm9WqPseGCxPcdeU5qMbWkxtSr1bmnliC7slitx7GOG8cKO2pKZUQ2Yl+DQQZQ7c8qIXe3k+zYE0f96dIA=="
       },
+      "Google.Protobuf": {
+        "type": "Transitive",
+        "resolved": "3.30.2",
+        "contentHash": "Y2aOVLIt75yeeEWigg9V9YnjsEm53sADtLGq0gLhwaXpk3iu8tYSoauolyhenagA2sWno2TQ2WujI0HQd6s1Vw=="
+      },
       "JetBrains.Annotations": {
         "type": "Transitive",
         "resolved": "2026.2.0",
@@ -162,6 +167,14 @@
         "dependencies": {
           "Microsoft.Bcl.Cryptography": "10.0.2",
           "Microsoft.IdentityModel.Logging": "8.19.2"
+        }
+      },
+      "Microsoft.ML.OnnxRuntime.Managed": {
+        "type": "Transitive",
+        "resolved": "1.30.0",
+        "contentHash": "KHW+vp+i4Mdf6RhIsMvurTVepafXHjg8/VQ0o6sa2wEK0KzV/4iEoRTUvsymcRP+XPAM/r6kZCaTADdV6Xn4RA==",
+        "dependencies": {
+          "System.Numerics.Tensors": "9.0.0"
         }
       },
       "Microsoft.OpenApi": {
@@ -451,6 +464,11 @@
           "Polly.Core": "8.4.2"
         }
       },
+      "System.Numerics.Tensors": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
+      },
       "System.Security.AccessControl": {
         "type": "Transitive",
         "resolved": "6.0.1",
@@ -623,7 +641,13 @@
         }
       },
       "lifegraph.semantic": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "LifeGraph.Graph": "[1.0.0, )",
+          "LifeGraph.Infrastructure": "[1.0.0, )",
+          "Microsoft.ML.OnnxRuntime": "[1.30.0, )",
+          "Microsoft.ML.Tokenizers": "[2.0.0, )"
+        }
       },
       "lifegraph.sharing": {
         "type": "Project"
@@ -723,6 +747,24 @@
           "Microsoft.Extensions.AmbientMetadata.Application": "10.10.0",
           "Microsoft.Extensions.DependencyInjection.AutoActivation": "10.10.0",
           "Microsoft.Extensions.Telemetry.Abstractions": "10.10.0"
+        }
+      },
+      "Microsoft.ML.OnnxRuntime": {
+        "type": "CentralTransitive",
+        "requested": "[1.30.0, )",
+        "resolved": "1.30.0",
+        "contentHash": "RaF3KjPXB/IbNvvrcQtrxS/NZjB9dEHnZQTsdJCLP5Fnn1Jj3LomeqR1mMAoRFKinJ0pIe85PLhLlfGBYqzgWA==",
+        "dependencies": {
+          "Microsoft.ML.OnnxRuntime.Managed": "1.30.0"
+        }
+      },
+      "Microsoft.ML.Tokenizers": {
+        "type": "CentralTransitive",
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "+b8lT4cLLO/sBR2hjvE/qG6qrZG15h7/PBvnIrzTh4xDaAxdHUY6449rC+1pHzQUsBiCHZVbj+VMn+xS0sL7TA==",
+        "dependencies": {
+          "Google.Protobuf": "3.30.2"
         }
       },
       "ModelContextProtocol": {

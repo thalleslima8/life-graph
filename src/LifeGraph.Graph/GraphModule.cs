@@ -28,12 +28,14 @@ public static class GraphModule
         services.AddScoped<IAgentGraphWriter, AgentGraphWriter>();
         services.AddScoped<AgentChanges>();
         services.AddScoped<GraphReadFilter>();
+        services.AddScoped<HybridSearch>();
         services.AddScoped<GraphReads>();
         services.AddScoped<LocalGraphReads>();
         services.AddScoped<NodeViews>();
         services.AddScoped<IGraphReader, GraphContextReads>();
         services.AddScoped<GraphWrites>();
         services.AddScoped<IResourceFetchGraph, ResourceFetchGraph>();
+        services.AddScoped<ISemanticGraph, SemanticGraph>();
         services.AddScoped<IJobHandler, GraphPurge>();
         services.AddScoped<IJobHandler, ProposalExpiry>();
         services.AddScoped<IAccountPurgeParticipant, GraphAccountPurge>();

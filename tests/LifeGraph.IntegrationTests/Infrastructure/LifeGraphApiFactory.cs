@@ -2,6 +2,10 @@ using LifeGraph.Accounts.Email;
 using LifeGraph.Accounts.Issuer;
 using LifeGraph.Infrastructure.Jobs;
 using LifeGraph.Infrastructure.Persistence;
+using LifeGraph.IntegrationTests.Semantic;
+using LifeGraph.Semantic.Embedding;
+using LifeGraph.Semantic.Search;
+using LifeGraph.Semantic.SoftRelations;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -92,6 +96,10 @@ public sealed class LifeGraphApiFactory : WebApplicationFactory<Program>
         builder.UseSetting($"{SpaOptions.SectionName}:BaseUrl", SpaBaseUrl);
         // Tests run due jobs by hand (JobRunner), so nothing runs behind their back.
         builder.UseSetting($"{JobsOptions.SectionName}:{nameof(JobsOptions.RunWorker)}", "false");
+        // No model file in a test (DA-175): the DeterministicEmbedder below takes the model's place.
+        builder.UseSetting($"{EmbeddingOptions.SectionName}:{nameof(EmbeddingOptions.Provider)}", nameof(EmbeddingProvider.None));
+        builder.UseSetting($"{SoftRelationOptions.SectionName}:{nameof(SoftRelationOptions.MinimumScores)}:{DeterministicEmbedder.Model}", DeterministicEmbedder.MinimumScore);
+        builder.UseSetting($"{SemanticSearchOptions.SectionName}:{nameof(SemanticSearchOptions.MinimumScores)}:{DeterministicEmbedder.Model}", DeterministicEmbedder.MinimumScore);
         foreach (var (key, value) in _settings)
         {
             builder.UseSetting(key, value);
@@ -104,6 +112,8 @@ public sealed class LifeGraphApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<TimeProvider>(Clock);
             services.AddScoped<TestAccountContext>();
             services.AddScoped<IAccountContext>(provider => provider.GetRequiredService<TestAccountContext>());
+            services.AddSingleton<DeterministicEmbedder>();
+            services.AddSingleton<IEmbedder>(provider => provider.GetRequiredService<DeterministicEmbedder>());
             _configureServices?.Invoke(services);
 
             // The owner's CLI builds the host but never runs it, so no hosted service starts there.

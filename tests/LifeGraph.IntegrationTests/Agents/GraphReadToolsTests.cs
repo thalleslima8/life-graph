@@ -3,6 +3,7 @@ using LifeGraph.Accounts.Contracts;
 using LifeGraph.Agents.Mcp;
 using LifeGraph.Graph.Application;
 using LifeGraph.Graph.Contracts;
+using LifeGraph.Graph.Domain;
 using LifeGraph.IntegrationTests.Graph;
 using LifeGraph.IntegrationTests.Infrastructure;
 using ModelContextProtocol.Client;
@@ -18,6 +19,7 @@ namespace LifeGraph.IntegrationTests.Agents;
 public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifetime
 {
     private const string Email = "ada@example.test";
+    private const string SoftModelId = "test-model";
 
     private readonly LifeGraphApiFactory _factory = new(database, AgentAuthorization.Settings());
     private GraphWriteHarness _graph = null!;
@@ -182,6 +184,8 @@ public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifet
 
         Assert.Equal(firstContext, secondContext);
         Assert.Equal(firstSearch, secondSearch);
+        using var search = JsonDocument.Parse(firstSearch);
+        Assert.All(search.RootElement.GetProperty("hits").EnumerateArray(), hit => Assert.Contains(hit.GetProperty("match").GetString(), (string[])["text", "semantic", "both"]));
         using var context = JsonDocument.Parse(firstContext);
         Assert.Equal(1 + GraphReadLimits.NeighborsPerNode, context.RootElement.GetProperty("nodes").GetArrayLength());
         Assert.Equal(30 - GraphReadLimits.NeighborsPerNode, context.RootElement.GetProperty("omittedCount").GetInt32());
@@ -392,15 +396,12 @@ public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifet
             new CreateRelation(rootToFirst, root, first, "related_to"),
             new CreateRelation(rootToSecond, root, second, "related_to"),
             new CreateRelation(siblings, first, second, "knows"),
-            new CreateRelation(softSiblings, second, first, "similar_to"),
+            new CreateRelation(softSiblings, second, first, Relation.SoftKind),
             new CreateRelation(rootToHidden, root, hidden, "related_to"),
             new CreateRelation(firstToHidden, first, hidden, "related_to"),
-            new CreateRelation(rootToInferred, root, inferred, "similar_to"));
+            new CreateRelation(rootToInferred, root, inferred, Relation.SoftKind));
         await _graph.WrittenAsync(_accountId, new UpdateNode(hidden, 1) { HiddenFromAgents = true });
-        await database.ExecuteAsMigratorAsync(
-            "UPDATE relations SET assertion = 'soft', origin = 'system', confidence = 0.7, strength = 0.4 WHERE id = ANY (@soft)",
-            TestContext.Current.CancellationToken,
-            new NpgsqlParameter("soft", new[] { softSiblings, rootToInferred }));
+        await MakeSoftAsync(softSiblings, rootToInferred);
 
         // Another Account's Node can be neither linked to nor reached.
         var otherAccount = await _graph.CreateAccountAsync();
@@ -423,10 +424,33 @@ public sealed class GraphReadToolsTests(PostgresDatabase database) : IAsyncLifet
         Assert.Equal(new[] { rootToFirst, rootToSecond, rootToInferred, siblings }.Order(), softEdges.Select(edge => edge.GetProperty("id").GetGuid()).Order());
         var soft = softEdges.Last();
         Assert.Equal((rootToInferred, "soft", "system", 0.7, 0.4), (soft.GetProperty("id").GetGuid(), soft.GetProperty("assertion").GetString(), soft.GetProperty("origin").GetString(), soft.GetProperty("confidence").GetDouble(), soft.GetProperty("strength").GetDouble()));
+        var explanation = soft.GetProperty("explanation");
+        Assert.Equal(
+            (Relation.EmbeddingSimilarityMethod, SoftModelId, 0.7),
+            (explanation.GetProperty("method").GetString(), explanation.GetProperty("modelId").GetString(), explanation.GetProperty("score").GetDouble()));
         Assert.DoesNotContain(softSiblings, EdgeIds(withSoft));
         Assert.DoesNotContain(rootToHidden, EdgeIds(withSoft));
         Assert.DoesNotContain(firstToHidden, EdgeIds(withSoft));
     }
+
+    // Turns written Relations into Soft ones in the shape the projection stores (DA-177, DA-186):
+    // related_to, lower id as source, explained by the method and a model; the scores are set apart
+    // so the edge shows each one.
+    private Task MakeSoftAsync(params Guid[] relationIds) =>
+        database.ExecuteAsMigratorAsync(
+            """
+            UPDATE relations
+            SET assertion = 'soft', origin = 'system', confidence = 0.7, strength = 0.4, kind = @kind,
+                inference_method = @method, inference_model_id = @model,
+                source_node_id = LEAST(source_node_id, target_node_id),
+                target_node_id = GREATEST(source_node_id, target_node_id)
+            WHERE id = ANY (@soft)
+            """,
+            TestContext.Current.CancellationToken,
+            new NpgsqlParameter("kind", Relation.SoftKind),
+            new NpgsqlParameter("method", Relation.EmbeddingSimilarityMethod),
+            new NpgsqlParameter("model", SoftModelId),
+            new NpgsqlParameter("soft", relationIds));
 
     // DA-128: past the cap and the byte budget, the lowest ranked edges are left out and counted.
     [Fact]

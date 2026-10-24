@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
+using LifeGraph.Graph.Persistence;
 using LifeGraph.Infrastructure.Jobs;
 using LifeGraph.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -67,7 +68,7 @@ internal sealed class GraphPurge(LifeGraphDbContext db, TimeProvider clock) : IJ
     }
 
     // A Node takes along the Relations that touch it, all tombstones by then since a Relation
-    // only lives between live Nodes, its Tag links and its Collection memberships.
+    // only lives between live Nodes, its Tag links, its Collection memberships and its Ignores.
     private async Task<IReadOnlyList<Guid>> RemoveNodeAsync(PurgePayload purge, CancellationToken cancellationToken)
     {
         var node = await db.Set<Node>().SingleOrDefaultAsync(entity => entity.Id == purge.EntityId, cancellationToken);
@@ -90,11 +91,23 @@ internal sealed class GraphPurge(LifeGraphDbContext db, TimeProvider clock) : IJ
         // So did its memberships in manual Collections.
         var members = await db.Set<CollectionMember>().Where(member => member.NodeId == node.Id).ToListAsync(cancellationToken);
 
+        // Its Ignores go with it (DA-071), and so do the entries that recorded them.
+        var dismissals = await db.Set<SoftDismissal>()
+            .Where(dismissal => dismissal.FirstNodeId == node.Id || dismissal.SecondNodeId == node.Id)
+            .ToListAsync(cancellationToken);
+
+        // Its Soft Relations are derived data with no history to empty (DA-070, DA-178).
+        var softRelations = await RelationReadGate.SoftRelations(db)
+            .Where(relation => relation.SourceNodeId == node.Id || relation.TargetNodeId == node.Id)
+            .ToListAsync(cancellationToken);
+
         db.RemoveRange(links);
         db.RemoveRange(members);
+        db.RemoveRange(dismissals);
+        db.RemoveRange(softRelations);
         db.RemoveRange(relations);
         db.Remove(node);
-        return [node.Id, .. relations.Select(relation => relation.Id), .. links.Select(link => link.Id), .. members.Select(member => member.Id)];
+        return [node.Id, .. relations.Select(relation => relation.Id), .. links.Select(link => link.Id), .. members.Select(member => member.Id), .. dismissals.Select(dismissal => dismissal.Id)];
     }
 
     private async Task<IReadOnlyList<Guid>> RemoveRelationAsync(PurgePayload purge, CancellationToken cancellationToken)

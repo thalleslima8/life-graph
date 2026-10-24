@@ -210,6 +210,8 @@ internal sealed class GraphWriter(
         db.Add(changeSet);
         GraphPurge.ScheduleFor(db, changeSet, now);
         ResourceFetchScheduling.ScheduleFor(db, workingSet, changeSet, now);
+        EmbeddingScheduling.ScheduleFor(db, changeSet, now);
+        SoftRelationScheduling.ScheduleFor(db, changeSet, now);
         ResourceFetchScheduling.ScheduleAgain(db, accountId, refetch, now);
         complete?.Invoke(changeSet);
         await SaveAsync(provenance, cancellationToken);
@@ -292,6 +294,8 @@ internal sealed class GraphWriter(
         DeleteCollection delete => write.Apply(delete),
         AddToCollection add => write.Apply(add),
         RemoveFromCollection remove => write.Apply(remove),
+        AcceptSoftRelation accept => write.Apply(accept),
+        IgnoreSoftRelation ignore => write.Apply(ignore),
         _ => throw new NotSupportedException($"Unknown graph operation {operation.GetType().Name}."),
     };
 

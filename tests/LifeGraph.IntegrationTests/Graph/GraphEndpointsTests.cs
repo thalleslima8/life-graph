@@ -3,8 +3,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using LifeGraph.Graph.Contracts;
+using LifeGraph.Graph.Domain;
 using LifeGraph.Infrastructure.Errors;
 using LifeGraph.IntegrationTests.Infrastructure;
+using Npgsql;
 
 namespace LifeGraph.IntegrationTests.Graph;
 
@@ -384,6 +386,60 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
         Assert.NotEmpty(existing.Headers.WwwAuthenticate);
     }
 
+    // DA-071, DA-177, DA-184: the suggestions of a Node with why they were inferred, then
+    // Accept and Ignore as actions answering the receipt; another Account finds none of them.
+    [Fact]
+    public async Task Soft_relations_are_listed_with_their_explanation_accepted_and_ignored_and_another_account_finds_none()
+    {
+        var root = await CreatedIdAsync("/api/nodes", new { title = "Marco Aurélio" });
+        var first = await CreatedIdAsync("/api/nodes", new { title = "Estoicismo" });
+        var second = await CreatedIdAsync("/api/nodes", new { title = "Sêneca" });
+        var toFirst = await EntityIdAsync(await _spa.PostAsync("/api/relations", new { sourceNodeId = root, targetNodeId = first, kind = "related_to" }));
+        var toSecond = await EntityIdAsync(await _spa.PostAsync("/api/relations", new { sourceNodeId = root, targetNodeId = second, kind = "related_to" }));
+        await MakeSoftAsync(toFirst, toSecond);
+        using var other = await TestAccounts.SignedInAsync(_factory, EmailB);
+
+        using var listed = await JsonAsync($"/api/nodes/{root}/soft-relations");
+        var suggestion = listed.RootElement.GetProperty("data").EnumerateArray().Single(item => item.GetProperty("id").GetGuid() == toFirst);
+        var explanation = suggestion.GetProperty("explanation");
+        Assert.Equal(
+            (first, Relation.EmbeddingSimilarityMethod, "test-model", 0.9),
+            (suggestion.GetProperty("nodeId").GetGuid(), explanation.GetProperty("method").GetString(), explanation.GetProperty("modelId").GetString(), explanation.GetProperty("score").GetDouble()));
+        Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/api/nodes/{root}/soft-relations")).StatusCode);
+
+        var foreignAccept = await other.PostAsync($"/api/nodes/{root}/soft-relations/{toFirst}/acceptance", new { });
+        var foreignIgnore = await other.PostAsync($"/api/nodes/{root}/soft-relations/{toSecond}/dismissal", new { });
+        Assert.Equal((HttpStatusCode.NotFound, HttpStatusCode.NotFound), (foreignAccept.StatusCode, foreignIgnore.StatusCode));
+
+        var accepted = await _spa.PostAsync($"/api/nodes/{root}/soft-relations/{toFirst}/acceptance", new { });
+        var ignored = await _spa.PostAsync($"/api/nodes/{root}/soft-relations/{toSecond}/dismissal", new { });
+        await ChangeSetIdAsync(accepted);
+        await ChangeSetIdAsync(ignored);
+
+        Assert.Empty(await ListedIdsAsync($"/api/nodes/{root}/soft-relations"));
+        using var relations = await JsonAsync($"/api/nodes/{root}/relations");
+        var hard = Assert.Single(relations.RootElement.GetProperty("data").EnumerateArray());
+        Assert.Equal(new[] { root, first }.Order(), new[] { hard.GetProperty("sourceNodeId").GetGuid(), hard.GetProperty("targetNodeId").GetGuid() }.Order());
+        Assert.Equal(("hard", "user"), (hard.GetProperty("assertion").GetString(), hard.GetProperty("origin").GetString()));
+        var again = await _spa.PostAsync($"/api/nodes/{root}/soft-relations/{toFirst}/acceptance", new { });
+        Assert.Equal(HttpStatusCode.NotFound, again.StatusCode);
+    }
+
+    private Task MakeSoftAsync(params Guid[] relationIds) =>
+        database.ExecuteAsMigratorAsync(
+            """
+            UPDATE relations
+            SET assertion = 'soft', origin = 'system', confidence = 0.9, strength = 0.9, kind = @kind,
+                inference_method = @method, inference_model_id = 'test-model',
+                source_node_id = LEAST(source_node_id, target_node_id),
+                target_node_id = GREATEST(source_node_id, target_node_id)
+            WHERE id = ANY (@soft)
+            """,
+            TestContext.Current.CancellationToken,
+            new NpgsqlParameter("kind", Relation.SoftKind),
+            new NpgsqlParameter("method", Relation.EmbeddingSimilarityMethod),
+            new NpgsqlParameter("soft", relationIds));
+
     // DA-024 and DA-115: the history newest first with its Provenance and the Undo chain,
     // then only what happened since the last read.
     [Fact]
@@ -534,6 +590,26 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
         Assert.Equal(HttpStatusCode.OK, (await _spa.DeleteAsync($"/api/nodes/{node}/tags/{tag}")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await _spa.DeleteAsync($"/api/tags/{tag}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _spa.GetAsync($"/api/tags/{tag}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_person_searches_the_own_graph_and_another_account_finds_nothing_and_short_words_are_refused()
+    {
+        var stoicism = await CreatedIdAsync("/api/nodes", new { title = "Filosofia estoica" });
+
+        using var found = await JsonAsync("/api/search?q=filosofia&limit=5");
+        using var other = await TestAccounts.SignedInAsync(_factory, EmailB);
+        using var foundByOther = JsonDocument.Parse(await other.Http.GetStringAsync(new Uri("/api/search?q=filosofia", UriKind.Relative), TestContext.Current.CancellationToken));
+        var tooShort = await _spa.GetAsync("/api/search?q=f");
+
+        var item = Assert.Single(found.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal((stoicism, "Filosofia estoica"), (item.GetProperty("id").GetGuid(), item.GetProperty("title").GetString()));
+        Assert.Contains(item.GetProperty("match").GetString(), (string[])["text", "semantic", "both"]);
+        Assert.Equal(JsonValueKind.Array, foundByOther.RootElement.GetProperty("items").ValueKind);
+        Assert.Empty(foundByOther.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
+        using var problem = await ProblemAsync(tooShort);
+        Assert.Equal(["q"], problem.RootElement.GetProperty("errors").EnumerateObject().Select(field => field.Name));
     }
 
     private async Task<Guid> CreatedIdAsync(string path, object body)

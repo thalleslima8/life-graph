@@ -1,6 +1,6 @@
 import { useId, useMemo, useRef, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { ASSERTION_LABELS, distanceHeading, graphKeyboardHelp, REROOT_LABEL, relationsOfLabel, relationText } from "./graphMessages";
+import { ASSERTION_LABELS, distanceHeading, graphKeyboardHelp, REROOT_LABEL, relationsOfLabel, relationText, softRelationExplanationText } from "./graphMessages";
 import { buildGraphIndex, isArrowKey, keyAction, nextFocus } from "./graphNavigation";
 import type { GraphCanvasLabels } from "./graphRendererPort";
 import type { LocalGraph, LocalGraphEdge, LocalGraphNode } from "./localGraph";
@@ -133,6 +133,7 @@ function RelationList({
       {relations.map((edge) => (
         <li key={edge.id}>
           {relationText(titleOf(edge.sourceNodeId), edge.kind, titleOf(edge.targetNodeId))} · {ASSERTION_LABELS[edge.assertion]}
+          {edge.explanation && ` · ${softRelationExplanationText(edge.explanation)}`}
           {agentText !== null && edge.agentUnreviewed && (
             <>
               {" · "}

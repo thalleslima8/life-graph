@@ -117,6 +117,7 @@ internal sealed class EntityRestore
         }
 
         _db.Add(changeSet);
+        EmbeddingScheduling.ScheduleFor(_db, changeSet, Now);
         return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(changeSet.Id, changes) { RelationsLeftDeleted = leftDeleted });
     }
 

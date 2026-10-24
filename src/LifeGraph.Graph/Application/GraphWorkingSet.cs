@@ -1,6 +1,7 @@
 using System.Text.Json;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
+using LifeGraph.Graph.Persistence;
 using LifeGraph.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,6 +17,7 @@ internal sealed class GraphWorkingSet : ICollectionReferences
 {
     private readonly Dictionary<Guid, Node> _nodes;
     private readonly Dictionary<Guid, Relation> _relations;
+    private readonly Dictionary<Guid, Relation> _softRelations;
     private readonly Dictionary<Guid, NodeType> _types;
     private readonly Dictionary<Guid, PropertyDefinition> _definitions;
     private readonly Dictionary<Guid, Tag> _tags;
@@ -33,6 +35,7 @@ internal sealed class GraphWorkingSet : ICollectionReferences
     private GraphWorkingSet(
         List<Node> nodes,
         List<Relation> relations,
+        List<Relation> softRelations,
         List<NodeType> types,
         List<PropertyDefinition> definitions,
         TagsInWrite tags,
@@ -50,6 +53,7 @@ internal sealed class GraphWorkingSet : ICollectionReferences
         _members = collections.Members.ToDictionary(member => member.Id);
         _nodes = nodes.ToDictionary(node => node.Id);
         _relations = relations.ToDictionary(relation => relation.Id);
+        _softRelations = softRelations.ToDictionary(relation => relation.Id);
         _types = types.ToDictionary(type => type.Id);
         _definitions = definitions.ToDictionary(definition => definition.Id);
         _typeNames = takenTypeNames.ToHashSet(StringComparer.Ordinal);
@@ -64,8 +68,15 @@ internal sealed class GraphWorkingSet : ICollectionReferences
     {
         var createdIds = operations.Select(CreatedId).OfType<Guid>().ToHashSet();
 
+        // An Accept or Ignore names a Soft Relation; its two Nodes come with it (DA-071).
+        var softRelationIds = operations.Select(ReferencedSoftRelationId).OfType<Guid>().ToList();
+        var softRelations = softRelationIds.Count == 0
+            ? []
+            : await RelationReadGate.PendingSoftRelations(db).Where(relation => softRelationIds.Contains(relation.Id)).ToListAsync(cancellationToken);
+
         var nodeIds = operations.SelectMany(ReferencedNodeIds)
             .Concat(CriteriaOf(operations).Select(criterion => criterion.NodeId).OfType<Guid>())
+            .Concat(softRelations.SelectMany(relation => new[] { relation.SourceNodeId, relation.TargetNodeId }))
             .Where(id => !createdIds.Contains(id)).Distinct().ToList();
         // A capture brings a Resource back from its tombstone (DA-154): the one write that
         // touches a deleted Node.
@@ -126,7 +137,7 @@ internal sealed class GraphWorkingSet : ICollectionReferences
         var tags = await TagsInWrite.LoadAsync(db, operations, createdIds, cancellationToken);
         var collections = await CollectionsInWrite.LoadAsync(db, operations, createdIds, cancellationToken);
         var storedUsage = await StoredUsage.LoadAsync(db, operations, nodes, types, definitions, cancellationToken);
-        return new GraphWorkingSet(nodes, relations, types, definitions, tags, collections, takenTypeNames, takenPropertyNames, storedUsage, rewrites.OverCap);
+        return new GraphWorkingSet(nodes, relations, softRelations, types, definitions, tags, collections, takenTypeNames, takenPropertyNames, storedUsage, rewrites.OverCap);
     }
 
     /// <summary>
@@ -156,6 +167,19 @@ internal sealed class GraphWorkingSet : ICollectionReferences
     public Node? FindNodeEvenDeleted(Guid id) => _nodes.GetValueOrDefault(id);
 
     public Relation? FindRelation(Guid id) => _relations.GetValueOrDefault(id) is { IsDeleted: false } relation ? relation : null;
+
+    /// <summary>
+    /// A Soft Relation of the Node the person may still Accept or Ignore: one whose pair has no
+    /// live Hard Relation, and that this write has not already taken.
+    /// </summary>
+    public Relation? FindSoftRelation(Guid nodeId, Guid softRelationId) =>
+        _softRelations.GetValueOrDefault(softRelationId) is { } relation && relation.Touches(nodeId) && !_removedIds.Contains(relation.Id)
+            ? relation
+            : null;
+
+    /// <summary>Whether a live Hard Relation joins the two Nodes, either way, as this write leaves it.</summary>
+    public bool HasHardRelationBetween(Guid oneNodeId, Guid otherNodeId) =>
+        _relations.Values.Any(relation => !relation.IsDeleted && relation.Touches(oneNodeId) && relation.Touches(otherNodeId));
 
     public IEnumerable<Relation> LiveRelationsTouching(Guid nodeId) =>
         _relations.Values.Where(relation => !relation.IsDeleted && relation.Touches(nodeId)).OrderBy(relation => relation.Id);
@@ -274,6 +298,9 @@ internal sealed class GraphWorkingSet : ICollectionReferences
 
     public void Removed(NodeTag link) => _removedIds.Add(link.Id);
 
+    /// <summary>A Soft Relation an Accept or Ignore took: removed with no tombstone and no entry (DA-070).</summary>
+    public void RemovedSoft(Relation softRelation) => _removedIds.Add(softRelation.Id);
+
     public void Removed(Collection collection) => _removedIds.Add(collection.Id);
 
     public void Removed(CollectionMember member) => _removedIds.Add(member.Id);
@@ -304,6 +331,7 @@ internal sealed class GraphWorkingSet : ICollectionReferences
     {
         CreateNode create => create.NodeId,
         CreateRelation create => create.RelationId,
+        AcceptSoftRelation accept => accept.RelationId,
         CreateType create => create.TypeId,
         DefineProperty define => define.PropertyDefinitionId,
         CreateTag create => create.TagId,
@@ -334,6 +362,13 @@ internal sealed class GraphWorkingSet : ICollectionReferences
         AddToCollection add => [add.NodeId],
         RemoveFromCollection remove => [remove.NodeId],
         _ => [],
+    };
+
+    private static Guid? ReferencedSoftRelationId(GraphOperation operation) => operation switch
+    {
+        AcceptSoftRelation accept => accept.SoftRelationId,
+        IgnoreSoftRelation ignore => ignore.SoftRelationId,
+        _ => null,
     };
 
     private static Guid? ReferencedTypeId(GraphOperation operation) => operation switch

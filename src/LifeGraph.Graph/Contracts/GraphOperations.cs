@@ -174,6 +174,20 @@ public sealed record AddToCollection(Guid CollectionId, Guid NodeId) : GraphOper
 /// <summary>Removes a Node from a manual Collection; a Node not in it changes nothing.</summary>
 public sealed record RemoveFromCollection(Guid CollectionId, Guid NodeId) : GraphOperation;
 
+/// <summary>
+/// The person's Accept of a Soft Relation of the Node (DA-071, DA-177): a Hard
+/// <c>related_to</c> Relation, origin=user, between the same pair and in the same direction,
+/// with the id <paramref name="RelationId"/>. The Soft Relation goes, outside the log (DA-070).
+/// </summary>
+public sealed record AcceptSoftRelation(Guid NodeId, Guid SoftRelationId, Guid RelationId) : GraphOperation;
+
+/// <summary>
+/// The person's Ignore of a Soft Relation of the Node (DA-071): a <c>soft_dismissal</c> of the
+/// pair, so it is not inferred again while the dismissal stands. The Soft Relation goes,
+/// outside the log (DA-070).
+/// </summary>
+public sealed record IgnoreSoftRelation(Guid NodeId, Guid SoftRelationId) : GraphOperation;
+
 /// <summary>Whether a Relation was asserted (Hard) or inferred by the system (Soft), DA-014.</summary>
 public enum RelationAssertion
 {

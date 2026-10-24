@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "@/api/schema.gen";
-import type { NodeDetail, PropertyDefinitionItem, TypeItem } from "@/features/graph/graphData";
+import type { NodeDetail, PropertyDefinitionItem, SoftRelationItem, TypeItem } from "@/features/graph/graphData";
 import type { ChangeSetFeed, ChangeSetItem } from "@/features/graph/recentChanges";
 import type { TagItem } from "@/features/tags/tagsData";
 import type { CollectionItem } from "@/features/collections/collectionsData";
@@ -171,6 +171,19 @@ export function aChangeSetDetail(overrides: Partial<ChangeSetDetail> = {}): Chan
 }
 
 export const RELATION_ID = "01920000-0000-7000-8000-0000000000f1";
+export const SOFT_RELATION_ID = "01920000-0000-7000-8000-0000000000f3";
+
+/** A pending Soft Relation of NODE_ID towards OTHER_NODE_ID, inferred by embedding. */
+export function aSoftRelation(overrides: Partial<SoftRelationItem> = {}): SoftRelationItem {
+  return {
+    id: SOFT_RELATION_ID,
+    nodeId: OTHER_NODE_ID,
+    nodeTitle: "Meditações",
+    nodeTypeId: TYPE_ID,
+    explanation: { method: "embedding", modelId: "multilingual-e5-small", score: 0.82 },
+    ...overrides,
+  };
+}
 
 /** The local graph as the API sends it: the root and one neighbor, related by one Hard Relation. */
 export function aLocalGraph(overrides: Partial<components["schemas"]["LocalGraph"]> = {}): components["schemas"]["LocalGraph"] {

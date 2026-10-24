@@ -20,7 +20,11 @@ public sealed record NodeSummary(
     bool InInbox,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    string? SuggestedType = null);
+    string? SuggestedType = null)
+{
+    /// <summary>The Node's Soft Relations the person may Accept or Ignore (DA-182).</summary>
+    public required int SoftRelationCount { get; init; }
+}
 
 /// <summary>
 /// A Node as the Inspector shows it. <see cref="Properties"/> follows the Type's attachments,
@@ -74,7 +78,8 @@ public sealed record RelationItem(
 
 /// <summary>
 /// The local graph around a Node (DA-138): the Nodes the walk reaches up to the depth, ranked
-/// (DA-036) and capped, and the Hard Relations among them, capped too. Not a pageable
+/// (DA-036) and capped, and the Hard Relations among them plus the Soft ones of the root Node
+/// (DA-179), capped too. Not a pageable
 /// collection: a cursor over a traversal would break the picture (the exception to API-060
 /// recorded in DA-138); to see further, re-center on another Node. <see cref="Truncated"/> says
 /// a cap left something out, counted in <see cref="OmittedNodeCount"/> and
@@ -102,7 +107,15 @@ public sealed record LocalGraphEdge(
     RelationAssertion Assertion,
     RelationOrigin Origin,
     double Strength,
-    bool AgentUnreviewed);
+    bool AgentUnreviewed,
+    SoftRelationExplanation? Explanation = null);
+
+/// <summary>
+/// A Soft Relation of a Node, seen from that Node: the other Node and why the system inferred
+/// the pair (DA-070). The person may Accept or Ignore it (DA-071).
+/// </summary>
+/// <param name="NodeId">The other Node of the pair.</param>
+public sealed record SoftRelationItem(Guid Id, Guid NodeId, string NodeTitle, Guid? NodeTypeId, SoftRelationExplanation Explanation);
 
 /// <param name="HiddenFromAgents">Oculto para agentes: every Node of the Type is hidden from agents (DA-035).</param>
 /// <param name="IsSystem">A system Type (Resource): locked, it cannot be renamed nor deleted (DA-155).</param>
@@ -146,6 +159,18 @@ public sealed record PropertyDefinitionUsage(
     int TombstoneCount,
     DateTimeOffset? LastPurgeAt,
     IReadOnlyDictionary<Guid, int> OptionCounts);
+
+/// <summary>
+/// The answer of the search (DA-183, DA-184): the Nodes found, best first, at most the
+/// <c>limit</c> asked. <see cref="Degraded"/>: the search found by words only, because no model
+/// answered or the Account's Nodes are being indexed.
+/// </summary>
+public sealed record NodeSearchResults(IReadOnlyList<NodeSearchItem> Items, bool Degraded);
+
+/// <param name="TypeName">The name of the Node's Type; <c>null</c> for a Node without one.</param>
+/// <param name="Snippet">The start of the Node's body, as plain text.</param>
+/// <param name="Match">Whether it was found by its words, by meaning or by both.</param>
+public sealed record NodeSearchItem(Guid Id, string Title, string? TypeName, string Snippet, SearchMatch Match);
 
 /// <param name="WithoutType">Only the Nodes without a Type (DA-018); exclusive with <see cref="TypeId"/>.</param>
 /// <param name="InInbox">Only the Nodes in the Inbox (DA-019).</param>

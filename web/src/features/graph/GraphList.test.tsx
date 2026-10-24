@@ -132,3 +132,25 @@ describe("graph list", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+describe("graph list with a Soft Relation from the root", () => {
+  it("says Soft and explains the inference in words, never by colour", () => {
+    const graph = aLocalGraphModel();
+    const softEdge = {
+      id: "01920000-0000-7000-8000-0000000000f3",
+      sourceNodeId: NODE_ID,
+      targetNodeId: OTHER_NODE_ID,
+      kind: "related_to",
+      assertion: "soft" as const,
+      origin: "system" as const,
+      strength: 0.82,
+      agentUnreviewed: false,
+      explanation: { method: "embedding", modelId: "multilingual-e5-small", score: 0.82 },
+    };
+    render(<GraphList {...listProps({ graph: { ...graph, edges: [softEdge] } })} />);
+
+    expect(within(screen.getByRole("list", { name: "Relations de Leituras" })).getByRole("listitem")).toHaveTextContent(
+      "Leituras → related_to → Meditações · Soft · embedding · score 0,82 · multilingual-e5-small",
+    );
+  });
+});

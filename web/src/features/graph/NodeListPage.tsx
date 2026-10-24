@@ -13,6 +13,7 @@ import {
   NO_TYPE,
   TITLE_MAX_LENGTH,
   nodesQuery,
+  softRelationsPath,
   typesQuery,
   useArchiveNode,
   useCreateNode,
@@ -26,6 +27,7 @@ import {
   TYPES_LOAD_ERROR_MESSAGE,
   TYPE_LOADING_LABEL,
   TYPE_UNAVAILABLE_LABEL,
+  softRelationCountText,
   writeErrorMessage,
 } from "./graphMessages";
 
@@ -128,6 +130,7 @@ function typeLabelOf(typeId: string | null, types: UseQueryResult<TypeItem[]>): 
 
 function NodeRow({ node, typeLabel }: { node: NodeSummary; typeLabel: string }) {
   const archive = useArchiveNode(node.id);
+  const softRelationCount = Number(node.softRelationCount);
 
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
@@ -138,6 +141,11 @@ function NodeRow({ node, typeLabel }: { node: NodeSummary; typeLabel: string }) 
         <span className="text-sm text-muted-foreground">{typeLabel}</span>
         {node.inInbox && <span className="rounded border px-1.5 text-xs">Inbox</span>}
         {node.suggestedType && <span className="text-sm text-muted-foreground">Sugestão do agente: {node.suggestedType}</span>}
+        {node.inInbox && softRelationCount > 0 && (
+          <Link to={softRelationsPath(node.id)} className="text-sm underline underline-offset-4">
+            {softRelationCountText(softRelationCount)}
+          </Link>
+        )}
       </div>
       {node.inInbox && (
         <div className="flex items-center gap-2">

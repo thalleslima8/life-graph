@@ -88,6 +88,44 @@ public static class ArchitectureRules
             .Should().NotDependOnAnyTypesThat().HaveFullName($"{rootNamespace}.Graph.Contracts.IResourceFetchGraph")
             .Because("only the fetch job may write as the system, in the job's transaction (DA-152, DA-153)");
 
+    /// <summary>The Graph's <c>node_embeddings</c> and Soft Relations are reached from outside it only by the Semantic module's jobs (DA-176).</summary>
+    public static IArchRule OnlyTheSemanticJobsUseTheSemanticGraph(string rootNamespace) =>
+        Types().That().DoNotResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}\.(Graph(\.Application|\.Contracts)?|Semantic\.(Embedding|SoftRelations))$")
+            .Should().NotDependOnAnyTypesThat().HaveFullName($"{rootNamespace}.Graph.Contracts.ISemanticGraph")
+            .Because("only the Semantic jobs read a Node's text for the model, store its embedding and infer its Soft Relations (DA-176)");
+
+    // Soft Relations share the relations table with the Hard ones; the model sees only Hard, and
+    // only the gate reads past that or names the table in SQL (DA-178). The patterns are split so
+    // this file's own text never matches them.
+    private static readonly Regex RelationsBypass = new(
+        @"\bIgnore" + @"QueryFilters\b|\b(FROM|JOIN|UPDATE|INTO)\s+" + @"relations\b",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+    /// <summary>Every line of the production sources, but the gate's and the migrations', that reads past the Hard-only gate of <c>relations</c>.</summary>
+    public static IReadOnlyList<string> RelationsReadPastTheGate()
+    {
+        var source = Path.Combine(RepositoryRoot(), "src");
+        return [.. Directory.EnumerateFiles(source, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}LifeGraph.Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && Path.GetFileName(path) != "RelationReadGate.cs")
+            .SelectMany(path => File.ReadLines(path)
+                .Select((line, index) => (line, index))
+                .Where(row => RelationsBypass.IsMatch(row.line))
+                .Select(row => $"{Path.GetRelativePath(source, path)}:{row.index + 1}: {row.line.Trim()}"))];
+    }
+
+    private static string RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "LifeGraph.sln")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName ?? throw new InvalidOperationException("The tests run outside the repository.");
+    }
+
     // The domain knows nothing about HTTP, MCP or the database (BE-001, CLAUDE.md).
     public static IArchRule DomainIsFrameworkFree(string rootNamespace) =>
         Types().That().ResideInNamespaceMatching($@"^{rootNamespace}\.\w+\.Domain(\..+)?$")

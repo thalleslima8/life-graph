@@ -2,7 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useInfiniteQuery, useQuery, type InfiniteData, type UseInfiniteQueryResult, type UseQueryResult } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,39 +16,51 @@ import {
   BODY_MAX_LENGTH,
   NO_TYPE,
   RELATION_KIND_MAX_LENGTH,
+  SOFT_RELATIONS_SECTION_ID,
   TITLE_MAX_LENGTH,
   isNotFound,
   isVersionConflict,
   nodeQuery,
   nodeRelationsQuery,
+  nodeSoftRelationsQuery,
   nodesQuery,
   propertyDefinitionsQuery,
   typesQuery,
+  useAcceptSoftRelation,
   useArchiveNode,
   useCreateRelation,
   useDeleteNode,
   useDeleteRelation,
   useEditBaseline,
+  useIgnoreSoftRelation,
   useUpdateNode,
   versionOf,
   type NodeDetail,
   type NodePropertyValue,
   type PropertyDefinitionItem,
   type RelationItem,
+  type SoftRelationItem,
   type TypeItem,
   type UpdateNodeInput,
 } from "./graphData";
 import {
+  ACCEPT_LABEL,
+  IGNORE_LABEL,
   INSPECTOR_CLOSE_LABEL,
   LOAD_ERROR_MESSAGE,
+  LOADING_MESSAGE,
   NO_TYPE_LABEL,
   NODE_BODY_LABEL,
   REROOT_LABEL,
   SHOW_IN_GRAPH_LABEL,
+  SOFT_RELATIONS_TITLE,
   STALE_NODE_MESSAGE,
   TYPE_UNAVAILABLE_LABEL,
   VERSION_CONFLICT_MESSAGE,
+  acceptSoftRelationLabel,
   formatDateTime,
+  ignoreSoftRelationLabel,
+  softRelationExplanationText,
   writeErrorMessage,
 } from "./graphMessages";
 import { graphPath } from "./localGraph";
@@ -197,6 +209,7 @@ function ReadyInspector({ node, onNavigate }: { node: NodeDetail; onNavigate?: (
       <NodeTags node={node} />
       {!readOnly && <NodeCollections node={node} />}
       <NodeRelations node={node} />
+      <NodeSoftRelations node={node} />
     </>
   );
 }
@@ -657,7 +670,7 @@ function NodeRelations({ node }: { node: NodeDetail }) {
 
   return (
     <section aria-labelledby="relations-title" className="space-y-3">
-      <Heading id="relations-title" className="text-lg font-semibold">
+      <Heading id="relations-title" tabIndex={-1} className="text-lg font-semibold">
         Relations
       </Heading>
       {relations.isPending && <p role="status">Carregando…</p>}
@@ -713,6 +726,126 @@ function RelationRow({ relation, nodeId }: { relation: RelationItem; nodeId: str
           >
             Remover
           </Button>
+        )}
+      </span>
+    </li>
+  );
+}
+
+/**
+ * The Node's pending Soft Relations (DA-179): apart from the Hard list, hidden when there are
+ * none or the Node is not found (the Inspector's own 404 owns the page). No optimistic removal:
+ * a resolved row leaves on the refetch, and focus follows it (FE-032).
+ */
+function NodeSoftRelations({ node }: { node: NodeDetail }) {
+  const softRelations = useQuery(nodeSoftRelationsQuery(node.id));
+  const { sectionHeading: Heading } = useContext(InspectorOptionsContext);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  // The row an Accept or Ignore resolved: once a refetch leaves it out, focus follows it.
+  const resolvedIdRef = useRef<string | null>(null);
+  const items = softRelations.data?.data;
+  const { hash } = useLocation();
+  const hasItems = items !== undefined && items.length > 0;
+
+  // Arriving from the Inbox's link: the section is the target, once it has rows to show.
+  useEffect(() => {
+    if (hash === `#${SOFT_RELATIONS_SECTION_ID}` && hasItems) {
+      sectionRef.current?.focus();
+    }
+  }, [hash, hasItems]);
+
+  useEffect(() => {
+    const resolvedId = resolvedIdRef.current;
+    if (resolvedId === null || items === undefined || items.some((item) => item.id === resolvedId)) {
+      return;
+    }
+
+    resolvedIdRef.current = null;
+    const target = items.length > 0 ? headingRef.current : document.getElementById("relations-title");
+    target?.focus();
+  }, [items]);
+
+  if (softRelations.isError && isNotFound(softRelations.error)) {
+    return null;
+  }
+
+  if (softRelations.isSuccess && softRelations.data.data.length === 0) {
+    return null;
+  }
+
+  return (
+    <section id={SOFT_RELATIONS_SECTION_ID} ref={sectionRef} tabIndex={-1} aria-labelledby="soft-relations-title" className="space-y-3">
+      <Heading id="soft-relations-title" ref={headingRef} tabIndex={-1} className="text-lg font-semibold">
+        {SOFT_RELATIONS_TITLE}
+      </Heading>
+      {softRelations.isPending && <p role="status">{LOADING_MESSAGE}</p>}
+      {softRelations.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          {LOAD_ERROR_MESSAGE}
+        </p>
+      )}
+      {softRelations.isSuccess && (
+        <ul className="divide-y rounded-md border border-dashed" aria-label={SOFT_RELATIONS_TITLE}>
+          {softRelations.data.data.map((item) => (
+            <SoftRelationRow key={item.id} item={item} nodeId={node.id} onResolved={() => (resolvedIdRef.current = item.id)} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function SoftRelationRow({ item, nodeId, onResolved }: { item: SoftRelationItem; nodeId: string; onResolved: () => void }) {
+  const accept = useAcceptSoftRelation(nodeId);
+  const ignore = useIgnoreSoftRelation(nodeId);
+  const { readOnly } = useContext(InspectorOptionsContext);
+  const isPending = accept.isPending || ignore.isPending;
+  const failed = accept.isError ? accept.error : ignore.isError ? ignore.error : null;
+
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+      <span>
+        <Link to={`/nodes/${item.nodeId}`} className="underline underline-offset-4">
+          {item.nodeTitle}
+        </Link>
+        <span className="text-muted-foreground"> · {softRelationExplanationText(item.explanation)}</span>
+      </span>
+      <span className="flex items-center gap-2">
+        {failed !== null && (
+          <span role="alert" className="text-destructive">
+            {writeErrorMessage(failed)}
+          </span>
+        )}
+        {!readOnly && (
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                ignore.reset();
+                accept.mutate(item.id, { onSuccess: onResolved });
+              }}
+              disabled={isPending}
+              aria-label={acceptSoftRelationLabel(item.nodeTitle)}
+            >
+              {ACCEPT_LABEL}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                accept.reset();
+                ignore.mutate(item.id, { onSuccess: onResolved });
+              }}
+              disabled={isPending}
+              aria-label={ignoreSoftRelationLabel(item.nodeTitle)}
+            >
+              {IGNORE_LABEL}
+            </Button>
+          </>
         )}
       </span>
     </li>

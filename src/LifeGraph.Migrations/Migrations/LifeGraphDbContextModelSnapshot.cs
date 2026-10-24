@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using Pgvector;
 
 #nullable disable
 
@@ -224,7 +225,7 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.ToTable("change_entries", null, t =>
                         {
-                            t.HasCheckConstraint("ck_change_entries_entity_kind", "entity_kind IN ('collection', 'collection_member', 'node', 'node_tag', 'property_definition', 'relation', 'tag', 'type')");
+                            t.HasCheckConstraint("ck_change_entries_entity_kind", "entity_kind IN ('collection', 'collection_member', 'node', 'node_tag', 'property_definition', 'relation', 'soft_dismissal', 'tag', 'type')");
 
                             t.HasCheckConstraint("ck_change_entries_operation", "operation IN ('created', 'deleted', 'restored', 'updated')");
 
@@ -673,6 +674,73 @@ namespace LifeGraph.Migrations.Migrations
                         });
                 });
 
+            modelBuilder.Entity("LifeGraph.Graph.Domain.NodeEmbedding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Dimension")
+                        .HasColumnType("integer")
+                        .HasColumnName("dimension");
+
+                    b.Property<Vector>("Embedding")
+                        .IsRequired()
+                        .HasColumnType("vector(384)")
+                        .HasColumnName("embedding");
+
+                    b.Property<string>("ModelId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("model_id");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_node_embeddings");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_node_embeddings_account_id_id");
+
+                    b.HasIndex("Embedding")
+                        .HasDatabaseName("ix_node_embeddings_embedding");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Embedding"), "hnsw");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Embedding"), new[] { "vector_cosine_ops" });
+
+                    b.HasIndex("AccountId", "NodeId", "ModelId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_node_embeddings_account_id_node_id_model_id");
+
+                    b.ToTable("node_embeddings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_node_embeddings_content_hash", "char_length(content_hash) = 64");
+
+                            t.HasCheckConstraint("ck_node_embeddings_dimension", "dimension = vector_dims(embedding)");
+                        });
+                });
+
             modelBuilder.Entity("LifeGraph.Graph.Domain.NodeTag", b =>
                 {
                     b.Property<Guid>("Id")
@@ -879,6 +947,16 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
+                    b.Property<string>("InferenceMethod")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("inference_method");
+
+                    b.Property<string>("InferenceModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("inference_model_id");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -933,6 +1011,11 @@ namespace LifeGraph.Migrations.Migrations
                     b.HasIndex("AccountId", "TargetNodeId")
                         .HasDatabaseName("ix_relations_account_id_target_node_id");
 
+                    b.HasIndex(new[] { "AccountId", "SourceNodeId", "TargetNodeId" }, "uq_relations_soft_pair")
+                        .IsUnique()
+                        .HasDatabaseName("uq_relations_soft_pair")
+                        .HasFilter("assertion = 'soft'");
+
                     b.ToTable("relations", null, t =>
                         {
                             t.HasCheckConstraint("ck_relations_assertion", "assertion IN ('hard', 'soft')");
@@ -943,9 +1026,50 @@ namespace LifeGraph.Migrations.Migrations
 
                             t.HasCheckConstraint("ck_relations_origin", "origin IN ('agent', 'import', 'system', 'user')");
 
-                            t.HasCheckConstraint("ck_relations_soft_is_inferred", "assertion = 'hard' OR (origin = 'system' AND confidence IS NOT NULL)");
+                            t.HasCheckConstraint("ck_relations_soft_is_inferred", "assertion = 'hard' OR (origin = 'system' AND confidence IS NOT NULL AND inference_method IS NOT NULL AND inference_model_id IS NOT NULL AND kind = 'related_to' AND source_node_id < target_node_id)");
 
                             t.HasCheckConstraint("ck_relations_strength", "strength >= 0 AND strength <= 1");
+                        });
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SoftDismissal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("FirstNodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("first_node_id");
+
+                    b.Property<Guid>("SecondNodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("second_node_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_soft_dismissals");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_soft_dismissals_account_id_id");
+
+                    b.HasIndex("AccountId", "SecondNodeId")
+                        .HasDatabaseName("ix_soft_dismissals_account_id_second_node_id");
+
+                    b.HasIndex("AccountId", "FirstNodeId", "SecondNodeId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_soft_dismissals_account_id_first_node_id_second_node_id");
+
+                    b.ToTable("soft_dismissals", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_soft_dismissals_ordered_pair", "first_node_id < second_node_id");
                         });
                 });
 
@@ -1690,6 +1814,24 @@ namespace LifeGraph.Migrations.Migrations
                         .HasConstraintName("fk_nodes_type");
                 });
 
+            modelBuilder.Entity("LifeGraph.Graph.Domain.NodeEmbedding", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_embeddings_account_id");
+
+                    b.HasOne("LifeGraph.Graph.Domain.Node", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "NodeId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_embeddings_node");
+                });
+
             modelBuilder.Entity("LifeGraph.Graph.Domain.NodeTag", b =>
                 {
                     b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
@@ -1760,6 +1902,32 @@ namespace LifeGraph.Migrations.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_relations_target_node");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SoftDismissal", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_soft_dismissals_account_id");
+
+                    b.HasOne("LifeGraph.Graph.Domain.Node", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "FirstNodeId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_soft_dismissals_first_node");
+
+                    b.HasOne("LifeGraph.Graph.Domain.Node", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "SecondNodeId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_soft_dismissals_second_node");
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.Tag", b =>

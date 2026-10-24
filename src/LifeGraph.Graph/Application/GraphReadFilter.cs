@@ -1,4 +1,6 @@
+using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
+using LifeGraph.Graph.Persistence;
 using LifeGraph.Infrastructure.Identity;
 using LifeGraph.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -42,7 +44,7 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
     /// <summary>The live Nodes the reader sees.</summary>
     public IQueryable<Node> Nodes() => SeenByReader(db.Set<Node>().AsNoTracking().Where(node => node.DeletedAt == null));
 
-    /// <summary>The live Relations whose two Nodes the reader sees.</summary>
+    /// <summary>The live Hard Relations whose two Nodes the reader sees (the model holds only Hard ones, DA-178).</summary>
     public IQueryable<Relation> Relations()
     {
         var visibleNodes = Nodes();
@@ -50,6 +52,27 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
             && visibleNodes.Any(node => node.Id == relation.SourceNodeId)
             && visibleNodes.Any(node => node.Id == relation.TargetNodeId));
     }
+
+    /// <summary>
+    /// The live Relations, Soft ones included, whose two Nodes the reader sees: only for a read
+    /// that shows Soft Relations on purpose (<c>get_context</c> with <c>includeSoft</c>), through
+    /// the gate (DA-178). An agent never gets a Soft Relation to a Node Oculto para agentes (DA-179),
+    /// and no one gets one for a pair that has a live Hard Relation.
+    /// </summary>
+    public IQueryable<Relation> RelationsWithSoft()
+    {
+        var visibleNodes = Nodes();
+        return RelationReadGate.ShownRelations(db).AsNoTracking().Where(relation => relation.DeletedAt == null
+            && visibleNodes.Any(node => node.Id == relation.SourceNodeId)
+            && visibleNodes.Any(node => node.Id == relation.TargetNodeId));
+    }
+
+    /// <summary>
+    /// The Soft Relations whose two Nodes the reader sees, for a pair with no live Hard
+    /// Relation: what the person may Accept or Ignore (DA-071, DA-179).
+    /// </summary>
+    public IQueryable<Relation> SoftRelations() =>
+        RelationsWithSoft().Where(relation => relation.Assertion == RelationAssertion.Soft);
 
     /// <summary>
     /// The Nodes the reader sees, tombstones included: for an answer that repeats what a

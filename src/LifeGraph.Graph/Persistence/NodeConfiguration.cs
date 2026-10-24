@@ -78,21 +78,40 @@ internal sealed class RelationConfiguration : IEntityTypeConfiguration<Relation>
 {
     public void Configure(EntityTypeBuilder<Relation> relation)
     {
-        relation.ToTable("relations", table =>
+        relation.ToTable(RelationReadGate.TableName, table =>
         {
             table.HasEnumCheck<RelationAssertion>("assertion");
             table.HasEnumCheck<RelationOrigin>("origin");
             table.HasCheckConstraint("ck_relations_not_self", "source_node_id <> target_node_id");
             table.HasCheckConstraint("ck_relations_strength", "strength >= 0 AND strength <= 1");
             table.HasCheckConstraint("ck_relations_confidence", "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)");
-            // Only the system infers; a Soft Relation always says how sure it is (DA-014).
+            // Only the system infers; a Soft Relation always says how sure it is (DA-014), how it was
+            // inferred and by which model (DA-070), and is the unordered pair stored as related_to
+            // with the lower id as source (DA-177, DA-186).
             table.HasCheckConstraint(
                 "ck_relations_soft_is_inferred",
-                "assertion = 'hard' OR (origin = 'system' AND confidence IS NOT NULL)");
+                $"assertion = '{RelationReadGate.HardAssertion}' OR (origin = 'system' AND confidence IS NOT NULL"
+                + " AND inference_method IS NOT NULL AND inference_model_id IS NOT NULL"
+                + $" AND kind = '{Relation.SoftKind}' AND source_node_id < target_node_id)");
         });
         relation.HasAccountKeys(entity => entity.Id, entity => new { entity.AccountId, entity.Id });
         relation.Property(entity => entity.Id).ValueGeneratedNever();
         relation.Property(entity => entity.Kind).HasMaxLength(GraphLimits.RelationKindMaxLength);
+        relation.Property(entity => entity.InferenceMethod).HasMaxLength(Relation.InferenceMethodMaxLength);
+        relation.Property(entity => entity.InferenceModelId).HasMaxLength(Relation.InferenceModelIdMaxLength);
+
+        // The model sees only Hard Relations; the Soft ones come only through the gate (DA-178).
+        relation.HasQueryFilter(RelationReadGate.HardOnlyFilter, entity => entity.Assertion == RelationAssertion.Hard);
+
+        // One Soft Relation per pair, stored with the lower id as the source (DA-177).
+        relation.HasIndex(entity => new { entity.AccountId, entity.SourceNodeId, entity.TargetNodeId }, "uq_relations_soft_pair")
+            .IsUnique()
+            .HasFilter($"assertion = '{RelationReadGate.SoftAssertion}'")
+            .HasDatabaseName("uq_relations_soft_pair");
+
+        // Kept for every Relation's source key, Hard ones included: the filtered index above does not serve them.
+        relation.HasIndex(entity => new { entity.AccountId, entity.SourceNodeId })
+            .HasDatabaseName("ix_relations_account_id_source_node_id");
         relation.HasIndex(entity => entity.CreatedByAgentIdentityId)
             .HasFilter("created_by_agent_identity_id IS NOT NULL")
             .HasDatabaseName("ix_relations_created_by_agent_identity_id");

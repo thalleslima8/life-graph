@@ -32,6 +32,16 @@ On an empty volume, `db/bootstrap/init-dev.sh` creates:
 roles added by later epics) and then applies the migrations. The connection
 strings come from `docker-compose.yml`; no config file is generated.
 
+## Embedding model (DA-174)
+
+`post-create.sh` runs `scripts/download-embedding-model.sh`, which downloads
+`multilingual-e5-small` (ONNX, about 470 MB) at a pinned revision into the
+`lifegraph_models_dev` volume, mounted at `/home/vscode/models`, and checks each
+file's pinned SHA-256. A file already there with the right hash is kept, so
+only the first run downloads. `appsettings.Development.json` points the API at
+that directory; without the files the embedding jobs end dead. Delete the
+volume to download it again.
+
 ## Integration tests (DA-093)
 
 Without the Docker socket, Testcontainers cannot start containers here. The

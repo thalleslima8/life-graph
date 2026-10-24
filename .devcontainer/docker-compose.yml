@@ -22,6 +22,8 @@ services:
       - ..:/workspace:cached
       # Claude login, plugins and settings survive a rebuild. Delete the volume to reset.
       - lifegraph_claude_home_dev:/home/vscode/.claude
+      # The embedding model (DA-174), downloaded by scripts/download-embedding-model.sh, never in git.
+      - lifegraph_models_dev:/home/vscode/models
     command: sleep infinity
     networks:
       - lifegraph_devnet
@@ -47,3 +49,5 @@ networks:
 volumes:
   lifegraph_claude_home_dev:
     name: lifegraph_claude_home_dev
+  lifegraph_models_dev:
+    name: lifegraph_models_dev

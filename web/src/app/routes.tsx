@@ -39,6 +39,11 @@ export const routes: RouteObject[] = [
         loader: requireSession,
         lazy: async () => ({ Component: (await import("@/features/graph/LocalGraphPage")).LocalGraphPage }),
       },
+      {
+        path: "search",
+        loader: requireSession,
+        lazy: async () => ({ Component: (await import("@/features/search/SearchPage")).SearchPage }),
+      },
       { path: "changes", loader: requireSession, element: <RecentChangesPage /> },
       { path: "types", loader: requireSession, element: <OntologyPage /> },
       { path: "tags", loader: requireSession, element: <TagsPage /> },

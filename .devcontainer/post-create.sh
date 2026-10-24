@@ -87,4 +87,11 @@ for attempt in $(seq 1 10); do
   sleep 6
 done
 
+# Without the embedding model the embedding jobs end dead (DA-174); the volume keeps it
+# across rebuilds, so only the first run downloads its ~470 MB.
+log "Ensuring the embedding model..."
+if ! bash "$WORKSPACE/scripts/download-embedding-model.sh"; then
+  log "WARNING: the embedding model is missing; run scripts/download-embedding-model.sh."
+fi
+
 log "Environment ready."

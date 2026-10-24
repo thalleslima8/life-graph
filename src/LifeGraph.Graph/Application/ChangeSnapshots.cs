@@ -50,6 +50,10 @@ internal static class ChangeSnapshots
 
     public static string Of(Collection collection) => Serialize(new CollectionSnapshot(collection.Name, collection.Criteria, collection.Pinned));
 
+    public static string Of(SoftDismissal dismissal) => Serialize(new SoftDismissalSnapshot(dismissal.FirstNodeId, dismissal.SecondNodeId));
+
+    public static SoftDismissalSnapshot ReadSoftDismissal(string json) => Deserialize<SoftDismissalSnapshot>(json);
+
     public static string Of(CollectionMember member) => Serialize(new CollectionMemberSnapshot(member.CollectionId, member.NodeId));
 
     /// <summary>The name a member of a snapshot record has in the recorded JSON.</summary>
@@ -146,3 +150,5 @@ internal sealed record NodeTagSnapshot(Guid NodeId, Guid TagId);
 internal sealed record CollectionSnapshot(string Name, CollectionCriteria? Criteria, bool Pinned);
 
 internal sealed record CollectionMemberSnapshot(Guid CollectionId, Guid NodeId);
+
+internal sealed record SoftDismissalSnapshot(Guid FirstNodeId, Guid SecondNodeId);
