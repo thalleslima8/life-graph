@@ -23,8 +23,9 @@ public static class HealthCheckExtensions
 
     public static IEndpointRouteBuilder MapLifeGraphHealthChecks(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapHealthChecks(LivePath, new HealthCheckOptions { Predicate = _ => false });
-        endpoints.MapHealthChecks(ReadyPath, new HealthCheckOptions { Predicate = check => check.Tags.Contains(ReadyTag) });
+        // Probes come from the orchestrator, which has no session.
+        endpoints.MapHealthChecks(LivePath, new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+        endpoints.MapHealthChecks(ReadyPath, new HealthCheckOptions { Predicate = check => check.Tags.Contains(ReadyTag) }).AllowAnonymous();
 
         return endpoints;
     }

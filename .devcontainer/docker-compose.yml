@@ -30,6 +30,8 @@ services:
       USE_FRONTEND: "true"
       # The application connects as the non-owner role, without BYPASSRLS (DA-004).
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=lifegraph;Username=lifegraph_app;Password=lifegraph_app_dev"
+      # Only the owner's `accounts` CLI uses it; the web process reads Default (DA-107).
+      ConnectionStrings__Provisioning: "Host=postgres;Port=5432;Database=lifegraph;Username=lifegraph_provisioner;Password=lifegraph_provisioner_dev"
       # `dotnet ef` runs as the owner role (DB-060).
       ConnectionStrings__Migrations: "Host=postgres;Port=5432;Database=lifegraph;Username=lifegraph_migrator;Password=lifegraph_migrator_dev"
       # Integration tests create throwaway databases here instead of using Testcontainers (DA-093).

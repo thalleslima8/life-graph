@@ -11,4 +11,4 @@ vazaria por valor de propriedade), a detecção de conflito do Undo e a
 explicabilidade das relações. Se a UI precisar de "slots" de relação esperados
 por Type, eles serão declarados no Type, não guardados como valor.
 
-Origem: DA-017, épico `docs/epics/backlog/e02-nucleo-de-escrita.md`.
+Origem: DA-017, épico `docs/epics/done/e02-nucleo-de-escrita.md`.
