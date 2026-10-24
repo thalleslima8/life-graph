@@ -9,7 +9,7 @@
 --                     (DA-107). Its grants come from the migrations.
 --
 -- The passwords are dev-only placeholders. Real environments create these roles with
--- their own secrets (E13).
+-- their own secrets (E14).
 
 DO $$
 BEGIN

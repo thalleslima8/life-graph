@@ -1,15 +1,15 @@
-# E12 — Entitlements Free/Premium
+# E13 — Entitlements Free/Premium
 
-- **Ordem:** 12
-- **Depende de:** E5, E10
-- **Última revisão:** 2026-10-02
+- **Ordem:** 13
+- **Depende de:** E5, E10, E11
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
 A v2 (§52–61) pede uma arquitetura preparada para Free/Premium desde o MVP, com
 os limites da §55. O modelo comercial ainda não está claro para o usuário, que
 pediu para discutir a **Q3** neste épico. Até lá, os limites de segurança
-(E5) e os limites de share (E10) funcionam como constantes no código.
+(E5) e os limites de share (E11) funcionam como constantes no código.
 
 ## Decisões
 
@@ -33,7 +33,7 @@ pediu para discutir a **Q3** neste épico. Até lá, os limites de segurança
 
 - [ ] Modelo de plano + limites lidos de configuração + contadores de uso
 - [ ] Aplicação só nos comandos de criação e na quota de escrita de agentes
-- [ ] Converter as constantes de share (E10) em limites por plano
+- [ ] Converter as constantes de share (E11) em limites por plano
 - [ ] Mensagens de limite atingido sem bloquear o acesso
 
 ## Fora de escopo

@@ -19,7 +19,7 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
     private const string Email = "ada@example.test";
     private const string OtherEmail = "grace@example.test";
 
-    // The credential directory (DA-098) is not a participant's: E11 removes the user with the Account itself.
+    // The credential directory (DA-098) is not a participant's: E12 removes the user with the Account itself.
     private static readonly string[] RemovedWithTheAccount = ["users"];
 
     private readonly LifeGraphApiFactory _factory = new(database, AgentAuthorization.Settings());

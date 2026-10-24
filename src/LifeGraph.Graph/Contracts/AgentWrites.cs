@@ -180,7 +180,7 @@ public sealed record ProposalStatusView(
     Guid? ChangeSetId);
 
 /// <summary>
-/// The limits of agent writes. Security limits, not plan limits (E12): configurable, and
+/// The limits of agent writes. Security limits, not plan limits (E13): configurable, and
 /// apart from the hard rate limit (429) of DA-051.
 /// </summary>
 public sealed class AgentWriteOptions

@@ -16,7 +16,7 @@ internal sealed class AgentReadConfiguration : IEntityTypeConfiguration<AgentRea
         read.Property(entity => entity.Arguments).HasColumnType(JsonColumn.ColumnType);
 
         // The audit is read by agent and by time, and the index also serves the foreign key to
-        // agent_identities (DB-030); RLS keeps it to the Account. The retention cut (E12/E14) is by time.
+        // agent_identities (DB-030); RLS keeps it to the Account. The retention cut (E13/E15) is by time.
         // The foreign key itself is in the migration only: the Graph's model cannot name the
         // Accounts' entity (DA-111, DA-121).
         read.HasIndex(entity => new { entity.AgentIdentityId, entity.CreatedAt })

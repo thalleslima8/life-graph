@@ -2,7 +2,7 @@
 
 - **Ordem:** 2
 - **Depende de:** E1
-- **Última revisão:** 2026-10-06
+- **Última revisão:** 2026-10-23
 
 ## Pendências herdadas do E1 (discutir no próximo `/flow` antes de implementar)
 
@@ -35,7 +35,7 @@ corrigir) antes do primeiro endpoint de escrita do grafo.
    anônimas que antes respondiam 404 a responder 401
    (`AccountIsolationTests.cs`). Isso conversa com a regra do CLAUDE.md
    ("acesso a outra conta responde NotFound, nunca 403") e com o futuro
-   `ShareVisitor` (E10), que lê sem sessão de Human. Decidir e registrar qual é o
+   `ShareVisitor` (E11), que lê sem sessão de Human. Decidir e registrar qual é o
    contrato para requisição sem sessão: 401 em tudo, ou 404 em rotas de
    recurso.
 
@@ -334,7 +334,7 @@ v2).
   Accounts nem tabelas do grafo; um teste de catálogo falha se alguma policy de
   tabela de Account tiver `WITH CHECK (true)` para `PUBLIC` ou `lifegraph_app`.
   Por quê: com `WITH CHECK (true)` no papel da app, qualquer requisição web pode
-  criar Accounts, e isso iria junto para a exposição pública do E13. O limite
+  criar Accounts, e isso iria junto para a exposição pública do E14. O limite
   fica no banco, e não numa revisão futura que alguém precisa lembrar. A DA-098
   continua deixando `users` gravável pelo papel da app, e isso não muda aqui.
   Outra visão (analista): registrar a policy atual como exceção, porque uma
@@ -357,7 +357,7 @@ v2).
   sessão, a resposta é 401 com `WWW-Authenticate`, que o fluxo OAuth/MCP do E3
   usa para descoberta. O 401 sai antes de qualquer busca e é igual para IDs que
   existem e que não existem, então não revela nada. As rotas do ShareVisitor
-  (E10) aderem explicitamente, com esquema e policy próprios. Dentro de um
+  (E11) aderem explicitamente, com esquema e policy próprios. Dentro de um
   share, Node fora do subgrafo autorizado e token inválido ou expirado
   respondem 404. Testes: `AccountIsolationTests` separa os dois casos (anônimo →
   401, outra Account → 404) e confere que o 401 é igual para ID existente e
@@ -418,7 +418,7 @@ v2).
   momento de rodar, ele confere de novo que a entidade ainda é tombstone e que o
   `deleted_at` bate com o do job; se não, termina sem efeito (um restore antes do
   prazo cancela o purge sem passo extra). Apagar de novo cria um job novo, com
-  prazo novo. A exclusão da Account (E11) descarta os jobs pendentes dela, sem
+  prazo novo. A exclusão da Account (E12) descarta os jobs pendentes dela, sem
   mandá-los para `dead`. Por quê: sem RLS (c), um bug da app poderia enfileirar
   um job com o `account_id` de outra Account e o worker apagaria dados dela para
   sempre; um papel de worker (b) põe outra credencial no mesmo processo sem

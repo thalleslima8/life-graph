@@ -1,8 +1,8 @@
-# E10 — SharedGraphView (link compartilhado)
+# E11 — SharedGraphView (link compartilhado)
 
-- **Ordem:** 10
-- **Depende de:** E2, E6, E8
-- **Última revisão:** 2026-10-02
+- **Ordem:** 11
+- **Depende de:** E2, E6, E8, E10
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
@@ -68,7 +68,7 @@ das definições e das Tags.
   (consenso). Não há nenhuma ferramenta MCP para isso; o scope
   `lifegraph.share` fica reservado.
 - **DA-081 — Limites de 3 links com 25 Nodes cada, como constantes** (consenso)
-  até o E12.
+  até o E13.
 
 ## Checklist
 

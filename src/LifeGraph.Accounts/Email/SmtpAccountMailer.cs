@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 namespace LifeGraph.Accounts.Email;
 
 /// <summary>
-/// Plain SMTP without authentication, enough for Mailpit in dev. E13 replaces it with the
+/// Plain SMTP without authentication, enough for Mailpit in dev. E14 replaces it with the
 /// production provider behind the same port.
 /// </summary>
 internal sealed class SmtpAccountMailer(IOptions<SmtpOptions> options) : IAccountMailer

@@ -2,7 +2,7 @@
 
 **Data:** 2026-10-21 · **Cliente:** Claude Code, no host de dev (sem túnel) · **Identidade:** "Claude Code" (`01a15b9a-448c-70ed-8246-412e2666cf15`) · **Escopos:** `lifegraph.read`, `lifegraph.write`
 
-Este relatório é a evidência dos aceites manuais do E3, do E4, do E5 e do E6. A prova com Claude.ai e ChatGPT depende de domínio e foi para o E13 (DA-147).
+Este relatório é a evidência dos aceites manuais do E3, do E4, do E5 e do E6. A prova com Claude.ai e ChatGPT depende de domínio e foi para o E14 (DA-147).
 
 ## Resumo
 Funcionaram sem erros:
@@ -69,4 +69,4 @@ O único erro foi o esperado: `apply_changes` é recusado quando a proposta exig
 - A proposta da "Linha Sudeste" foi recusada, e "Exigir aprovação para escritas" foi religado depois dos testes.
 
 ## Conclusão
-Funcionam: conexão via CIMD, revogação, leitura com filtro de ocultos, escrita por proposta e direta, aprovação humana, Undo e destaque de mudança não revisada. Faltam as ferramentas de edição e de remoção, e a mesma prova com Claude.ai e ChatGPT pelo domínio (E13).
+Funcionam: conexão via CIMD, revogação, leitura com filtro de ocultos, escrita por proposta e direta, aprovação humana, Undo e destaque de mudança não revisada. Faltam as ferramentas de edição e de remoção, e a mesma prova com Claude.ai e ChatGPT pelo domínio (E14).

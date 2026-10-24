@@ -11,7 +11,7 @@ namespace LifeGraph.Graph.Application;
 /// what the principal sees inside it. The person sees every live Node. An AgentIdentity never
 /// sees a Node Oculto para agentes, by its own flag or its Type's (DA-035): the Node does not
 /// exist for it, so a Relation to it is not there either, and a traversal stops at it, as at a
-/// wall. Any other principal, or none, sees nothing (a ShareVisitor arrives with E10). The
+/// wall. Any other principal, or none, sees nothing (a ShareVisitor arrives with E11). The
 /// GraphChangeSets and the ChangeProposals are read through it too.
 /// </summary>
 internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal currentPrincipal)

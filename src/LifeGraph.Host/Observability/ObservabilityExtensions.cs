@@ -41,7 +41,7 @@ public static class ObservabilityExtensions
         builder.Services.AddHttpLogging(options => options.LoggingFields =
             HttpLoggingFields.RequestMethod | HttpLoggingFields.RequestPath | HttpLoggingFields.ResponseStatusCode | HttpLoggingFields.Duration);
 
-        // TODO(E13): add exporters. Until then the instrumentation is wired but nothing leaves the process.
+        // TODO(E14): add exporters. Until then the instrumentation is wired but nothing leaves the process.
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(resource => resource.AddService(ServiceName))
             .WithTracing(tracing => tracing

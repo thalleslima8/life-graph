@@ -1,8 +1,8 @@
-# E14 — Prontidão para beta
+# E15 — Prontidão para beta
 
-- **Ordem:** 14
-- **Depende de:** E13
-- **Última revisão:** 2026-10-02
+- **Ordem:** 15
+- **Depende de:** E14
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 

@@ -2,7 +2,7 @@
 
 - **Ordem:** 4
 - **Depende de:** E3
-- **Última revisão:** 2026-10-21
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
@@ -42,7 +42,7 @@ saem do sistema rumo a provedores de IA de terceiros.
 - **DA-037 — Log de auditoria de leitura por agente** (consenso). Registra
   agente, ferramenta, consulta e IDs devolvidos, **sem conteúdo**. A Provenance
   só cobre escritas, e é na leitura que os dados vão para LLMs de terceiros.
-  Retenção sugerida: 90 dias, a confirmar no E12/E14.
+  Retenção sugerida: 90 dias, a confirmar no E13/E15.
 - **DA-038 — Envelopes de conteúdo não confiável** (consenso). Todo texto livre
   volta como `{text, trust, source}`. Conteúdo capturado da web **e** texto
   escrito por outros agentes vem marcado `untrusted`, para mitigar prompt
@@ -62,7 +62,7 @@ saem do sistema rumo a provedores de IA de terceiros.
   uso do REST, e o `whoami` e o REST já usam camelCase. Responder o mesmo Node
   em dois formatos seria inconsistência de contrato. Os argumentos de entrada
   das ferramentas seguem a mesma regra que as saídas. Ainda não há consumidor
-  externo, então a mudança é barata agora e cara depois do E13.
+  externo, então a mudança é barata agora e cara depois do E14.
 - **DA-128 — `edges[]` do `get_context` é o subgrafo induzido, com teto**
   (consenso, emenda a DA-036). Toda Relation visível entre dois Nodes
   devolvidos entra, e não só as que a travessia percorreu. Sem isso, a falta de
@@ -123,7 +123,7 @@ saem do sistema rumo a provedores de IA de terceiros.
     edges para 6 e 7, sem nenhuma aresta apontando para ele. O agente concluiu
     que o Node tinha sido apagado, ou seja, não distinguiu oculto de
     inexistente.
-  - A mesma prova no Claude.ai ou no ChatGPT, pelo domínio, foi para o E13
+  - A mesma prova no Claude.ai ou no ChatGPT, pelo domínio, foi para o E14
     (DA-147).
 
 ### Notas de implementação
@@ -151,7 +151,7 @@ saem do sistema rumo a provedores de IA de terceiros.
 - `get_node` corta o corpo em 20.000 caracteres e lista até 20 Relations, com
   a contagem total de visíveis.
 - Auditoria em `agent_reads` (RLS, purge da Account), sem retenção automática
-  ainda (E12/E14).
+  ainda (E13/E15).
 - Orçamento de leitura: `Api:RateLimits:AgentReadPermitLimit` (120 por janela)
   por AgentIdentity, dentro do orçamento MCP da DA-121; o excesso responde 429
   com `Retry-After`.
@@ -174,7 +174,7 @@ saem do sistema rumo a provedores de IA de terceiros.
 
 Um agente real (Claude Code) responde sobre um assunto usando `get_context`,
 sem nunca ver Nodes ocultos. A mesma prova no Claude.ai ou no ChatGPT, pelo
-domínio, fica no E13 (DA-147).
+domínio, fica no E14 (DA-147).
 
 ## Fora de escopo
 

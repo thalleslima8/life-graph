@@ -2,7 +2,7 @@
 
 - **Ordem:** 7
 - **Depende de:** E2, E5 (ferramenta MCP)
-- **Última revisão:** 2026-10-21
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
@@ -204,10 +204,10 @@ relacione com meu projeto") depende deste épico.
   Se achar algum, aborta com um erro que lista o id da Account e o nome, e o
   dev renomeia à mão antes de rodar de novo. Adotar trava dado criado pelo
   usuário com uma semântica que ele não escolheu, e renomear altera dado do
-  usuário sem ChangeSet nem Undo (DA-013). Só existe dado de dev até o E13, e
+  usuário sem ChangeSet nem Undo (DA-013). Só existe dado de dev até o E14, e
   a colisão é rara. Um índice único em `lower(name)` para os nomes reservados
   fecha o bypass por variação de caixa. Há teste com uma colisão semeada em
-  caixa mista. Depois do E13, migrations desse tipo precisam de uma
+  caixa mista. Depois do E14, migrations desse tipo precisam de uma
   estratégia explícita (candidata a ADR).
 
 ## Checklist

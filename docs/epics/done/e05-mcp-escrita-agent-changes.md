@@ -2,7 +2,7 @@
 
 - **Ordem:** 5
 - **Depende de:** E4
-- **Última revisão:** 2026-10-21
+- **Última revisão:** 2026-10-23
 
 ## Pendências do `/flow` de 2026-10-04 (contrato de erro)
 
@@ -74,7 +74,7 @@ e automação reversível".
   agente sobrescreveria uma edição concorrente do usuário.
 - **DA-051 — Rate limits de segurança por AgentIdentity**, por exemplo 60
   escritas/min mais um teto diário (consenso). São limites de segurança, não
-  de plano, e não esperam o E12.
+  de plano, e não esperam o E13.
 
 - **DA-130 — Ação Sensitive pedida por agente é sucesso pendente, com dedupe,
   consulta de status e teto de pendentes** (consenso; revalida a pré-decisão
@@ -286,7 +286,7 @@ e automação reversível".
   - Depois do Undo, o `get_proposal` continua `applied`. Isso é esperado
     (DA-136): o desfazer mora no GraphChangeSet (Reverted), não na
     ChangeProposal.
-  - A mesma prova no Claude.ai ou no ChatGPT, pelo domínio, foi para o E13
+  - A mesma prova no Claude.ai ou no ChatGPT, pelo domínio, foi para o E14
     (DA-147).
 
 ### Testes obrigatórios
@@ -472,7 +472,7 @@ e automação reversível".
 
 A partir de um agente real (Claude Code), "guarde isso e relacione com X" gera
 Nodes e Relations visíveis em Agent Changes, e o usuário consegue desfazer. A
-mesma prova no Claude.ai ou no ChatGPT, pelo domínio, fica no E13 (DA-147).
+mesma prova no Claude.ai ou no ChatGPT, pelo domínio, fica no E14 (DA-147).
 
 ## Fora de escopo
 

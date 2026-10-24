@@ -1,8 +1,8 @@
-# E11 — Export e exclusão de conta
+# E12 — Export e exclusão de conta
 
-- **Ordem:** 11
-- **Depende de:** E2–E10 (precisa cobrir todas as tabelas que guardam dados)
-- **Última revisão:** 2026-10-02
+- **Ordem:** 12
+- **Depende de:** E2–E11 (precisa cobrir todas as tabelas que guardam dados)
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
@@ -35,15 +35,15 @@ tudo.
 - **DA-083 — "Deletou perdeu" não é absoluto** (consenso). Fica um **recibo de
   exclusão sem PII** (id da conta com hash + timestamp), como evidência de
   conformidade. Logs de segurança têm retenção curta. Se houver cobrança no
-  futuro (E12), registros fiscais têm retenção legal, um conflito a resolver
+  futuro (E13), registros fiscais têm retenção legal, um conflito a resolver
   lá. A política de privacidade declara isso.
 - **DA-084 — O registro de purges (ledger) é gravado neste épico, na mesma
   transação do purge** (consenso após contra-argumento).
   - O ledger guarda só IDs e timestamps de contas e Nodes purgados, sem e-mail,
     nome ou conteúdo. É o mesmo registro do recibo do DA-083.
   - Purges feitos antes do ledger existir não podem ser registrados depois,
-    por isso ele não espera o E13.
-  - O E13 só **consome** o ledger: reaplica após restaurar um backup e define
+    por isso ele não espera o E14.
+  - O E14 só **consome** o ledger: reaplica após restaurar um backup e define
     a retenção.
   - ⚖️ Os IDs são dados pseudonimizados, e a retenção do ledger deve casar com
     a janela de backup, com validação jurídica.
@@ -69,4 +69,4 @@ automatizado), e o export de outra conta inclui todos os tipos de dado.
 
 ## Fora de escopo
 
-Reaplicar o ledger após restaurar um backup (E13), importação.
+Reaplicar o ledger após restaurar um backup (E14), importação.

@@ -12,7 +12,7 @@ há funcionalidade de produto**. Também existem:
 - a especificação do produto (`docs/global_v2.md`);
 - os padrões de desenvolvimento (`docs/standards/`);
 - o glossário de domínio (`GLOSSARY.md`);
-- o roadmap do MVP em 15 épicos (`docs/epics/README.md`);
+- o roadmap do MVP em 16 épicos (`docs/epics/README.md`);
 - as decisões de arquitetura duradouras em `docs/adr/` (ADRs 0001–0013, cada
   uma ligada ao seu `DA-###`). Leia antes de "corrigir" algo que parece
   estranho: provavelmente foi deliberado;
@@ -230,7 +230,7 @@ spike no E6.
 - frontend: Vitest + Testing Library + vitest-axe + MSW, e Playwright para
   poucos E2E.
 
-**Ambiente:** só dev até o E13. Usa devcontainer/compose com Postgres+pgvector e
+**Ambiente:** só dev até o E14. Usa devcontainer/compose com Postgres+pgvector e
 Mailpit. O perfil `public` (Cloudflare Tunnel) expõe apenas MCP/OAuth/login
 para testar com ChatGPT/Claude.ai (DA-027/028): `.devcontainer/compose.public.yml`,
 `scripts/public-host.sh` e o runbook `docs/runbooks/tunel-de-dev.md`.

@@ -98,4 +98,4 @@ in again, and `post-create.sh` reinstalls the allowlist and plugins.
 ## Credentials
 
 Every password in this folder and in `db/bootstrap/` is a dev-only placeholder.
-Real environments create the roles with their own secrets (E13).
+Real environments create the roles with their own secrets (E14).

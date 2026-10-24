@@ -1,8 +1,8 @@
-# E13 — Infra & Deploy
+# E14 — Infra & Deploy
 
-- **Ordem:** 13
-- **Depende de:** E0–E12
-- **Última revisão:** 2026-10-21
+- **Ordem:** 14
+- **Depende de:** E0–E13
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
@@ -14,7 +14,7 @@ que ensaia o ambiente montado aqui.
 ## Decisões
 
 - **DA-088 — Infra no fim do roadmap, separada da prontidão para beta**
-  (usuário + consenso). Infra constrói; o E14 ensaia e valida.
+  (usuário + consenso). Infra constrói; o E15 ensaia e valida.
 - **DA-089 — Requisitos do host já fixados** (consenso, ver DA-006): Postgres
   ≥16, pgvector ≥0.7, RLS com papéis sem superusuário e sem BYPASSRLS, e
   pgvector disponível na região escolhida. Manter a stack portável (Postgres

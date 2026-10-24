@@ -2,7 +2,7 @@
 
 - **Ordem:** 3
 - **Depende de:** E1, E2
-- **Última revisão:** 2026-10-21
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
@@ -183,7 +183,7 @@ e de compatibilidade de clientes antes das ferramentas de verdade (E4/E5).
   onde pode ser revogado. O limite por cliente é por IP real
   (`CF-Connecting-IP`/`X-Forwarded-For` só da rede do `cloudflared`), com teste
   de que um cabeçalho forjado de fora de `KnownNetworks` não muda a chave; a
-  chave e os contadores em memória precisam ser revistos antes do E13
+  chave e os contadores em memória precisam ser revistos antes do E14
   (multiusuário público, IPs de saída compartilhados de Anthropic/OpenAI). Além
   das categorias do OpenIddict, nenhum log de HTTP ou de caminho registra a
   query string de `/connect/*` (`code`, `state`, `code_verifier`, redirect), e o
@@ -323,10 +323,10 @@ e de compatibilidade de clientes antes das ferramentas de verdade (E4/E5).
   conexão continua revogável, então não há risco de acesso nem de
   privacidade, só de confusão. Fica registrada em "Fora de escopo".
 
-- **DA-147 — Aceites que dependem de domínio vão para o E13** (usuário,
+- **DA-147 — Aceites que dependem de domínio vão para o E14** (usuário,
   2026-10-21). Tudo que depende de domínio só é testado em pré-produção. O E3
   fecha com o aceite do Claude Code via CIMD no host, que cobriu consentimento,
-  chamada da ferramenta, "Agentes conectados" e revogação. Saem do E3 para o E13:
+  chamada da ferramenta, "Agentes conectados" e revogação. Saem do E3 para o E14:
   comprar o domínio e apontar o DNS, confirmar os planos do ChatGPT e do
   Claude.ai, validar o `resource`/audience e o PRM contra Claude.ai e ChatGPT, e
   o aceite de Claude.ai e ChatGPT pelo domínio. O critério de saída abaixo foi
@@ -334,13 +334,13 @@ e de compatibilidade de clientes antes das ferramentas de verdade (E4/E5).
 
 ## Pré-requisitos do usuário
 
-Movidos para o E13 (DA-147): comprar o domínio e apontar o DNS, confirmar os
+Movidos para o E14 (DA-147): comprar o domínio e apontar o DNS, confirmar os
 planos de ChatGPT e Claude.ai.
 
 ## Checklist
 
 ### Slice 1 — Cliente pré-registrado
-- [x] Spike: OpenIddict + `resource`/audience + Protected Resource Metadata (parte em processo; a validação contra Claude.ai e ChatGPT foi para o E13, DA-147)
+- [x] Spike: OpenIddict + `resource`/audience + Protected Resource Metadata (parte em processo; a validação contra Claude.ai e ChatGPT foi para o E14, DA-147)
   - Parte em processo concluída: `resource` (RFC 8707) com audience fixada no
     MCP, PRM e discovery validados pelo cliente MCP do SDK, e pelo Claude Code
     no aceite da Slice 2.
@@ -353,7 +353,7 @@ planos de ChatGPT e Claude.ai.
 - [x] Endpoint MCP com uma ferramenta Safe (`whoami`/`ping`)
 - [x] Perfil `public` do compose com cloudflared + runbook do túnel
 - [x] Rate limits em `/authorize`, `/token` e login
-- Aceite manual com Claude.ai e ChatGPT: movido para o E13 (DA-147)
+- Aceite manual com Claude.ai e ChatGPT: movido para o E14 (DA-147)
 
 ### Slice 2 — CIMD
 - [x] Handler de CIMD com fetch protegido contra SSRF, cache, match exato de redirect e loopback
@@ -412,11 +412,11 @@ planos de ChatGPT e Claude.ai.
 
 Um agente real (Claude Code via CIMD) conecta, passa pelo consentimento e chama
 a ferramenta MCP. O usuário vê e revoga a conexão, e o agente perde o acesso. A
-mesma prova com Claude.ai e ChatGPT pelo domínio fica no E13 (DA-147).
+mesma prova com Claude.ai e ChatGPT pelo domínio fica no E14 (DA-147).
 
 ## Fora de escopo
 
-Ferramentas de leitura e escrita do grafo (E4/E5), PATs, DCR, deploy (E13).
+Ferramentas de leitura e escrita do grafo (E4/E5), PATs, DCR, deploy (E14).
 
 Conexão que aparece em "Agentes conectados" sem que o agente tenha resgatado o
 token (DA-146). Fica para uma DA própria, que decide entre o estado "aguardando

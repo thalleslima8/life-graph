@@ -72,6 +72,25 @@ Node só sai da Inbox por uma ação explícita, nunca como efeito colateral de
 outra edição.
 _Avoid_: não classificados, pendentes
 
+**Raiz da Conta** (`AccountRoot`):
+O Node de sistema, um por Account, de onde parte a navegação do grafo. É criado
+no provisionamento da Account, pode ser renomeado, não pode ser oculto para
+agentes e só some no Purge da Account. Nunca entra implicitamente em um
+SharedGraphView.
+_Avoid_: home, nó do usuário, RootNode (reservado para o SharedGraphView)
+
+**Âncora** (`anchor`):
+A Hard Relation que liga um Node novo a um Node existente na mesma escrita
+(mesmo GraphChangeSet). É obrigatória para uma AgentIdentity e opcional para o
+usuário.
+_Avoid_: pai, parent, relate_to
+
+**Desancorado** (`Unanchored`):
+Estado derivado de um Node que não é alcançável a partir da Raiz da Conta por
+Hard Relations, ignorando a direção delas. É um estado legítimo, não um erro.
+Soft Relations não contam. Um Node na Inbox também pode estar desancorado.
+_Avoid_: órfão, solto, perdido
+
 **Origin**:
 Quem originou um objeto do grafo: `user`, `agent`, `system` ou `import`. É
 independente de a Relation ser Hard ou Soft.

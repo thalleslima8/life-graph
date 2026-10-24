@@ -2,7 +2,7 @@
 
 - **Ordem:** 1
 - **Depende de:** E0
-- **Última revisão:** 2026-10-04
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
@@ -24,9 +24,9 @@ humano será o emissor OAuth dos agentes no E3.
 - **DA-011 — Cadastro aberto desligado no MVP** (consenso). Enquanto o servidor
   estiver exposto pelo túnel de dev (E3), qualquer pessoa que achasse o hostname
   poderia criar conta na máquina do usuário. Novas contas só por convite/owner
-  até o E14.
+  até o E15.
 - **DA-012 — Gancho de exclusão de conta já previsto** (consenso). O e-mail é
-  dado pessoal. A exclusão completa vem no E11, mas o modelo de Account já nasce
+  dado pessoal. A exclusão completa vem no E12, mas o modelo de Account já nasce
   com o ponto de extensão do purge.
 - **DA-094 — `ICurrentPrincipal` lido direto do ClaimsPrincipal, sem
   `IUserIdentityGateway`** (consenso, decidido no `/flow` de 2026-10-04). Revê
@@ -53,7 +53,7 @@ humano será o emissor OAuth dos agentes no E3.
   e-mail leva um token de uso único e com validade, que define a senha e
   confirma o e-mail na mesma ação. A CLI também reenvia o link, e criar de novo
   um e-mail já pendente não duplica a conta. A primeira conta do owner passa
-  pelo mesmo comando. Fica para o E14 uma regra de expiração de contas pendentes
+  pelo mesmo comando. Fica para o E15 uma regra de expiração de contas pendentes
   nunca ativadas, que guardam o e-mail de um terceiro sem consentimento.
 - **DA-096 — Páginas de confirmação/definição de senha, "esqueci a senha" e
   redefinição de senha entram no E1** (consenso). Os links dos e-mails do E1
@@ -110,8 +110,8 @@ humano será o emissor OAuth dos agentes no E3.
      NotFound/422 para id alheio ou inválido.
   5. `users` guarda só o mínimo de dado pessoal; perfil vai para tabelas da
      Account com RLS.
-  6. A PIA do E14 lista essa tabela como dado pessoal isolado por código da
-     aplicação e decide, antes do E13, se endurece com uma função
+  6. A PIA do E15 lista essa tabela como dado pessoal isolado por código da
+     aplicação e decide, antes do E14, se endurece com uma função
      `SECURITY DEFINER` que devolve só (user_id, account_id).
 
   As tabelas `oidc_*` não têm `account_id` hoje e não estão nesta exceção. O E3
@@ -137,5 +137,5 @@ humano será o emissor OAuth dos agentes no E3.
 
 ## Fora de escopo
 
-Clientes OAuth de agentes (E3), exclusão de conta (E11), e-mail real (E13),
+Clientes OAuth de agentes (E3), exclusão de conta (E12), e-mail real (E14),
 passkeys.
