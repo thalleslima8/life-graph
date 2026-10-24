@@ -1,0 +1,12 @@
+@* A dead end of the connection flow, with what to do next; never the reason in technical terms. *@
+<IssuerPageLayout Title="@Title">
+    <p>@Message</p>
+</IssuerPageLayout>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Message { get; set; } = string.Empty;
+}

@@ -13,7 +13,9 @@ _Avoid_: tenant, workspace, usuário (quando se refere ao dono dos dados)
 **AgentIdentity**:
 Uma conexão de agente externo: a concessão OAuth que o usuário autorizou, com
 seus scopes. O usuário pode renomeá-la e revogá-la. O nome e o provedor
-declarados pelo cliente servem só para exibição e não são verificados.
+declarados pelo cliente servem só para exibição e não são verificados. Mora no
+módulo Accounts, junto com o emissor OAuth; o módulo Agents tem só o adapter
+MCP, que a consulta pelos Contracts do Accounts (DA-121).
 _Avoid_: agente (para a conexão), bot, integração
 
 **Oculto para agentes**:
@@ -70,6 +72,25 @@ Node só sai da Inbox por uma ação explícita, nunca como efeito colateral de
 outra edição.
 _Avoid_: não classificados, pendentes
 
+**Raiz da Conta** (`AccountRoot`):
+O Node de sistema, um por Account, de onde parte a navegação do grafo. É criado
+no provisionamento da Account, pode ser renomeado, não pode ser oculto para
+agentes e só some no Purge da Account. Nunca entra implicitamente em um
+SharedGraphView.
+_Avoid_: home, nó do usuário, RootNode (reservado para o SharedGraphView)
+
+**Âncora** (`anchor`):
+A Hard Relation que liga um Node novo a um Node existente na mesma escrita
+(mesmo GraphChangeSet). É obrigatória para uma AgentIdentity e opcional para o
+usuário.
+_Avoid_: pai, parent, relate_to
+
+**Desancorado** (`Unanchored`):
+Estado derivado de um Node que não é alcançável a partir da Raiz da Conta por
+Hard Relations, ignorando a direção delas. É um estado legítimo, não um erro.
+Soft Relations não contam. Um Node na Inbox também pode estar desancorado.
+_Avoid_: órfão, solto, perdido
+
 **Origin**:
 Quem originou um objeto do grafo: `user`, `agent`, `system` ou `import`. É
 independente de a Relation ser Hard ou Soft.
@@ -84,9 +105,20 @@ _Avoid_: autoria, log, auditoria
 
 **GraphChangeSet**:
 Um grupo de alterações no grafo feitas por um ator em uma interação. É a
-unidade que se inspeciona, aprova e desfaz. Estados: Proposed, Applied,
-Rejected, Reverted, Expired.
+unidade que se inspeciona e desfaz. Só existe aplicado: o que um agente propõe
+e ainda espera decisão é uma ChangeProposal. Estados: Applied, Reverted.
 _Avoid_: lote, transação, commit
+
+**ChangeProposal**:
+As operações que um agente pediu e que ainda não mudaram o grafo, à espera de
+quem decide: a pessoa ou, quando permitido, o próprio agente. Aplicada, vira um
+GraphChangeSet. Estados: Proposed, Applied, Rejected, Expired, Withdrawn.
+_Avoid_: GraphChangeSet proposto, rascunho, sugestão pendente
+
+**Withdrawn**:
+Estado de uma ChangeProposal que saiu da fila sem decisão da pessoa: o agente
+a retirou, a conexão dele foi revogada ou uma Purge removeu o que ela nomeava.
+_Avoid_: cancelada, descartada, Rejected (reservado para a recusa da pessoa)
 
 **Undo**:
 A reversão de um GraphChangeSet aplicado. Ela é registrada como um novo

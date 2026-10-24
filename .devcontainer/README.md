@@ -23,10 +23,24 @@ On an empty volume, `db/bootstrap/init-dev.sh` creates:
   `dotnet ef` (`ConnectionStrings__Migrations`);
 - `lifegraph_app`: what the API connects as (`ConnectionStrings__Default`); not
   an owner, no DDL, no `BYPASSRLS` (DA-004);
+- `lifegraph_provisioner`: what the owner's `accounts` CLI connects as
+  (`ConnectionStrings__Provisioning`); it inserts Accounts and their users and
+  reads nothing else (DA-107);
 - the `vector` and `unaccent` extensions.
 
-`post-create.sh` then applies the migrations. Both connection strings come from
-`docker-compose.yml`; no config file is generated.
+`post-create.sh` re-runs the idempotent `roles.sql` (so an existing volume gets
+roles added by later epics) and then applies the migrations. The connection
+strings come from `docker-compose.yml`; no config file is generated.
+
+## Embedding model (DA-174)
+
+`post-create.sh` runs `scripts/download-embedding-model.sh`, which downloads
+`multilingual-e5-small` (ONNX, about 470 MB) at a pinned revision into the
+`lifegraph_models_dev` volume, mounted at `/home/vscode/models`, and checks each
+file's pinned SHA-256. A file already there with the right hash is kept, so
+only the first run downloads. `appsettings.Development.json` points the API at
+that directory; without the files the embedding jobs end dead. Delete the
+volume to download it again.
 
 ## Integration tests (DA-093)
 
@@ -94,4 +108,4 @@ in again, and `post-create.sh` reinstalls the allowlist and plugins.
 ## Credentials
 
 Every password in this folder and in `db/bootstrap/` is a dev-only placeholder.
-Real environments create the roles with their own secrets (E13).
+Real environments create the roles with their own secrets (E14).

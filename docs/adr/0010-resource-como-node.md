@@ -11,4 +11,4 @@ filtro de ocultos, busca, export, quotas, ChangeSet e Undo funcionam sem caso
 especial. As propriedades de sistema ficam travadas, e o usuário pode adicionar
 as dele. Um livro físico é um Type do usuário, não um Resource.
 
-Origem: DA-055 a DA-057, épico `docs/epics/backlog/e07-resources-e-captura.md`.
+Origem: DA-055 a DA-057, épico `docs/epics/done/e07-resources-e-captura.md`.

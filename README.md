@@ -15,7 +15,7 @@ The goal: **a life graph that almost organizes itself**, letting you navigate
 your own life by context, semantic proximity and time, without having to
 maintain a knowledge base by hand.
 
-> **Status:** development platform in place (epic E0), no product features yet.
+> **Status:** development platform and human login in place (epics E0–E1), no graph features yet.
 > The current product specification (in Portuguese) is in
 > [`docs/global_v2.md`](docs/global_v2.md); the roadmap is in
 > [`docs/epics/README.md`](docs/epics/README.md). See [Development](#development)
@@ -175,8 +175,9 @@ Stack: .NET 10 (ASP.NET Core, EF Core, PostgreSQL + pgvector) and React 19
 Requirements: Docker and VS Code with the Dev Containers extension.
 
 1. Open the repository in VS Code and run **Reopen in Container**.
-2. Wait for `post-create.sh`: it restores packages, runs `npm ci` and applies
-   the migrations to the `postgres` service.
+2. Wait for `post-create.sh`: it restores packages, runs `npm ci`, applies
+   the migrations to the `postgres` service and downloads the embedding model
+   (about 470 MB, once; see "Embedding model" below).
 3. Run the API and the frontend in two terminals:
 
    ```bash
@@ -186,6 +187,16 @@ Requirements: Docker and VS Code with the Dev Containers extension.
 
 Mailpit (captured e-mails) is forwarded from `mailpit:8025`. Details in
 [`.devcontainer/README.md`](.devcontainer/README.md).
+
+4. Create your account. Open sign-up is off; the owner creates accounts from
+   the command line, with no password. The e-mail (in Mailpit) carries the link
+   where the user chooses the password, then signs in at
+   `http://localhost:5173/login`:
+
+   ```bash
+   dotnet run --project src/LifeGraph.Host -- accounts create --email you@example.com
+   dotnet run --project src/LifeGraph.Host -- accounts resend --email you@example.com   # new link, still pending; earlier links stop working
+   ```
 
 ### Tests and checks
 
@@ -199,11 +210,64 @@ Integration tests need PostgreSQL. Inside the devcontainer they create a
 throwaway database on the `postgres` service; anywhere else they start one with
 Testcontainers, so Docker must be running.
 
+One test drives a real Chromium through the issuer's sign-in and consent pages
+(`ConsentInBrowserTests`, DA-144), because only a browser enforces their
+Content-Security-Policy. It is skipped unless `LIFEGRAPH_BROWSER_TESTS=1`, and
+the CI does not run it. To run it, build once, install Chromium (with its
+system libraries) and run the class:
+
+```bash
+dotnet build tests/LifeGraph.IntegrationTests
+pwsh tests/LifeGraph.IntegrationTests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+LIFEGRAPH_BROWSER_TESTS=1 dotnet test --project tests/LifeGraph.IntegrationTests --filter-class "LifeGraph.IntegrationTests.Agents.ConsentInBrowserTests"
+```
+
+One test class runs the real embedding model (`RealModelEmbeddingTests`,
+DA-175) on a fixed Portuguese fixture. It is skipped when the model files are
+not in `Semantic__Embeddings__ModelDirectory` (by default
+`~/models/multilingual-e5-small`), so the CI does not run it:
+
+```bash
+dotnet test --project tests/LifeGraph.UnitTests --filter-class "LifeGraph.UnitTests.Semantic.RealModelEmbeddingTests"
+```
+
+### Embedding model
+
+The semantic layer embeds Nodes with `intfloat/multilingual-e5-small`, run
+inside the API with ONNX Runtime (DA-174); no text leaves the host. The model
+is never in git: `scripts/download-embedding-model.sh` downloads it at a pinned
+revision and checks the pinned SHA-256 of each file. In the devcontainer it
+lands in the `lifegraph_models_dev` volume and survives rebuilds.
+
+```bash
+scripts/download-embedding-model.sh          # into $Semantic__Embeddings__ModelDirectory or ~/models/multilingual-e5-small
+scripts/download-embedding-model.sh <dir>    # anywhere else
+```
+
+The `Semantic:Embeddings` settings (`Provider`, `ModelId`, `ModelDirectory`,
+`EmbedTimeout`, `ReindexPageSize`) are checked at start: the API does not start without
+`Provider`, nor without `ModelId` and `ModelDirectory` when it is `Onnx`
+(`appsettings.Development.json` sets all three). The model files are read on
+the first embedding: when they are missing, the embedding jobs retry and end
+dead, logged as errors, and the graph works without them. `Provider` `None`
+runs with no model, with the same effect.
+
+The search (`GET /api/search`, MCP `search_graph`) finds by words and by meaning.
+`Semantic:Search:MinimumScores` holds the least similarity a Node needs to be found
+by meaning, per model, and `Semantic:Search:QueryTimeout` (3 s by default) how long
+a search waits for the model. The API does not start with an `Onnx` model that has
+no score there. A model with no score, one that fails or one past the timeout, and
+an Account whose Nodes are being indexed, all search by words only and answer
+`degraded`.
+
 ### Without the devcontainer
 
 The .NET 10 SDK, Node 24 and Docker are enough to build and run every test
 (integration tests use Testcontainers). Running the API itself needs a
 PostgreSQL bootstrapped with [`db/bootstrap/`](db/bootstrap/) (roles, database,
 extensions), which the devcontainer does for you. The application connects as
-`lifegraph_app` (`ConnectionStrings__Default`) and migrations run as
-`lifegraph_migrator` (`ConnectionStrings__Migrations`).
+`lifegraph_app` (`ConnectionStrings__Default`), the owner's `accounts` CLI as
+`lifegraph_provisioner` (`ConnectionStrings__Provisioning`, DA-107) and
+migrations run as `lifegraph_migrator` (`ConnectionStrings__Migrations`).
+For the embeddings, download the model and point
+`Semantic__Embeddings__ModelDirectory` at its directory.

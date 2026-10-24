@@ -19,4 +19,4 @@ propriedades" em vez de serem apagados.
 - **Definições por Type:** órfãos a cada troca de Type e propriedades
   duplicadas no Type Resource.
 
-Origem: DA-015 e DA-016, épico `docs/epics/backlog/e02-nucleo-de-escrita.md`.
+Origem: DA-015 e DA-016, épico `docs/epics/done/e02-nucleo-de-escrita.md`.

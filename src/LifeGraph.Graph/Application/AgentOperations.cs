@@ -1,0 +1,276 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using LifeGraph.Graph.Contracts;
+using LifeGraph.Graph.Domain;
+using Microsoft.EntityFrameworkCore;
+
+namespace LifeGraph.Graph.Application;
+
+/// <summary>
+/// The operations of an agent write as a proposal keeps them, and as the pipeline runs them.
+/// The stored form is canonical JSON (no nulls, property values ordered by id), so the same
+/// request always has the same <see cref="ChangeProposal.ContentHashOf"/>, base versions
+/// included (DA-130, DA-043 item 8). New Nodes get their ids only when applied, so they never
+/// weigh in the hash.
+/// </summary>
+internal static class AgentOperations
+{
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerOptions.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    public static string Serialize(IReadOnlyList<AgentOperation> operations) =>
+        JsonSerializer.Serialize(operations.Select(ToStored).ToList(), Options);
+
+    /// <summary>
+    /// The operations as the same request is recognized by: a capture by the canonical form of
+    /// its link alone, so the same link pending in a proposal finds that proposal whatever its
+    /// variant, title or Relation (DA-060, DA-156). The proposal still keeps what the agent gave.
+    /// </summary>
+    public static IReadOnlyList<AgentOperation> IdentityOf(IReadOnlyList<AgentOperation> operations, IResourceAddressRules addressRules) =>
+        [.. operations.Select(operation => operation is AgentCaptureResource capture
+            && addressRules.Read(capture.Url, "url") is { IsSuccess: true } address
+                ? new AgentCaptureResource(address.Value!.CanonicalUrl)
+                : operation)];
+
+    public static IReadOnlyList<AgentOperation> Deserialize(string json) =>
+        [.. (JsonSerializer.Deserialize<List<StoredOperation>>(json, Options) ?? []).Select(FromStored)];
+
+    /// <summary>The existing Nodes the operations name, for Purge to find the proposal (DA-021).</summary>
+    public static IReadOnlyList<Guid> TargetNodeIds(IReadOnlyList<AgentOperation> operations) =>
+        [.. operations.SelectMany(operation => operation switch
+        {
+            AgentUpdateNode update => [update.NodeId],
+            AgentDeleteNode delete => [delete.NodeId],
+            AgentCreateRelation relate => new[] { relate.Source.NodeId, relate.Target.NodeId }.OfType<Guid>(),
+            AgentCaptureResource { RelatedNodeId: { } related } => [related],
+            AgentTagNode tag => [tag.NodeId],
+            AgentUntagNode untag => [untag.NodeId],
+            _ => [],
+        }).Distinct()];
+
+    /// <summary>The key of the Tag a tag operation names, as Tags are told apart (DA-161).</summary>
+    public static string TagKeyOf(string tag) => TagName.Read(new FieldErrors(), "tag", tag).Key;
+
+    /// <summary>
+    /// The ids of the Tags the operations name, by <see cref="TagKeyOf"/>, among the given Tags
+    /// (the ones the reader sees). A name without a Tag is left out.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<string, Guid>> TagIdsAsync(
+        IQueryable<Tag> tags,
+        IReadOnlyList<AgentOperation> operations,
+        CancellationToken cancellationToken)
+    {
+        var keys = operations.Select(operation => operation switch
+        {
+            AgentTagNode tag => TagKeyOf(tag.Tag),
+            AgentUntagNode untag => TagKeyOf(untag.Tag),
+            _ => null,
+        }).OfType<string>().Distinct().ToList();
+        if (keys.Count == 0)
+        {
+            return new Dictionary<string, Guid>(StringComparer.Ordinal);
+        }
+
+        return await tags.Where(tag => keys.Contains(tag.NameKey))
+            .ToDictionaryAsync(tag => tag.NameKey, tag => tag.Id, StringComparer.Ordinal, cancellationToken);
+    }
+
+    /// <summary>The name a created Node is answered by: its ref, or its operation's place.</summary>
+    public static string CreatedKey(AgentCreateNode create, int index) => create.Ref ?? OperationKeys.Of(index);
+
+    /// <summary>
+    /// The pipeline's operations, with an id for each new Node and Relation. A Node an agent
+    /// creates without Type goes to the Inbox, with its suggested Type as a hint (DA-049); the
+    /// Node drops the hint when it has a Type. A tag operation takes its Tag from
+    /// <paramref name="tagIds"/> (<see cref="TagIdsAsync"/>); a name without a Tag there names
+    /// none, and the pipeline answers that the Tag was not found.
+    /// </summary>
+    public static (IReadOnlyList<GraphOperation> Operations, IReadOnlyDictionary<string, Guid> CreatedNodes) ToGraphOperations(
+        IReadOnlyList<AgentOperation> operations,
+        DateTimeOffset now,
+        IReadOnlyDictionary<string, Guid>? tagIds = null)
+    {
+        Guid TagIdOf(string tag) => tagIds?.GetValueOrDefault(TagKeyOf(tag)) ?? Guid.Empty;
+
+        var created = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var graphOperations = new List<GraphOperation>();
+        for (var index = 0; index < operations.Count; index++)
+        {
+            switch (operations[index])
+            {
+                case AgentCreateNode create:
+                    var nodeId = Guid.CreateVersion7(now);
+                    created[CreatedKey(create, index)] = nodeId;
+                    graphOperations.Add(new CreateNode(
+                        nodeId,
+                        create.Title,
+                        create.Body,
+                        create.TypeId,
+                        create.Properties,
+                        InInbox: create.TypeId is null,
+                        SuggestedType: create.SuggestedType));
+                    break;
+                case AgentUpdateNode update:
+                    graphOperations.Add(new UpdateNode(update.NodeId, update.ExpectedVersion)
+                    {
+                        Title = update.Title,
+                        Body = update.Body,
+                        Type = update.Type,
+                        Properties = update.Properties,
+                    });
+                    break;
+                case AgentCreateRelation relate:
+                    graphOperations.Add(new CreateRelation(
+                        Guid.CreateVersion7(now),
+                        Resolve(relate.Source, created),
+                        Resolve(relate.Target, created),
+                        relate.Kind));
+                    break;
+                case AgentRemoveRelation remove:
+                    graphOperations.Add(new DeleteRelation(remove.RelationId));
+                    break;
+                case AgentDeleteNode delete:
+                    graphOperations.Add(new DeleteNode(delete.NodeId, delete.ExpectedVersion));
+                    break;
+                case AgentCaptureResource capture:
+                    // The Resource's id is answered by the receipt's capture: the link may be one already kept.
+                    graphOperations.Add(new CaptureResource(Guid.CreateVersion7(now), capture.Url)
+                    {
+                        Title = capture.Title,
+                        RelatedNodeId = capture.RelatedNodeId,
+                        RelationKind = capture.RelationKind,
+                        RelationId = capture.RelatedNodeId is null ? null : Guid.CreateVersion7(now),
+                    });
+                    break;
+                case AgentTagNode tag:
+                    graphOperations.Add(new TagNode(tag.NodeId, TagIdOf(tag.Tag)));
+                    break;
+                case AgentUntagNode untag:
+                    graphOperations.Add(new UntagNode(untag.NodeId, TagIdOf(untag.Tag)));
+                    break;
+                default:
+                    throw new NotSupportedException($"Unknown agent operation {operations[index].GetType().Name}.");
+            }
+        }
+
+        return (graphOperations, created);
+    }
+
+    private static Guid Resolve(NodeRef node, Dictionary<string, Guid> created) =>
+        node.NodeId ?? created[node.Ref!];
+
+    private static StoredOperation ToStored(AgentOperation operation) => operation switch
+    {
+        AgentCreateNode create => new StoredOperation(StoredKind.CreateNode)
+        {
+            Title = create.Title,
+            Body = create.Body,
+            TypeId = create.TypeId,
+            Properties = Ordered(create.Properties),
+            Ref = create.Ref,
+            SuggestedType = create.SuggestedType,
+        },
+        AgentUpdateNode update => new StoredOperation(StoredKind.UpdateNode)
+        {
+            NodeId = update.NodeId,
+            ExpectedVersion = update.ExpectedVersion,
+            Title = update.Title,
+            Body = update.Body,
+            Type = update.Type,
+            Properties = Ordered(update.Properties),
+        },
+        AgentCreateRelation relate => new StoredOperation(StoredKind.CreateRelation)
+        {
+            Source = relate.Source,
+            Target = relate.Target,
+            Kind = relate.Kind,
+        },
+        AgentRemoveRelation remove => new StoredOperation(StoredKind.RemoveRelation) { RelationId = remove.RelationId },
+        AgentDeleteNode delete => new StoredOperation(StoredKind.DeleteNode) { NodeId = delete.NodeId, ExpectedVersion = delete.ExpectedVersion },
+        AgentCaptureResource capture => new StoredOperation(StoredKind.CaptureResource)
+        {
+            Url = capture.Url,
+            Title = capture.Title,
+            NodeId = capture.RelatedNodeId,
+            Kind = capture.RelationKind,
+        },
+        AgentTagNode tag => new StoredOperation(StoredKind.TagNode) { NodeId = tag.NodeId, Tag = tag.Tag },
+        AgentUntagNode untag => new StoredOperation(StoredKind.UntagNode) { NodeId = untag.NodeId, Tag = untag.Tag },
+        _ => throw new NotSupportedException($"Unknown agent operation {operation.GetType().Name}."),
+    };
+
+    private static AgentOperation FromStored(StoredOperation stored) => stored.Op switch
+    {
+        StoredKind.CreateNode => new AgentCreateNode(stored.Title!, stored.Body, stored.TypeId, stored.Properties, stored.Ref, stored.SuggestedType),
+        StoredKind.UpdateNode => new AgentUpdateNode(stored.NodeId!.Value, stored.ExpectedVersion!.Value)
+        {
+            Title = stored.Title,
+            Body = stored.Body,
+            Type = stored.Type,
+            Properties = stored.Properties,
+        },
+        StoredKind.CreateRelation => new AgentCreateRelation(stored.Source!, stored.Target!, stored.Kind!),
+        StoredKind.RemoveRelation => new AgentRemoveRelation(stored.RelationId!.Value),
+        StoredKind.DeleteNode => new AgentDeleteNode(stored.NodeId!.Value, stored.ExpectedVersion!.Value),
+        StoredKind.CaptureResource => new AgentCaptureResource(stored.Url!)
+        {
+            Title = stored.Title,
+            RelatedNodeId = stored.NodeId,
+            RelationKind = stored.Kind,
+        },
+        StoredKind.TagNode => new AgentTagNode(stored.NodeId!.Value, stored.Tag!),
+        StoredKind.UntagNode => new AgentUntagNode(stored.NodeId!.Value, stored.Tag!),
+        _ => throw new NotSupportedException($"Unknown stored operation {stored.Op}."),
+    };
+
+    private static SortedDictionary<Guid, JsonElement>? Ordered(IReadOnlyDictionary<Guid, JsonElement>? values) =>
+        values is null ? null : new SortedDictionary<Guid, JsonElement>(values.ToDictionary(pair => pair.Key, pair => pair.Value.Clone()));
+
+    [JsonConverter(typeof(JsonStringEnumConverter<StoredKind>))]
+    internal enum StoredKind
+    {
+        CreateNode,
+        UpdateNode,
+        CreateRelation,
+        RemoveRelation,
+        DeleteNode,
+        CaptureResource,
+        TagNode,
+        UntagNode,
+    }
+
+    internal sealed record StoredOperation(StoredKind Op)
+    {
+        public Guid? NodeId { get; init; }
+
+        public int? ExpectedVersion { get; init; }
+
+        public string? Title { get; init; }
+
+        public string? Body { get; init; }
+
+        public Guid? TypeId { get; init; }
+
+        public TypeAssignment? Type { get; init; }
+
+        public IReadOnlyDictionary<Guid, JsonElement>? Properties { get; init; }
+
+        public string? Ref { get; init; }
+
+        public string? SuggestedType { get; init; }
+
+        public NodeRef? Source { get; init; }
+
+        public NodeRef? Target { get; init; }
+
+        public string? Kind { get; init; }
+
+        public Guid? RelationId { get; init; }
+
+        public string? Url { get; init; }
+
+        public string? Tag { get; init; }
+    }
+}

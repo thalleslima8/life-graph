@@ -26,7 +26,7 @@ jobs:
       - name: Restore
         run: |
           dotnet tool restore
-          dotnet restore LifeGraph.sln
+          dotnet restore LifeGraph.sln --locked-mode
 
       - name: Format (GEN-092)
         run: dotnet format LifeGraph.sln --verify-no-changes --no-restore

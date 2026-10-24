@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The thin HTTP layer of the error contract (DA-100): the product's IErrorHttpMapper over
+    the catalog, the exception safety net and the Problem Details defaults. Limaj.Framework.Web
+    reaches the modules only through here, in their *.Http namespaces.
+  -->
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Limaj.Framework.Core" />
+    <PackageReference Include="Limaj.Framework.Web" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LifeGraph.Infrastructure\LifeGraph.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LifeGraph.UnitTests" />
+    <InternalsVisibleTo Include="LifeGraph.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

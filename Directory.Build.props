@@ -10,5 +10,8 @@
     <!-- Pins transitive versions too, so EF Core resolves to one patch everywhere. -->
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- packages.lock.json per project: every transitive version and hash is pinned and CI
+         restores in locked mode (GEN-023). -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 </Project>

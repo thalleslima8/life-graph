@@ -17,4 +17,4 @@ guarda o antes e o depois em `change_entries`, sem event sourcing completo. A
 Repositórios genéricos com delete direto (ex.: o `BaseRepository` do
 limaj-framework) não podem ser usados nos agregados do grafo.
 
-Origem: DA-013, épico `docs/epics/backlog/e02-nucleo-de-escrita.md`.
+Origem: DA-013, épico `docs/epics/done/e02-nucleo-de-escrita.md`.

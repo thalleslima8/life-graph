@@ -2,7 +2,7 @@
 
 - **Ordem:** 0
 - **Depende de:** —
-- **Última revisão:** 2026-10-02
+- **Última revisão:** 2026-10-23
 
 ## Contexto
 
@@ -13,7 +13,7 @@ rode localmente, já com as garantias de isolamento multi-tenant que não podem
 ser adicionadas depois.
 
 Este épico **não tem funcionalidade de produto** e **não faz deploy**. Tudo roda
-em ambiente de desenvolvimento até o E13 (Infra & Deploy).
+em ambiente de desenvolvimento até o E14 (Infra & Deploy).
 
 ## Decisões
 
@@ -47,8 +47,12 @@ em ambiente de desenvolvimento até o E13 (Infra & Deploy).
   `local.settings.json` (Azure Functions), e o UnitOfWork não aplica
   `SET LOCAL`. Regra BOLA: acesso a outra conta aparece como `NotFound`, nunca
   403. Pré-requisito externo: migrar o limaj-framework para .NET 10, no
-  repositório dele.
-- **DA-006 — Só ambiente de dev até o E13** (usuário). Hospedagem, backups e
+  repositório dele. *Revista (2026-10-04):* o `IUserIdentityGateway` saiu pela
+  DA-094 (E1). O consumo do Result/Error e do `Web` foi redefinido pela DA-099
+  (E2): `Abstractions` 2.0.0 já, e `Web` a partir da 3.0.0, com o formato `V3`
+  e um `IErrorHttpMapper` próprio. O pré-requisito do .NET 10 foi cumprido na
+  2.0.0.
+- **DA-006 — Só ambiente de dev até o E14** (usuário). Hospedagem, backups e
   região ficam para o épico de Infra & Deploy. Para não forçar retrabalho, os
   **requisitos mínimos do host** ficam registrados já: Postgres ≥16,
   pgvector ≥0.7, papéis não-superusuário com RLS, papel da aplicação sem
@@ -91,7 +95,7 @@ em ambiente de desenvolvimento até o E13 (Infra & Deploy).
   a Account com `set_config(..., true)` (equivale a `SET LOCAL`, mas aceita
   parâmetro) no início de cada transação. Sem Account, nenhuma linha aparece.
 - **Observabilidade:** logs estruturados com redação de PII e segredos
-  (GEN-043) e instrumentação OpenTelemetry, com exporters ligados só no E13.
+  (GEN-043) e instrumentação OpenTelemetry, com exporters ligados só no E14.
 
 ## Checklist
 
@@ -130,4 +134,4 @@ em ambiente de desenvolvimento até o E13 (Infra & Deploy).
 
 ## Fora de escopo
 
-Login, entidades de domínio, deploy, hospedagem e backups (E13).
+Login, entidades de domínio, deploy, hospedagem e backups (E14).
