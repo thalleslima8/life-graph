@@ -273,7 +273,7 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
             Assert.Equal(0, await _graph.ScalarAsync<long>($"SELECT count(*) FROM {table} WHERE account_id = @id", new NpgsqlParameter("id", _account)));
         }
 
-        Assert.Equal(2, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes WHERE account_id = @id", new NpgsqlParameter("id", other)));
+        Assert.Equal(2, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes WHERE account_id = @id AND system_key IS NULL", new NpgsqlParameter("id", other)));
         Assert.Equal(othersJobs, await _graph.ScalarAsync<long>("SELECT count(*) FROM jobs WHERE account_id = @id", new NpgsqlParameter("id", other)));
     }
 

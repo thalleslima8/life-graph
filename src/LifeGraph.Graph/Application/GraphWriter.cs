@@ -193,6 +193,11 @@ internal sealed class GraphWriter(
             return Result<GraphWriteReceipt>.Fail(invalid.ToError());
         }
 
+        if (await CheckAnchorsAsync(transactional, cancellationToken) is { IsSuccess: false } loose)
+        {
+            return Result<GraphWriteReceipt>.Fail(loose.Error!);
+        }
+
         if (write.Changes.Count == 0)
         {
             // A capture of a link kept in the Inbox changes nothing, yet a failed fetch runs again (DA-156).
@@ -202,7 +207,7 @@ internal sealed class GraphWriter(
                 await db.SaveChangesAsync(cancellationToken);
             }
 
-            return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(null, []) { Captures = captures });
+            return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(null, []) { Captures = await AnchoredForAgentsAsync(provenance, captures, cancellationToken) });
         }
 
         db.AddRange(write.Added);
@@ -216,14 +221,48 @@ internal sealed class GraphWriter(
         complete?.Invoke(changeSet);
         await SaveAsync(provenance, cancellationToken);
 
-        return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(changeSet.Id, write.Changes) { Captures = captures });
+        return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(changeSet.Id, write.Changes)
+        {
+            Captures = await AnchoredForAgentsAsync(provenance, captures, cancellationToken),
+        });
     }
+
+    // An agent learns whether what it captured is anchored (DA-205), over the graph as stored,
+    // in one query for the whole write; the person's captures answer without it. The neutral
+    // answer of DA-154 names no Resource and carries no `anchored`, yet asks the same query
+    // for an id no Node has, so its timing stays that of a fresh capture (DA-211).
+    private async Task<IReadOnlyList<ResourceCaptured>> AnchoredForAgentsAsync(
+        Provenance provenance,
+        IReadOnlyList<ResourceCaptured> captures,
+        CancellationToken cancellationToken)
+    {
+        if (provenance.Actor is not GraphActor.AgentIdentity || captures.Count == 0)
+        {
+            return captures;
+        }
+
+        List<Guid> asked = [.. captures.Select(capture => capture.NodeId).OfType<Guid>()];
+        var hasNeutralAnswer = asked.Count < captures.Count;
+        if (hasNeutralAnswer)
+        {
+            // The neutral answer of DA-154 asks the reach too, for an id no Node has, so it costs
+            // the same query as a fresh capture (DA-211).
+            asked.Add(NoNodeId());
+        }
+
+        var anchored = await AnchorReach.AnchoredAmongAsync(db, asked, cancellationToken);
+        return [.. captures.Select(capture => capture.NodeId is { } nodeId ? capture with { Anchored = anchored.Contains(nodeId) } : capture)];
+    }
+
+    // A fresh id that names no Node: the stand-in the reach query of DA-211 asks for.
+    private static Guid NoNodeId() => Guid.CreateVersion7();
 
     /// <summary>
     /// The field errors a write of its operations would answer now, with nothing
     /// stored: the same domain rules (sizes, formats, property values against the Type) run on
     /// the current graph, inside a transaction <see cref="RunAsync{T}"/> opened, and dropped.
-    /// What only applying can tell (a version that moved, an entity gone) is left to then, so
+    /// The locks of the Raiz da Conta answer too, when no field error came first. What only
+    /// applying can tell (a version that moved, an entity gone) is left to then, so
     /// an edit or a delete is checked against the Node as it is now. The tracked entities are
     /// cleared: call it before anything the caller tracks.
     /// </summary>
@@ -231,6 +270,7 @@ internal sealed class GraphWriter(
     {
         var (accountId, provenance, _, now) = transactional;
         var invalid = new OperationErrors();
+        Error? locked = null;
         try
         {
             var expansion = await ResourceCaptureExpansion.ExpandAsync(db, addressRules, transactional, cancellationToken);
@@ -255,6 +295,11 @@ internal sealed class GraphWriter(
                 {
                     invalid.Add(index, applied.Error);
                 }
+                else if (!applied.IsSuccess && applied.Error!.Code == GraphErrors.AccountRootLocked.Code)
+                {
+                    // The Raiz da Conta's locks hold whatever the graph is then (DA-189, DA-203).
+                    locked ??= OperationErrors.OfOperation(index, applied.Error);
+                }
             }
         }
         finally
@@ -263,8 +308,22 @@ internal sealed class GraphWriter(
             db.ChangeTracker.Clear();
         }
 
-        return invalid.IsEmpty ? Result.Ok() : Result.Fail(invalid.ToError());
+        if (!invalid.IsEmpty)
+        {
+            return Result.Fail(invalid.ToError());
+        }
+
+        return locked is null ? await CheckAnchorsAsync(transactional, cancellationToken) : Result.Fail(locked);
     }
+
+    // An AgentIdentity always anchors what it creates (DA-192); the same check holds for its
+    // write, its proposal, apply_changes and the person's approval (DA-199), on the write's own
+    // operations, so the refusal names them as the agent sent them. The person's writes and the
+    // System entry are not asked (DA-196).
+    private Task<Result> CheckAnchorsAsync(TransactionalWrite transactional, CancellationToken cancellationToken) =>
+        transactional.Provenance.Actor is GraphActor.AgentIdentity
+            ? AnchorRule.CheckAsync(db, transactional.Operations, cancellationToken)
+            : Task.FromResult(Result.Ok());
 
     private static Result Apply(WriteInProgress write, GraphOperation operation) => operation switch
     {

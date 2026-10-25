@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using LifeGraph.Accounts.Contracts;
 using LifeGraph.Accounts.Issuer;
+using LifeGraph.Agents;
 using LifeGraph.Agents.Mcp;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.IntegrationTests.Graph;
@@ -30,6 +31,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     private SpaClient _person = null!;
     private McpClient _agent = null!;
     private Guid _agentId;
+    private Guid _root;
 
     public async ValueTask InitializeAsync()
     {
@@ -37,6 +39,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         _accountId = (await TestAccounts.ProvisionConfirmedAsync(_factory, Email)).AccountId;
         _graph = new GraphWriteHarness(database, _factory);
         _person = await AgentAuthorization.SignedInBrowserAsync(_factory, Email);
+        _root = await _graph.AccountRootIdAsync(_accountId);
         (_agent, _agentId) = await ConnectAgentAsync(AgentAuthorization.ClientId);
     }
 
@@ -47,13 +50,35 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         await _factory.DisposeAsync();
     }
 
+    // DA-194: the server tells every agent how to anchor, and create_node and suggest_changes take the anchor.
+    [Fact]
+    public async Task The_server_instructions_tell_how_to_anchor_and_the_creating_tools_take_an_anchor()
+    {
+        var tools = await _agent.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(AgentsModule.ServerInstructions, _agent.ServerInstructions);
+        var createNode = Assert.Single(tools, tool => tool.Name == GraphWriteTools.CreateNodeName);
+        Assert.True(createNode.JsonSchema.GetProperty("properties").TryGetProperty("anchor", out _));
+        Assert.Contains("anchor", Assert.Single(tools, tool => tool.Name == GraphWriteTools.SuggestChangesName).Description, StringComparison.Ordinal);
+    }
+
+    // DA-192: create_node without anchor is refused and tells the agent the root's id.
+    [Fact]
+    public async Task Create_node_without_anchor_is_refused_with_the_root_id()
+    {
+        var refused = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.CreateNodeName, new { title = "Solta" });
+
+        Assert.Contains("needs an anchor", refused, StringComparison.Ordinal);
+        Assert.Contains(_root.ToString(), refused, StringComparison.Ordinal);
+    }
+
     // DA-040, DA-049, DA-133: creations are applied at once, as the agent's own, and consume no window.
     [Fact]
     public async Task An_agent_creates_a_node_and_relates_it_applied_at_once_as_its_own_change()
     {
         var mine = await PersonsNodeAsync("Meditations");
 
-        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Marcus Aurelius", suggestedType = "Person" });
+        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Marcus Aurelius", suggestedType = "Person", anchor = new { nodeId = _root } });
         var nodeId = SingleCreated(created);
         using var related = await CallAsync(GraphWriteTools.CreateRelationName, new { sourceNodeId = mine, targetNodeId = nodeId, kind = "written_by" });
 
@@ -113,7 +138,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         var person = Guid.CreateVersion7();
         await _graph.WrittenAsync(_accountId, new CreateType(person, "Person"));
         var mine = await PersonsNodeAsync("Seneca");
-        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Epictetus" });
+        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Epictetus", anchor = new { nodeId = _root } });
         var own = SingleCreated(created);
 
         using var onMine = await CallAsync(GraphWriteTools.UpdateNodeName, new { nodeId = mine, expectedVersion = 1, typeId = person });
@@ -133,7 +158,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     {
         var person = Guid.CreateVersion7();
         await _graph.WrittenAsync(_accountId, new CreateType(person, "Person"));
-        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Epictetus" });
+        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Epictetus", anchor = new { nodeId = _root } });
         var own = SingleCreated(created);
 
         using var typed = await CallAsync(GraphWriteTools.UpdateNodeName, new { nodeId = own, expectedVersion = 1, typeId = person });
@@ -151,7 +176,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     {
         var person = Guid.CreateVersion7();
         await _graph.WrittenAsync(_accountId, new CreateType(person, "Person"));
-        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Epictetus" });
+        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Epictetus", anchor = new { nodeId = _root } });
         var own = SingleCreated(created);
         var edit = await _graph.WrittenAsync(_accountId, new UpdateNode(own, 1) { Body = "The person's notes" });
         Assert.True((await _graph.UndoAsync(_accountId, edit)).IsSuccess);
@@ -174,7 +199,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
 
         var edit = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.UpdateNodeName, new { nodeId = hidden, expectedVersion = 2, title = "x" });
         var relate = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.CreateRelationName, new { sourceNodeId = visible, targetNodeId = hidden, kind = "about" });
-        var typed = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.CreateNodeName, new { title = "Exam", typeId = health });
+        var typed = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.CreateNodeName, new { title = "Exam", typeId = health, anchor = new { nodeId = _root } });
 
         Assert.StartsWith("The node was not found.", edit, StringComparison.Ordinal);
         Assert.StartsWith("The node was not found.", relate, StringComparison.Ordinal);
@@ -215,14 +240,14 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         var proposals = new List<Guid>();
         for (var index = 0; index < 10; index++)
         {
-            using var suggested = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = $"Idea {index}" } } });
+            using var suggested = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = $"Idea {index}", anchor = new { nodeId = _root } } } });
             proposals.Add(ProposalOf(suggested));
         }
 
-        var full = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Idea 10" } } });
-        using var again = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Idea 0" } } });
+        var full = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Idea 10", anchor = new { nodeId = _root } } } });
+        using var again = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Idea 0", anchor = new { nodeId = _root } } } });
         using var withdrawn = await CallAsync(GraphWriteTools.WithdrawProposalName, new { proposalId = proposals[0] });
-        using var fits = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Idea 10" } } });
+        using var fits = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Idea 10", anchor = new { nodeId = _root } } } });
 
         Assert.Contains("already has 10 proposals", full, StringComparison.Ordinal);
         Assert.True(again.RootElement.GetProperty("deduplicated").GetBoolean());
@@ -234,7 +259,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     [Fact]
     public async Task A_proposal_expires_after_seven_days_by_its_job()
     {
-        using var suggested = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Idea" } } });
+        using var suggested = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Idea", anchor = new { nodeId = _root } } } });
         var proposal = ProposalOf(suggested);
 
         await ExpireProposalsAsync();
@@ -249,7 +274,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     [Fact]
     public async Task Applying_another_agents_proposal_is_not_found()
     {
-        var proposal = await SuggestAsync(new { op = "create_node", title = "Idea" });
+        var proposal = await SuggestAsync(new { op = "create_node", title = "Idea", anchor = new { nodeId = _root } });
         var (otherAgent, _) = await ConnectAgentAsync(OtherClientId);
         await using var _ = otherAgent;
 
@@ -262,9 +287,9 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     [Fact]
     public async Task Applying_a_withdrawn_or_expired_proposal_is_refused()
     {
-        var withdrawn = await SuggestAsync(new { op = "create_node", title = "Withdrawn" });
+        var withdrawn = await SuggestAsync(new { op = "create_node", title = "Withdrawn", anchor = new { nodeId = _root } });
         using var _ = await CallAsync(GraphWriteTools.WithdrawProposalName, new { proposalId = withdrawn });
-        var expiring = await SuggestAsync(new { op = "create_node", title = "Expiring" });
+        var expiring = await SuggestAsync(new { op = "create_node", title = "Expiring", anchor = new { nodeId = _root } });
         await ExpireProposalsAsync();
 
         var onWithdrawn = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.ApplyChangesName, new { proposalId = withdrawn, idempotencyKey = "k1" });
@@ -317,7 +342,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     public async Task A_proposal_made_with_approval_required_does_not_unlock_when_the_toggle_is_turned_off()
     {
         Assert.Equal(HttpStatusCode.OK, (await SetRequiresApprovalAsync(true)).StatusCode);
-        using var written = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Idea" });
+        using var written = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Idea", anchor = new { nodeId = _root } });
         var proposal = ProposalOf(written);
         Assert.Equal(["approval_required"], Strings(written.RootElement.GetProperty("reasons")));
 
@@ -325,7 +350,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         var refused = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.ApplyChangesName, new { proposalId = proposal, idempotencyKey = "k1" });
 
         Assert.StartsWith("Only the person can approve this proposal", refused, StringComparison.Ordinal);
-        Assert.Equal(0L, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes"));
+        Assert.Equal(0L, await _graph.CountAsync("nodes"));
         Assert.True(await RequiresUserAsync(proposal));
     }
 
@@ -335,7 +360,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     [Fact]
     public async Task A_suggestion_tried_with_approval_required_stays_the_persons_after_the_toggle_is_turned_off()
     {
-        var proposal = await SuggestAsync(new { op = "create_node", @ref = "idea", title = "Idea" });
+        var proposal = await SuggestAsync(new { op = "create_node", @ref = "idea", title = "Idea", anchor = new { nodeId = _root } });
         Assert.False(await RequiresUserAsync(proposal));
 
         Assert.Equal(HttpStatusCode.OK, (await SetRequiresApprovalAsync(true)).StatusCode);
@@ -348,7 +373,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
 
         Assert.StartsWith("Only the person can approve this proposal", refusedOff, StringComparison.Ordinal);
         Assert.True(await RequiresUserAsync(proposal));
-        Assert.Equal(0L, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes"));
+        Assert.Equal(0L, await _graph.CountAsync("nodes"));
     }
 
     // DA-043 item 5: the base version is checked again when applying.
@@ -390,8 +415,8 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         {
             operations = new object[]
             {
-                new { op = "create_node", title = "Idea" },
-                new { op = "create_node", @ref = "seneca", title = "Seneca" },
+                new { op = "create_node", title = "Idea", anchor = new { nodeId = _root } },
+                new { op = "create_node", @ref = "seneca", title = "Seneca", anchor = new { nodeId = _root } },
                 new { op = "create_relation", sourceNodeId = mine, targetRef = "seneca", kind = "about" },
             },
         });
@@ -405,7 +430,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         Assert.Equal(first.RootElement.GetRawText(), retry.RootElement.GetRawText());
         Assert.Equal(["operations[0]", "seneca"], first.RootElement.GetProperty("createdNodes").EnumerateObject().Select(created => created.Name).Order(StringComparer.Ordinal));
         Assert.Contains("no longer pending", otherKey, StringComparison.Ordinal);
-        Assert.Equal(3L, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes"));
+        Assert.Equal(3L, await _graph.CountAsync("nodes"));
         using var status = await CallAsync(GraphWriteTools.GetProposalName, new { proposalId = proposal });
         Assert.Equal("applied", status.RootElement.GetProperty("status").GetString());
     }
@@ -455,10 +480,10 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     [Fact]
     public async Task Content_the_person_rejected_cannot_be_sent_again()
     {
-        var proposal = await SuggestAsync(new { op = "create_node", title = "Spam" });
+        var proposal = await SuggestAsync(new { op = "create_node", title = "Spam", anchor = new { nodeId = _root } });
         Assert.Equal(HttpStatusCode.OK, (await _person.PostAsync($"/api/proposals/{proposal}/rejection", new { })).StatusCode);
 
-        var again = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Spam" } } });
+        var again = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Spam", anchor = new { nodeId = _root } } } });
         var applied = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.ApplyChangesName, new { proposalId = proposal, idempotencyKey = "k1" });
 
         Assert.Contains("already rejected these exact changes", again, StringComparison.Ordinal);
@@ -469,7 +494,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     [Fact]
     public async Task Fifty_operations_are_accepted_and_fifty_one_refused()
     {
-        object Create(int index) => new { op = "create_node", title = $"Node {index}" };
+        object Create(int index) => new { op = "create_node", title = $"Node {index}", anchor = new { nodeId = _root } };
 
         using var fifty = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = Enumerable.Range(0, 50).Select(Create).ToArray() });
         var fiftyOne = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.SuggestChangesName, new { operations = Enumerable.Range(0, 51).Select(Create).ToArray() });
@@ -486,7 +511,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         var node = await PersonsNodeAsync("Draft");
         var operations = new object[]
         {
-            new { op = "create_node", title = "Letters", @ref = "letters" },
+            new { op = "create_node", title = "Letters", @ref = "letters", anchor = new { nodeId = _root } },
             new { op = "create_relation", sourceRef = "unknown", targetNodeId = node, kind = "about" },
             new { op = "create_relation", sourceRef = "letters", targetNodeId = node, targetRef = "letters", kind = "about" },
         };
@@ -508,10 +533,10 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         var node = await PersonsNodeAsync("Draft");
         var operations = new object[]
         {
-            new { op = "create_node", title = new string('t', 501), @ref = "a" },
+            new { op = "create_node", title = new string('t', 501), @ref = "a", anchor = new { nodeId = _root } },
             new { op = "update_node", nodeId = node, expectedVersion = 1, body = new string('b', 100_001) },
             new { op = "create_relation", sourceNodeId = node, targetNodeId = node, kind = new string('k', 101) },
-            new { op = "create_node", title = "Hint", suggestedType = new string('s', 101) },
+            new { op = "create_node", title = "Hint", suggestedType = new string('s', 101), anchor = new { nodeId = _root } },
         };
 
         var refused = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.SuggestChangesName, new { operations });
@@ -533,9 +558,9 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         await _graph.WrittenAsync(_accountId, new UpdateNode(node, 1) { Title = "Edited by the person" });
         Assert.Equal(HttpStatusCode.OK, (await SetRequiresApprovalAsync(true)).StatusCode);
 
-        var created = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.CreateNodeName, new { title = new string('t', 501) });
+        var created = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.CreateNodeName, new { title = new string('t', 501), anchor = new { nodeId = _root } });
         var edited = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.UpdateNodeName, new { nodeId = node, expectedVersion = 1, title = new string('t', 501) });
-        using var valid = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Idea" });
+        using var valid = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Idea", anchor = new { nodeId = _root } });
 
         Assert.Contains("title: Must be at most 500 characters.", created, StringComparison.Ordinal);
         Assert.Contains("title: Must be at most 500 characters.", edited, StringComparison.Ordinal);
@@ -548,7 +573,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     public async Task Twenty_changes_to_the_persons_entities_are_applied_and_twenty_one_go_to_the_person()
     {
         var nodes = await PersonsNodesAsync(21);
-        var own = Enumerable.Range(0, 5).Select(index => new { op = "create_node", title = $"Own {index}" });
+        var own = Enumerable.Range(0, 5).Select(index => new { op = "create_node", title = $"Own {index}", anchor = new { nodeId = _root } });
 
         using var twenty = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations = Updates(nodes.Take(20)).Concat(own).ToArray() });
         using var applied = await CallAsync(GraphWriteTools.ApplyChangesName, new { proposalId = ProposalOf(twenty), idempotencyKey = "k1" });
@@ -600,7 +625,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         await SpendWindowAsync(otherAgent, nodes[20..40]);
 
         using var overCeiling = await AgentMcp.CallAsync(thirdAgent, GraphWriteTools.UpdateNodeName, new { nodeId = nodes[40], expectedVersion = 1, title = "Over the ceiling" });
-        using var created = await AgentMcp.CallAsync(thirdAgent, GraphWriteTools.CreateNodeName, new { title = "Its own" });
+        using var created = await AgentMcp.CallAsync(thirdAgent, GraphWriteTools.CreateNodeName, new { title = "Its own", anchor = new { nodeId = _root } });
 
         Assert.Equal("pending_approval", overCeiling.RootElement.GetProperty("status").GetString());
         Assert.Equal(["window"], Strings(overCeiling.RootElement.GetProperty("reasons")));
@@ -673,7 +698,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         {
             operations = new object[]
             {
-                new { op = "create_node", title = "New", @ref = "n" },
+                new { op = "create_node", title = "New", @ref = "n", anchor = new { nodeId = _root } },
                 new { op = "create_relation", sourceRef = "n", targetNodeId = node, kind = "about" },
                 new { op = "delete_node", nodeId = node, expectedVersion = 1 },
             },
@@ -690,7 +715,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         Assert.Equal("agents.operation_dependency", problem.RootElement.GetProperty("code").GetString());
         Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("operations[1]", out _));
         Assert.Equal("proposed|1", await _graph.ScalarAsync<string>(
-            "SELECT p.status || '|' || (SELECT count(*) FROM nodes) FROM change_proposals p WHERE p.id = @id", new NpgsqlParameter("id", proposal)));
+            "SELECT p.status || '|' || (SELECT count(*) FROM nodes WHERE system_key IS NULL) FROM change_proposals p WHERE p.id = @id", new NpgsqlParameter("id", proposal)));
     }
 
     // DA-135: approving is reviewing; operations left out do not count as rejected content (DA-043 item 8).
@@ -700,7 +725,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         var node = await PersonsNodeAsync("Keep");
         object[] operations =
         [
-            new { op = "create_node", title = "Wanted" },
+            new { op = "create_node", title = "Wanted", anchor = new { nodeId = _root } },
             new { op = "delete_node", nodeId = node, expectedVersion = 1 },
         ];
         using var first = await CallAsync(GraphWriteTools.SuggestChangesName, new { operations });
@@ -724,7 +749,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         {
             operations = new object[]
             {
-                new { op = "create_node", title = "Unrelated" },
+                new { op = "create_node", title = "Unrelated", anchor = new { nodeId = _root } },
                 new { op = "delete_node", nodeId = node, expectedVersion = 1 },
             },
         });
@@ -742,11 +767,11 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     [Fact]
     public async Task The_screens_name_the_agent_tell_the_undo_state_and_flag_purged_content()
     {
-        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's" });
+        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's", anchor = new { nodeId = _root } });
         var changeSet = created.RootElement.GetProperty("changeSetId").GetGuid();
-        using var second = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's second" });
+        using var second = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's second", anchor = new { nodeId = _root } });
         var secondChangeSet = second.RootElement.GetProperty("changeSetId").GetGuid();
-        var proposal = await SuggestAsync(new { op = "create_node", title = "Later" });
+        var proposal = await SuggestAsync(new { op = "create_node", title = "Later", anchor = new { nodeId = _root } });
 
         using var fresh = await JsonAsync($"/api/changesets/{changeSet}");
         var undo = await _person.PostAsync($"/api/changesets/{changeSet}/undo", new { });
@@ -777,9 +802,9 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     [Fact]
     public async Task The_lists_name_the_agent_and_tell_the_undo_state_of_each_change()
     {
-        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's" });
-        using var purgedLater = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's second" });
-        await SuggestAsync(new { op = "create_node", title = "Later" });
+        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's", anchor = new { nodeId = _root } });
+        using var purgedLater = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's second", anchor = new { nodeId = _root } });
+        await SuggestAsync(new { op = "create_node", title = "Later", anchor = new { nodeId = _root } });
         await database.ExecuteAsMigratorAsync(
             $"UPDATE change_entries SET before = NULL, after = NULL, purged_at = now() WHERE changeset_id = '{purgedLater.RootElement.GetProperty("changeSetId").GetGuid()}'",
             TestContext.Current.CancellationToken);
@@ -800,10 +825,10 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     [Fact]
     public async Task Revoking_an_agent_withdraws_its_pending_proposals_in_the_same_transaction()
     {
-        var mine = await SuggestAsync(new { op = "create_node", title = "Pending" });
+        var mine = await SuggestAsync(new { op = "create_node", title = "Pending", anchor = new { nodeId = _root } });
         var (other, _) = await ConnectAgentAsync(OtherClientId);
         await using var otherAgent = other;
-        using var othersSuggestion = await AgentMcp.CallAsync(otherAgent, GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Other's" } } });
+        using var othersSuggestion = await AgentMcp.CallAsync(otherAgent, GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Other's", anchor = new { nodeId = _root } } } });
 
         var revoked = await _person.DeleteAsync($"/api/agent-identities/{_agentId}");
         using var detail = await JsonAsync($"/api/proposals/{mine}");
@@ -840,7 +865,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
     public async Task Agent_changes_lists_the_unreviewed_changes_of_an_agent_until_marked()
     {
         await PersonsNodeAsync("Mine");
-        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's" });
+        using var created = await CallAsync(GraphWriteTools.CreateNodeName, new { title = "Agent's", anchor = new { nodeId = _root } });
         var changeSet = created.RootElement.GetProperty("changeSetId").GetGuid();
 
         var before = await ListedChangeSetsAsync($"/api/changesets?agentIdentityId={_agentId}&unreviewed=true");

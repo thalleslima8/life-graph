@@ -33,6 +33,8 @@ internal sealed class WriteInProgress(
 
     private const string TypeNotFoundMessage = "The type was not found.";
 
+    private const string AnchorNotFoundMessage = "The anchor node was not found.";
+
     private const string SoftRelationNotFoundMessage = "The soft relation was not found.";
 
     private const string PropertyNotFoundMessage = "The property was not found.";
@@ -65,6 +67,11 @@ internal sealed class WriteInProgress(
             return Result.Fail(GraphErrors.WriteConflict.ToError(AlreadyExistsMessage));
         }
 
+        if (create.Anchor is { } anchor && workingSet.FindNode(anchor.NodeId) is null)
+        {
+            return Result.Fail(GraphErrors.NodeNotFound.ToError(AnchorNotFoundMessage));
+        }
+
         TypeSchema? schema = null;
         if (create.TypeId is { } typeId && (schema = workingSet.FindSchema(typeId)) is null)
         {
@@ -78,7 +85,12 @@ internal sealed class WriteInProgress(
         }
 
         var draft = new NodeDraft(create.NodeId, accountId, create.Title, create.Body, schema, values.Value, AgentOf(provenance), create.SuggestedType);
-        var created = create.InInbox ? Node.CaptureIntoInbox(draft, now) : Node.Create(draft, now);
+        var created = create switch
+        {
+            { MakesAccountRoot: true } => Node.CreateAccountRoot(draft, now),
+            { InInbox: true } => Node.CaptureIntoInbox(draft, now),
+            _ => Node.Create(draft, now),
+        };
         if (!created.IsSuccess)
         {
             return Result.Fail(created.Error!);
@@ -93,7 +105,21 @@ internal sealed class WriteInProgress(
         workingSet.Created(node);
         _added.Add(node);
         Record(GraphEntityKind.Node, node.Id, GraphChangeOperation.Created, before: null, ChangeSnapshots.Of(node), node.Version);
-        return Result.Ok();
+        return create.Anchor is { } anchoredTo ? ApplyAnchor(node, anchoredTo) : Result.Ok();
+    }
+
+    // The anchoring Relation, from the new Node to its target (DA-193), in the same write: a
+    // refusal of it refuses the Node too, and its field errors are keyed under the anchor.
+    private Result ApplyAnchor(Node node, NodeAnchor anchor)
+    {
+        var related = Apply(new CreateRelation(anchor.RelationId, node.Id, anchor.NodeId, anchor.KindOrDefault));
+        if (related.IsSuccess || related.Error!.Details is not { Count: > 0 } details)
+        {
+            return related;
+        }
+
+        var keyed = details.ToDictionary(pair => AnchorKeys.Of(pair.Key), pair => pair.Value, StringComparer.Ordinal);
+        return Result.Fail(new Error(related.Error.Code, related.Error.Message, related.Error.Type, keyed));
     }
 
     public Result Apply(UpdateNode update)
@@ -241,6 +267,12 @@ internal sealed class WriteInProgress(
         if (node.Version != delete.ExpectedVersion)
         {
             return Result.Fail(VersionConflict(node));
+        }
+
+        var deletable = node.CheckDeletable();
+        if (!deletable.IsSuccess)
+        {
+            return deletable;
         }
 
         // The Relations go first, so an Undo restores the Node before them (it walks back).
@@ -545,7 +577,13 @@ internal sealed class WriteInProgress(
         }
 
         var before = ChangeSnapshots.Of(type);
-        if (type.SetHiddenFromAgents(setHidden.HiddenFromAgents, now))
+        var changed = type.SetHiddenFromAgents(setHidden.HiddenFromAgents, now);
+        if (!changed.IsSuccess)
+        {
+            return Result.Fail(changed.Error!);
+        }
+
+        if (changed.Value)
         {
             Record(GraphEntityKind.Type, type.Id, GraphChangeOperation.Updated, before, ChangeSnapshots.Of(type));
         }

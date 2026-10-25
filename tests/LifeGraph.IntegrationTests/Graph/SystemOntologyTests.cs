@@ -48,7 +48,8 @@ public sealed class SystemOntologyTests(PostgresDatabase database) : IAsyncLifet
         var afterSecond = await SystemRowsAsync(created.AccountId);
 
         Assert.True(beforeSignIn is "" || beforeSignIn == afterFirst);
-        Assert.Equal(1 + SystemOntology.ResourceProperties.Count, afterFirst.Split(',').Length);
+        Assert.Equal(SystemOntology.TypeKeys.Count + SystemOntology.ResourceProperties.Count, afterFirst.Split(',').Length);
+        Assert.Equal(SystemOntology.TypeKeys.Order(), await SystemTypeKeysAsync(created.AccountId));
         Assert.Equal(afterFirst, afterSecond);
         Assert.Equal(0, await _graph.CountAsync("changesets"));
     }
@@ -66,9 +67,7 @@ public sealed class SystemOntologyTests(PostgresDatabase database) : IAsyncLifet
         await Task.WhenAll(Enumerable.Range(0, 4)
             .Select(_ => Task.Run(() => setup.EnsureAsync(accountId, TestContext.Current.CancellationToken))));
 
-        Assert.Equal(1, await _graph.ScalarAsync<long>(
-            "SELECT count(*) FROM types WHERE account_id = @account AND system_key IS NOT NULL",
-            new NpgsqlParameter("account", accountId)));
+        Assert.Equal(SystemOntology.TypeKeys.Order(), await SystemTypeKeysAsync(accountId));
         Assert.Equal(SystemOntology.ResourceProperties.Count, await _graph.ScalarAsync<long>(
             "SELECT count(*) FROM type_properties tp JOIN types t ON t.id = tp.type_id WHERE t.account_id = @account AND t.system_key = 'resource'",
             new NpgsqlParameter("account", accountId)));
@@ -86,10 +85,8 @@ public sealed class SystemOntologyTests(PostgresDatabase database) : IAsyncLifet
             session.Dispose();
         }
 
-        Assert.Equal(1 + SystemOntology.ResourceProperties.Count, (await SystemRowsAsync(created.AccountId)).Split(',').Length);
-        Assert.Equal(1, await _graph.ScalarAsync<long>(
-            "SELECT count(*) FROM types WHERE account_id = @account AND system_key IS NOT NULL",
-            new NpgsqlParameter("account", created.AccountId)));
+        Assert.Equal(SystemOntology.TypeKeys.Count + SystemOntology.ResourceProperties.Count, (await SystemRowsAsync(created.AccountId)).Split(',').Length);
+        Assert.Equal(SystemOntology.TypeKeys.Order(), await SystemTypeKeysAsync(created.AccountId));
     }
 
     // DA-158: the setup runs before the session cookie is issued, so a failure issues none. The
@@ -196,13 +193,13 @@ public sealed class SystemOntologyTests(PostgresDatabase database) : IAsyncLifet
 
         Assert.True((await _graph.UndoAsync(accountId, created)).IsSuccess);
 
-        Assert.Equal(1 + SystemOntology.ResourceProperties.Count, (await SystemRowsAsync(accountId)).Split(',').Length);
+        Assert.Equal(SystemOntology.TypeKeys.Count + SystemOntology.ResourceProperties.Count, (await SystemRowsAsync(accountId)).Split(',').Length);
         Assert.Equal(0, await _graph.ScalarAsync<long>(
             "SELECT count(*) FROM change_entries WHERE entity_id = @id", new NpgsqlParameter("id", resource)));
     }
 
     [Fact]
-    public async Task An_account_lists_only_its_own_system_type_and_a_locked_entry_answers_422()
+    public async Task An_account_lists_only_its_own_system_types_and_a_locked_entry_answers_422()
     {
         var mine = await TestAccounts.ProvisionConfirmedAsync(_factory, Email);
         var other = await TestAccounts.ProvisionConfirmedAsync(_factory, OtherEmail);
@@ -211,14 +208,19 @@ public sealed class SystemOntologyTests(PostgresDatabase database) : IAsyncLifet
         using var spa = await TestAccounts.SignedInAsync(_factory, Email);
         var list = await spa.GetAsync("/api/types");
         using var body = JsonDocument.Parse(await list.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        var system = Assert.Single(body.RootElement.GetProperty("data").EnumerateArray(), type => type.GetProperty("isSystem").GetBoolean());
+        var systemTypes = body.RootElement.GetProperty("data").EnumerateArray()
+            .Where(type => type.GetProperty("isSystem").GetBoolean())
+            .ToList();
+        var system = Assert.Single(systemTypes, type => type.GetProperty("name").GetString() == SystemOntology.ResourceTypeName);
         var resource = system.GetProperty("id").GetGuid();
         var deleted = await spa.DeleteAsync($"/api/types/{resource}");
         var reserved = await spa.PostAsync("/api/types", new { name = "resource" });
 
         Assert.Equal(await SystemTypeAsync(mine.AccountId), resource);
         Assert.NotEqual(await SystemTypeAsync(other.AccountId), resource);
-        Assert.Equal(SystemOntology.ResourceTypeName, system.GetProperty("name").GetString());
+        Assert.Equal(
+            [SystemOntology.AccountRootTypeName, SystemOntology.ResourceTypeName],
+            systemTypes.Select(type => type.GetProperty("name").GetString()).Order());
         Assert.Equal(
             [HttpStatusCode.UnprocessableEntity, HttpStatusCode.UnprocessableEntity],
             [deleted.StatusCode, reserved.StatusCode]);
@@ -230,6 +232,12 @@ public sealed class SystemOntologyTests(PostgresDatabase database) : IAsyncLifet
         _graph.ScalarAsync<Guid>(
             "SELECT id FROM types WHERE account_id = @account AND system_key = 'resource'",
             new NpgsqlParameter("account", accountId));
+
+    /// <summary>The keys of the Account's system Types, in order: <c>resource</c> and the Raiz da Conta's (DA-189).</summary>
+    private async Task<IReadOnlyList<string>> SystemTypeKeysAsync(Guid accountId) =>
+        (await _graph.ScalarAsync<string>(
+            "SELECT coalesce(string_agg(system_key, ',' ORDER BY system_key), '') FROM types WHERE account_id = @account AND system_key IS NOT NULL",
+            new NpgsqlParameter("account", accountId))).Split(',');
 
     private Task<Guid> SystemPropertyAsync(Guid accountId, string key) =>
         _graph.ScalarAsync<Guid>(

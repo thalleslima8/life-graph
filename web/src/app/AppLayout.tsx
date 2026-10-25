@@ -9,6 +9,7 @@ import { useLogout } from "@/features/session/useLogout";
 const GRAPH_LINKS = [
   { to: "/nodes", label: "Nodes" },
   { to: "/nodes?inbox=1", label: "Inbox" },
+  { to: "/graph", label: "Grafo" },
   { to: "/changes", label: "Recent Changes" },
   { to: "/agent-changes", label: "Agent Changes" },
   { to: "/types", label: "Types" },

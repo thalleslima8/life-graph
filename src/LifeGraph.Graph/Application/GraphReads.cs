@@ -59,6 +59,21 @@ internal sealed partial class GraphReads(
                 nodes = nodes.Where(node => node.InboxEnteredAt != null);
             }
 
+            // The Unanchored View is a query (DA-197): the Nodes outside the reach of the root,
+            // which is in its own reach and so never listed (DA-206). Only the first page counts
+            // them, the one the Inbox counter reads: a later page would walk the reach again for
+            // a total the client already has (DB-024).
+            int? totalCount = null;
+            if (query.Unanchored)
+            {
+                var anchored = AnchorReach.AnchoredNodeIds(db);
+                nodes = nodes.Where(Node.IsNotAccountRootPredicate).Where(node => !anchored.Contains(node.Id));
+                if (after is null)
+                {
+                    totalCount = await nodes.CountAsync(token);
+                }
+            }
+
             if (after is { } cursor)
             {
                 nodes = nodes.Where(node => node.Id.CompareTo(cursor) < 0);
@@ -70,12 +85,27 @@ internal sealed partial class GraphReads(
                 .Take(limit + 1)
                 .Select(node => new NodeSummary(node.Id, node.Title, node.TypeId, node.Version, node.InboxEnteredAt != null, node.CreatedAt, node.UpdatedAt, Node.SuggestedTypeOf(node.TypeId, node.SuggestedType))
                 {
+                    IsAccountRoot = node.SystemKey == SystemOntology.AccountRootTypeKey,
                     SoftRelationCount = softRelations.Count(soft => soft.SourceNodeId == node.Id || soft.TargetNodeId == node.Id),
                 })
                 .ToListAsync(token);
-            return PageOf(rows, limit, summary => summary.Id);
+            var page = PageOf(rows, limit, summary => summary.Id).Value!;
+            return Result<PagedList<NodeSummary>>.Ok(page with { Page = page.Page with { TotalCount = totalCount } });
         }, cancellationToken);
     }
+
+    /// <summary>
+    /// The Raiz da Conta (DA-206), through the central filter; <c>graph.root_missing</c> when the
+    /// Account has none yet, never not found (DA-202).
+    /// </summary>
+    public Task<Result<AccountRootItem>> GetAccountRootAsync(CancellationToken cancellationToken) =>
+        RunAsync(NoErrors(), async token =>
+        {
+            var rootId = await filter.Nodes().Where(Node.IsAccountRootPredicate).Select(node => (Guid?)node.Id).SingleOrDefaultAsync(token);
+            return rootId is { } id
+                ? Result<AccountRootItem>.Ok(new AccountRootItem(id))
+                : Result<AccountRootItem>.Fail(GraphErrors.RootMissing.ToError(GraphContextReads.RootMissingMessage));
+        }, cancellationToken);
 
     /// <summary>
     /// The person's search by words and by meaning (DA-183), over the Nodes the central filter
@@ -160,6 +190,7 @@ internal sealed partial class GraphReads(
                 node.HiddenFromAgents,
                 Node.SuggestedTypeOf(node.TypeId, node.SuggestedType))
             {
+                IsAccountRoot = node.IsAccountRoot,
                 Tags = [.. tags.OrderBy(tag => tag.Name, StringComparer.CurrentCultureIgnoreCase)],
             });
         }, cancellationToken);
@@ -479,11 +510,13 @@ internal sealed partial class GraphReads(
                 agentDirectory,
                 [.. page.Data.Where(changeSet => changeSet.AgentIdentityId is not null).Select(changeSet => changeSet.AgentIdentityId!.Value)],
                 token);
+            var createdAccountRoot = await ChangeSetUndo.CreatedAccountRootAsync(db, page.Data, token);
             var items = page.Data.Select(changeSet => ToItem(
                 changeSet,
                 undoneBy.TryGetValue(changeSet.Id, out var undo) ? undo : null,
                 proposals.TryGetValue(changeSet.Id, out var proposal) ? proposal : null,
-                agents)).ToList();
+                agents,
+                createdAccountRoot.Contains(changeSet.Id))).ToList();
             return Result<ChangeSetFeed>.Ok(new ChangeSetFeed(items, page.Page, LatestCursor(items, since, before)));
         }, cancellationToken);
     }
@@ -554,11 +587,13 @@ internal sealed partial class GraphReads(
         };
 
     /// <param name="agents">The agents of the page, by id; an agent's change missing from it reads as "Agente removido".</param>
+    /// <param name="createdAccountRoot">Whether it created the Raiz da Conta, from <see cref="ChangeSetUndo.CreatedAccountRootAsync"/>.</param>
     internal static ChangeSetItem ToItem(
         GraphChangeSet changeSet,
         Guid? undoneBy,
         Guid? proposalId,
-        IReadOnlyDictionary<Guid, AgentRef> agents)
+        IReadOnlyDictionary<Guid, AgentRef> agents,
+        bool createdAccountRoot)
     {
         var sequenceOf = changeSet.Entries.ToDictionary(entry => entry.Id, entry => entry.Sequence);
         var agent = changeSet.ActorKind != ChangeActorKind.AgentIdentity
@@ -568,9 +603,11 @@ internal sealed partial class GraphReads(
                 : new AgentRef(null, null, Revoked: false);
         var undo = changeSet.Status != ChangeSetStatus.Applied
             ? ChangeSetUndoState.Undone(undoneBy)
-            : ChangeSetUndo.PurgedReason(changeSet) is { } reason
-                ? ChangeSetUndoState.Unavailable(reason)
-                : ChangeSetUndoState.Available;
+            : createdAccountRoot
+                ? ChangeSetUndoState.Unavailable(UndoUnavailableReason.AccountRoot)
+                : ChangeSetUndo.PurgedReason(changeSet) is { } reason
+                    ? ChangeSetUndoState.Unavailable(reason)
+                    : ChangeSetUndoState.Available;
         return new ChangeSetItem(
             changeSet.Id,
             changeSet.Status,

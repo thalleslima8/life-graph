@@ -2,7 +2,7 @@
 
 - **Ordem:** 11
 - **Depende de:** E2, E6, E8, E10
-- **Última revisão:** 2026-10-23
+- **Última revisão:** 2026-10-24
 
 ## Contexto
 
@@ -82,6 +82,7 @@ das definições e das Tags.
 ### Testes obrigatórios
 - [ ] Tentar atravessar para IDs fora da allowlist por todos os endpoints e parâmetros
 - [ ] Node oculto nunca aparece, nem como contagem
+- [ ] O visitante nunca alcança a raiz (DA-204)
 - [ ] Snapshot do schema do DTO de visitante; propriedade fora da allowlist nunca aparece
 - [ ] Revogação imediata; inválido e revogado respondem igual
 

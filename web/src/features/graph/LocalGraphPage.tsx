@@ -53,6 +53,7 @@ import {
   MIN_ZOOM,
   graphPath,
   localGraphQuery,
+  rememberLastFocus,
   steppedZoom,
   useGraphView,
   zoomLevelOf,
@@ -95,6 +96,14 @@ export function LocalGraphPage() {
     setSelectedGone(true);
     viewRef.current?.focus();
   });
+
+  // The graph opens here next time it is entered with no Node named (DA-197).
+  const opened = graph.isSuccess && !graph.isPlaceholderData;
+  useEffect(() => {
+    if (opened) {
+      rememberLastFocus(nodeId);
+    }
+  }, [opened, nodeId]);
 
   // The layout does not move while the person inspects: the graph is read again on request.
   const refresh = () => {

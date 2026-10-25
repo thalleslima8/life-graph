@@ -12,7 +12,7 @@ namespace LifeGraph.Graph.Application;
 /// </summary>
 internal static class ProposalApproval
 {
-    /// <summary>For each operation, the <c>create_node</c> operations whose ref it uses, by index.</summary>
+    /// <summary>For each operation, the <c>create_node</c> operations whose ref it uses (as a relation's end or an anchor), by index.</summary>
     public static IReadOnlyList<IReadOnlyList<int>> DependenciesOf(IReadOnlyList<AgentOperation> operations)
     {
         var creators = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -24,15 +24,21 @@ internal static class ProposalApproval
             }
         }
 
-        return [.. operations.Select(operation => (IReadOnlyList<int>)(operation is AgentCreateRelation relate
-            ? [.. new[] { relate.Source.Ref, relate.Target.Ref }
-                .OfType<string>()
-                .Select(reference => creators.TryGetValue(reference, out var creator) ? creator : -1)
-                .Where(creator => creator >= 0)
-                .Distinct()
-                .Order()]
-            : []))];
+        return [.. operations.Select(operation => (IReadOnlyList<int>)[.. RefsOf(operation)
+            .OfType<string>()
+            .Select(reference => creators.TryGetValue(reference, out var creator) ? creator : -1)
+            .Where(creator => creator >= 0)
+            .Distinct()
+            .Order()])];
     }
+
+    // The refs an operation uses: the ends of a relation, or the anchor of a new Node (DA-192).
+    private static IEnumerable<string?> RefsOf(AgentOperation operation) => operation switch
+    {
+        AgentCreateRelation relate => [relate.Source.Ref, relate.Target.Ref],
+        AgentCreateNode { Anchor: { } anchor } => [anchor.Target.Ref],
+        _ => [],
+    };
 
     /// <summary>
     /// The indexes the person approves (<c>null</c> for all): in range and at least one (a

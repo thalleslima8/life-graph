@@ -492,6 +492,14 @@
             }
           },
           {
+            "name": "unanchored",
+            "in": "query",
+            "description": "true lists only the Nodes no path of Hard Relations links to the account root (DA-197); the root itself is never listed. Combines with the other filters; page.totalCount, on the first page only, counts the whole filtered list.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "cursor",
             "in": "query",
             "schema": {
@@ -3346,6 +3354,36 @@
         }
       }
     },
+    "/api/account-root": {
+      "get": {
+        "tags": [
+          "Nodes"
+        ],
+        "operationId": "GetAccountRoot",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRootItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/resources": {
       "post": {
         "tags": [
@@ -3419,6 +3457,18 @@
   },
   "components": {
     "schemas": {
+      "AccountRootItem": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "AgentIdentityPage": {
         "required": [
           "data",
@@ -4206,6 +4256,16 @@
               "null",
               "boolean"
             ]
+          },
+          "anchor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NodeAnchorRequest"
+              }
+            ]
           }
         }
       },
@@ -4639,6 +4699,24 @@
           }
         }
       },
+      "NodeAnchorRequest": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "kind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "NodeDetail": {
         "required": [
           "id",
@@ -4653,7 +4731,8 @@
           "updatedAt",
           "properties",
           "otherProperties",
-          "hiddenFromAgents"
+          "hiddenFromAgents",
+          "isAccountRoot"
         ],
         "type": "object",
         "properties": {
@@ -4732,6 +4811,9 @@
             "items": {
               "$ref": "#/components/schemas/NodeTagItem"
             }
+          },
+          "isAccountRoot": {
+            "type": "boolean"
           }
         }
       },
@@ -4853,7 +4935,8 @@
           "inInbox",
           "createdAt",
           "updatedAt",
-          "softRelationCount"
+          "softRelationCount",
+          "isAccountRoot"
         ],
         "type": "object",
         "properties": {
@@ -4903,6 +4986,9 @@
               "string"
             ],
             "format": "int32"
+          },
+          "isAccountRoot": {
+            "type": "boolean"
           }
         }
       },
@@ -4933,6 +5019,15 @@
               "null",
               "string"
             ]
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -5748,6 +5843,13 @@
           },
           "alreadyInInbox": {
             "type": "boolean"
+          },
+          "anchored": {
+            "type": [
+              "null",
+              "boolean"
+            ],
+            "description": "Whether the Resource is linked to the account root by Hard Relations once the capture is stored. Computed only for an agent's capture; absent means not computed, never false."
           }
         }
       },
@@ -6013,6 +6115,7 @@
         "enum": [
           "window_closed",
           "content_purged",
+          "account_root",
           null
         ]
       },
@@ -6259,6 +6362,16 @@
       "recovery": "ask_user"
     },
     {
+      "code": "graph.account_root_locked",
+      "status": 422,
+      "recovery": "not_recoverable"
+    },
+    {
+      "code": "graph.anchor_required",
+      "status": 422,
+      "recovery": "fix_input"
+    },
+    {
       "code": "graph.changeset_already_reverted",
       "status": 422,
       "recovery": "not_recoverable"
@@ -6350,6 +6463,11 @@
     },
     {
       "code": "graph.resource_url_taken",
+      "status": 422,
+      "recovery": "ask_user"
+    },
+    {
+      "code": "graph.root_missing",
       "status": 422,
       "recovery": "ask_user"
     },

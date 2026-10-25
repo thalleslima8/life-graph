@@ -10,7 +10,7 @@ import { server } from "@/test/msw/server";
 import { renderRoute } from "@/test/renderRoute";
 import { graphKeys, type NodeDetail } from "./graphData";
 import { LEGEND_AGENT_TEXT } from "./graphMessages";
-import { graphPath, INITIAL_ZOOM, MAX_ZOOM, MIN_ZOOM, steppedZoom } from "./localGraph";
+import { graphPath, INITIAL_ZOOM, MAX_ZOOM, MIN_ZOOM, readLastFocus, steppedZoom } from "./localGraph";
 import type { ChangeSetFeed } from "./recentChanges";
 
 // jsdom has no WebGL: the page draws through the fake renderer (DA-137).
@@ -84,6 +84,15 @@ describe("local graph page", () => {
     expect(screen.getByRole("radio", { name: "2" })).toBeChecked();
     expect(asked).toEqual([`${NODE_ID}?depth=2`]);
     expect(fake.recorded.mounts.map((mount) => mount.view.graph.edges.map((edge) => edge.id))).toEqual([[RELATION_ID]]);
+  });
+
+  it("remembers the Node it opened at as the last focus of this browser", async () => {
+    window.localStorage.clear();
+    graphApi(() => HttpResponse.json(aLocalGraph()));
+    renderRoute(graphPath(NODE_ID));
+
+    await screen.findByRole("heading", { level: 1, name: "Grafo de Leituras" });
+    expect(readLastFocus()).toBe(NODE_ID);
   });
 
   it("changes the depth in the URL and keeps the graph on screen, busy, until the deeper one arrives", async () => {

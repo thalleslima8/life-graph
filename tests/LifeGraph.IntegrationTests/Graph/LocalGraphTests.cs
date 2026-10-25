@@ -164,7 +164,10 @@ public sealed class LocalGraphTests(PostgresDatabase database) : IAsyncLifetime
     [Fact]
     public async Task What_an_agent_changed_is_flagged_until_reviewed_and_an_undone_change_never_is()
     {
-        var root = await CreateNodeAsync("Root");
+        var accountRoot = await _graph.AccountRootIdAsync(_account);
+        var anchorOfRoot = GraphWriteHarness.AnchorAt(accountRoot);
+        var root = Guid.CreateVersion7();
+        await _graph.WrittenAsync(_account, new CreateNode(root, "Root") { Anchor = anchorOfRoot });
         var agent = await _graph.CreateAgentIdentityAsync(_account);
         var byAgent = new Provenance(new GraphActor.AgentIdentity(agent), WriteChannel.Mcp);
         var created = Guid.CreateVersion7();
@@ -181,8 +184,8 @@ public sealed class LocalGraphTests(PostgresDatabase database) : IAsyncLifetime
         var afterReview = await ReadAsync(root, depth: 1);
 
         Assert.True(reviewed.IsSuccess);
-        Assert.Equal([(root, false), (created, true)], beforeReview.Nodes.Select(node => (node.Id, node.AgentUnreviewed)));
-        Assert.Equal([(relation, true)], beforeReview.Edges.Select(edge => (edge.Id, edge.AgentUnreviewed)));
+        Assert.Equal([(root, false), (created, true)], beforeReview.Nodes.Where(node => node.Id != accountRoot).Select(node => (node.Id, node.AgentUnreviewed)));
+        Assert.Equal([(relation, true)], beforeReview.Edges.Where(edge => edge.Id != anchorOfRoot.RelationId).Select(edge => (edge.Id, edge.AgentUnreviewed)));
         Assert.DoesNotContain(afterReview.Nodes, node => node.AgentUnreviewed);
         Assert.DoesNotContain(afterReview.Edges, edge => edge.AgentUnreviewed);
     }

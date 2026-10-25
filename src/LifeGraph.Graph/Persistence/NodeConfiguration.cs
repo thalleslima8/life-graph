@@ -11,7 +11,11 @@ internal sealed class NodeConfiguration : IEntityTypeConfiguration<Node>
 {
     public void Configure(EntityTypeBuilder<Node> node)
     {
-        node.ToTable("nodes", table => table.HasCheckConstraint("ck_nodes_version", "version >= 1"));
+        node.ToTable("nodes", table =>
+        {
+            table.HasCheckConstraint("ck_nodes_version", "version >= 1");
+            table.HasCheckConstraint(GraphConstraints.NodeSystemKeyCheck, GraphConstraints.SystemKeyIn(SystemOntology.NodeKeys));
+        });
         node.HasAccountKeys(entity => entity.Id, entity => new { entity.AccountId, entity.Id });
         node.Property(entity => entity.Id).ValueGeneratedNever();
         node.Property(entity => entity.Title).HasMaxLength(GraphLimits.TitleMaxLength);
@@ -35,6 +39,13 @@ internal sealed class NodeConfiguration : IEntityTypeConfiguration<Node>
         node.HasIndex(entity => new { entity.AccountId, entity.CanonicalUrl, entity.DeletedAt })
             .HasFilter("canonical_url IS NOT NULL AND deleted_at IS NOT NULL")
             .HasDatabaseName("ix_nodes_account_id_canonical_url_deleted_at");
+
+        // One Raiz da Conta per Account (DA-189): a sign-in racing another cannot create a second.
+        node.Property(entity => entity.SystemKey).HasMaxLength(SystemOntology.KeyMaxLength);
+        node.HasIndex(entity => entity.AccountId)
+            .IsUnique()
+            .HasFilter($"system_key = '{SystemOntology.AccountRootTypeKey}'")
+            .HasDatabaseName(GraphConstraints.NodeAccountRootUnique);
 
         // Optimistic concurrency (DA-022): an update only matches the version it read.
         node.Property(entity => entity.Version).IsConcurrencyToken();

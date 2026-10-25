@@ -63,7 +63,23 @@ public sealed record AgentCreateNode(
     Guid? TypeId = null,
     IReadOnlyDictionary<Guid, JsonElement>? Properties = null,
     string? Ref = null,
-    string? SuggestedType = null) : AgentOperation;
+    string? SuggestedType = null) : AgentOperation
+{
+    /// <summary>
+    /// Where the new Node hangs (DA-192): without it, the write must relate the Node to an
+    /// anchored one some other way, or it is refused with <c>graph.anchor_required</c> (DA-200).
+    /// </summary>
+    public AgentAnchor? Anchor { get; init; }
+}
+
+/// <summary>
+/// The anchor of an agent's new Node (DA-192): a Hard Relation from it to <see cref="Target"/>,
+/// in the same GraphChangeSet. The target is an existing Node the agent sees, or one created
+/// earlier in the same write, and must itself be anchored (DA-200); one the agent may not see is
+/// not found (DA-035).
+/// </summary>
+/// <param name="Kind">What the link means; <see cref="NodeAnchor.DefaultKind"/> when not given (DA-193).</param>
+public sealed record AgentAnchor(NodeRef Target, string? Kind = null);
 
 /// <summary>Changes what is given; <see cref="ExpectedVersion"/> is required (DA-050).</summary>
 public sealed record AgentUpdateNode(Guid NodeId, int ExpectedVersion) : AgentOperation

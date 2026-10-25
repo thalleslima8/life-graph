@@ -22,12 +22,14 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
 
     private readonly LifeGraphApiFactory _factory = new(database);
     private SpaClient _spa = null!;
+    private Guid _accountA;
+    private Guid _accountB;
 
     public async ValueTask InitializeAsync()
     {
         await database.ResetAsync();
-        await TestAccounts.ProvisionConfirmedAsync(_factory, EmailA);
-        await TestAccounts.ProvisionConfirmedAsync(_factory, EmailB);
+        _accountA = (await TestAccounts.ProvisionConfirmedAsync(_factory, EmailA)).AccountId;
+        _accountB = (await TestAccounts.ProvisionConfirmedAsync(_factory, EmailB)).AccountId;
         _spa = await TestAccounts.SignedInAsync(_factory, EmailA);
     }
 
@@ -84,7 +86,7 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
         using var first = await JsonAsync("/api/nodes?limit=2");
         var cursor = first.RootElement.GetProperty("page").GetProperty("nextCursor").GetString();
         using var second = await JsonAsync($"/api/nodes?limit=2&cursor={cursor}");
-        Assert.Equal([typed], second.RootElement.GetProperty("data").EnumerateArray().Select(item => item.GetProperty("id").GetGuid()));
+        Assert.Equal([typed, await AccountRootIdAsync(_accountA)], second.RootElement.GetProperty("data").EnumerateArray().Select(item => item.GetProperty("id").GetGuid()));
         Assert.Equal(JsonValueKind.Null, second.RootElement.GetProperty("page").GetProperty("nextCursor").ValueKind);
 
         var archived = await _spa.PostAsync($"/api/nodes/{captured}/archival", new { });
@@ -378,7 +380,7 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
         var archive = await other.PostAsync($"/api/nodes/{node}/archival", new { });
         var delete = await other.DeleteAsync($"/api/nodes/{node}?version=1");
         Assert.Equal([HttpStatusCode.NotFound, HttpStatusCode.NotFound, HttpStatusCode.NotFound], [edit.StatusCode, archive.StatusCode, delete.StatusCode]);
-        Assert.Empty(await ListedIdsAsync("/api/nodes", other));
+        Assert.Equal([await AccountRootIdAsync(_accountB)], await ListedIdsAsync("/api/nodes", other));
 
         var existing = await anonymous.GetAsync($"/api/nodes/{node}");
         var unknown = await anonymous.GetAsync($"/api/nodes/{Guid.CreateVersion7()}");
@@ -451,12 +453,14 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
 
         using var history = await JsonAsync("/api/changesets");
         var items = history.RootElement.GetProperty("data").EnumerateArray().ToList();
-        Assert.Equal(3, items.Count);
+        Assert.Equal(4, items.Count);
         Assert.Equal((undo, edit), (items[0].GetProperty("id").GetGuid(), items[0].GetProperty("revertsChangeSetId").GetGuid()));
         Assert.Equal(("reverted", undo), (items[1].GetProperty("status").GetString(), items[1].GetProperty("revertedByChangeSetId").GetGuid()));
         Assert.Equal(("human", "ui"), (items[2].GetProperty("actorKind").GetString(), items[2].GetProperty("channel").GetString()));
         var created = Assert.Single(items[2].GetProperty("entries").EnumerateArray());
         Assert.Equal(("node", node, "created", "Draft"), (created.GetProperty("entityKind").GetString(), created.GetProperty("entityId").GetGuid(), created.GetProperty("operation").GetString(), created.GetProperty("label").GetString()));
+        Assert.Equal(("system", "system"), (items[3].GetProperty("actorKind").GetString(), items[3].GetProperty("channel").GetString()));
+        Assert.Equal(await AccountRootIdAsync(_accountA), Assert.Single(items[3].GetProperty("entries").EnumerateArray()).GetProperty("entityId").GetGuid());
 
         var latest = history.RootElement.GetProperty("latestCursor").GetString();
         await CreatedIdAsync("/api/nodes", new { title = "Later" });
@@ -471,7 +475,8 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
         using var other = await TestAccounts.SignedInAsync(_factory, EmailB);
         var othersFeed = await other.GetAsync("/api/changesets");
         using var othersPage = JsonDocument.Parse(await othersFeed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.Empty(othersPage.RootElement.GetProperty("data").EnumerateArray());
+        var othersOnly = Assert.Single(othersPage.RootElement.GetProperty("data").EnumerateArray());
+        Assert.Equal(await AccountRootIdAsync(_accountB), Assert.Single(othersOnly.GetProperty("entries").EnumerateArray()).GetProperty("entityId").GetGuid());
     }
 
     // DA-024: older pages of the history, newest first, through "before"; they carry no latestCursor.
@@ -490,9 +495,11 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
         Assert.NotNull(newest.RootElement.GetProperty("latestCursor").GetString());
 
         using var older = await JsonAsync($"/api/changesets?limit=2&before={before}");
-        var oldest = Assert.Single(older.RootElement.GetProperty("data").EnumerateArray());
-        Assert.Equal("First", oldest.GetProperty("entries")[0].GetProperty("label").GetString());
-        Assert.True(oldest.GetProperty("id").GetGuid().CompareTo(newestIds[^1]) < 0);
+        var olderItems = older.RootElement.GetProperty("data").EnumerateArray().ToList();
+        Assert.Equal(
+            ["First", SystemOntology.AccountRootDefaultTitle],
+            olderItems.Select(item => item.GetProperty("entries")[0].GetProperty("label").GetString()));
+        Assert.True(olderItems[0].GetProperty("id").GetGuid().CompareTo(newestIds[^1]) < 0);
         Assert.Equal(JsonValueKind.Null, older.RootElement.GetProperty("page").GetProperty("nextCursor").ValueKind);
         Assert.Equal(JsonValueKind.Null, older.RootElement.GetProperty("latestCursor").ValueKind);
         Assert.Equal(
@@ -638,6 +645,12 @@ public sealed class GraphEndpointsTests(PostgresDatabase database) : IAsyncLifet
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
+
+    /// <summary>The Raiz da Conta the sign-in created: every Account's first Node and first GraphChangeSet (DA-201).</summary>
+    private Task<Guid> AccountRootIdAsync(Guid accountId) =>
+        database.QueryScalarAsMigratorAsync<Guid>(
+            "SELECT id FROM nodes WHERE account_id = @account AND system_key = 'account_root'",
+            new NpgsqlParameter("account", accountId));
 
     private async Task<Guid[]> ListedIdsAsync(string path, SpaClient? client = null)
     {

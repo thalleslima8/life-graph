@@ -48,6 +48,7 @@ internal sealed class SemanticGraph(
         var embedded = db.Set<NodeEmbedding>().Where(row => row.ModelId == modelId).Select(row => row.NodeId);
         return await db.Set<Node>().AsNoTracking()
             .Where(node => node.DeletedAt == null && (afterNodeId == null || node.Id.CompareTo(afterNodeId.Value) > 0))
+            .Where(Node.IsNotAccountRootPredicate)
             .Where(node => !embedded.Contains(node.Id))
             .OrderBy(node => node.Id)
             .Select(node => node.Id)
@@ -180,7 +181,10 @@ internal sealed class SemanticGraph(
     {
         var node = await db.Set<Node>().AsNoTracking()
             .SingleOrDefaultAsync(entity => entity.Id == nodeId && entity.DeletedAt == null, cancellationToken);
-        if (node is null)
+
+        // The Raiz da Conta stays outside the semantic layer (DA-189): no embedding, so it is
+        // never a Soft Relation's end nor a semantic hit.
+        if (node is null || node.IsAccountRoot)
         {
             return null;
         }
@@ -211,14 +215,19 @@ internal sealed class SemanticGraph(
 /// hidden Node, DA-072). Every actor counts, the system's fetch and an Undo
 /// included, since each may change the text. Only the Node's id goes in the job; the job
 /// compares the text's hash before calling the model, so a change that left the text as it was
-/// costs no embedding (BE-034).
+/// costs no embedding (BE-034). The Raiz da Conta is never embedded (DA-189); the write tracks it
+/// whenever it changes it.
 /// </summary>
 internal static class EmbeddingScheduling
 {
     public static void ScheduleFor(LifeGraphDbContext db, GraphChangeSet changeSet, DateTimeOffset now)
     {
+        var rootIds = db.ChangeTracker.Entries<Node>()
+            .Where(entry => entry.Entity.IsAccountRoot)
+            .Select(entry => entry.Entity.Id)
+            .ToHashSet();
         var nodeIds = changeSet.Entries
-            .Where(entry => entry.EntityKind == GraphEntityKind.Node && ChangesText(entry))
+            .Where(entry => entry.EntityKind == GraphEntityKind.Node && !rootIds.Contains(entry.EntityId) && ChangesText(entry))
             .Select(entry => entry.EntityId)
             .Distinct();
         foreach (var nodeId in nodeIds)

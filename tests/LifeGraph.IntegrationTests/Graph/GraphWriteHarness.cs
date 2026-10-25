@@ -16,6 +16,15 @@ public sealed class GraphWriteHarness(PostgresDatabase database, LifeGraphApiFac
 {
     public static readonly Provenance HumanInUi = new(new GraphActor.Human(), WriteChannel.Ui);
 
+    /// <summary>An agent's anchor at an existing Node, with the default kind (DA-192).</summary>
+    public static AgentAnchor AgentAnchorAt(Guid nodeId) => new(NodeRef.Of(nodeId));
+
+    /// <summary>An agent's anchor at a Node the same request creates under <paramref name="reference"/> (DA-199).</summary>
+    public static AgentAnchor AgentAnchorAt(string reference) => new(new NodeRef(null, reference));
+
+    /// <summary>A pipeline anchor at an existing Node, with the default kind and a new Relation id (DA-193).</summary>
+    public static NodeAnchor AnchorAt(Guid nodeId) => new(nodeId, Kind: null, Guid.CreateVersion7());
+
     /// <summary>An Account row with its system ontology, as provisioning and the first sign-in leave it; graph tests need no login.</summary>
     public async Task<Guid> CreateAccountAsync()
     {
@@ -136,8 +145,9 @@ public sealed class GraphWriteHarness(PostgresDatabase database, LifeGraphApiFac
 
     /// <summary>
     /// Counts rows as the table owner, past RLS: what is really stored. The system Types and
-    /// Properties every Account starts with (DA-149), and their attachments, are left out: a
-    /// test counts what its own writes stored.
+    /// Properties every Account starts with (DA-149), and their attachments, are left out, as are
+    /// the Raiz da Conta and the GraphChangeSet that created it (DA-189, DA-201): a test counts
+    /// what its own writes stored.
     /// </summary>
     public async Task<long> CountAsync(string table) =>
         await database.QueryScalarAsMigratorAsync<long>($"SELECT count(*) FROM {table}{UserRowsOnly(table)}");
@@ -146,8 +156,21 @@ public sealed class GraphWriteHarness(PostgresDatabase database, LifeGraphApiFac
     {
         "types" or "property_definitions" => " WHERE system_key IS NULL",
         "type_properties" => " WHERE property_definition_id NOT IN (SELECT id FROM property_definitions WHERE system_key IS NOT NULL)",
+        "nodes" => " WHERE system_key IS NULL",
+        "changesets" => $" WHERE id NOT IN ({RootCreationChangeSetsSql})",
+        "change_entries" => $" WHERE changeset_id NOT IN ({RootCreationChangeSetsSql})",
         _ => string.Empty,
     };
+
+    /// <summary>The ids of the GraphChangeSets that created a Raiz da Conta, for a <c>NOT IN</c> (DA-209).</summary>
+    public const string RootCreationChangeSetsSql =
+        "SELECT e.changeset_id FROM change_entries e JOIN nodes n ON n.id = e.entity_id WHERE n.system_key IS NOT NULL AND e.operation = 'created'";
+
+    /// <summary>The Raiz da Conta the Account's setup created (DA-201).</summary>
+    public Task<Guid> AccountRootIdAsync(Guid accountId) =>
+        ScalarAsync<Guid>(
+            "SELECT id FROM nodes WHERE account_id = @account AND system_key = 'account_root'",
+            new NpgsqlParameter("account", accountId));
 
     public Task<T> ScalarAsync<T>(string sql, params NpgsqlParameter[] parameters) =>
         database.QueryScalarAsMigratorAsync<T>(sql, parameters);

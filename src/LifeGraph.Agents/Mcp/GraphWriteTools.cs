@@ -60,13 +60,22 @@ public sealed class GraphWriteTools
 
     private const string SourceDescription = "Where the content came from (the conversation, a URL), shown to the person. Optional.";
 
+    /// <summary>How every new Node is anchored (DA-192, DA-194), in the descriptions of the tools that create Nodes.</summary>
+    private const string AnchorNote =
+        " Every new Node needs an `" + AnchorKeys.Field + "`: search for its subject first (" + GraphReadTools.SearchGraphName + ", " + GraphReadTools.GetContextName + ")"
+        + " and anchor it under the most specific Node it belongs to; when the subject has no Node yet, create that Node first, anchored, and anchor under it."
+        + " The anchor is a Relation from the new Node, related_to unless you give `kind`, created with it in the same change."
+        + " " + GraphReadTools.GetContextName + " with no arguments gives the account root's id; anchor there only when nothing more specific fits."
+        + " Without an anchor the change is refused with graph.anchor_required, which tells the root's id;"
+        + " while the account has no root yet, with graph.root_missing.";
+
     private const string WriteNote =
         " The change is applied at once and the person can see and undo it, unless it needs their approval: then the answer has status \""
         + PendingApprovalStatus + "\" and nothing changed yet.";
 
     [McpServerTool(Name = CreateNodeName, Title = "Criar um Node", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
     [Description("Creates a Node in the person's Life Graph. Prefer a Type from list_types; without one the Node goes to the person's Inbox, and `suggestedType` tells them what you think it is."
-        + " Properties need a Type that has them." + WriteNote)]
+        + " Properties need a Type that has them." + AnchorNote + WriteNote)]
     public static async Task<CallToolResult> CreateNodeAsync(
         IAgentGraphWriter writer,
         [Description("The Node's title.")] string title,
@@ -74,10 +83,13 @@ public sealed class GraphWriteTools
         [Description("The Node's Type (an id from list_types).")] Guid? typeId = null,
         [Description("Property values by property id (from list_types), only properties of the Type.")] Dictionary<Guid, JsonElement>? properties = null,
         [Description("Without a Type: the Type you would give it, as a hint for the person.")] string? suggestedType = null,
+        [Description("The Node the new one belongs under: { nodeId, kind? }. Required in practice: without it the Node is refused.")] AnchorArgument? anchor = null,
         [Description(SourceDescription)] string? source = null,
         CancellationToken cancellationToken = default) =>
         AnswerOf(await writer.WriteAsync(
-            new AgentWriteRequest([new AgentCreateNode(title, body, typeId, properties, SuggestedType: suggestedType)], source),
+            new AgentWriteRequest(
+                [new AgentCreateNode(title, body, typeId, properties, SuggestedType: suggestedType) { Anchor = anchor?.ToAgentAnchor() }],
+                source),
             cancellationToken));
 
     [McpServerTool(Name = UpdateNodeName, Title = "Alterar um Node", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
@@ -151,10 +163,12 @@ public sealed class GraphWriteTools
 
     [McpServerTool(Name = SuggestChangesName, Title = "Propor alterações", ReadOnly = false, Idempotent = true, Destructive = false, OpenWorld = false)]
     [Description("Proposes several changes at once, applied together or not at all, without applying them: the person reviews them in Agent Changes."
-        + " Each operation has `op`: \"create_node\" (title, body, typeId, properties, suggestedType, ref), \"update_node\" (nodeId, expectedVersion, title, body, typeId, properties),"
+        + " Each operation has `op`: \"create_node\" (title, body, typeId, properties, suggestedType, ref, anchor), \"update_node\" (nodeId, expectedVersion, title, body, typeId, properties),"
         + " \"create_relation\" (sourceNodeId or sourceRef, targetNodeId or targetRef, kind), \"remove_relation\" (relationId), \"delete_node\" (nodeId, expectedVersion),"
         + " \"tag_node\" or \"untag_node\" (nodeId, tag: a name from list_tags)."
-        + " `ref` names a Node created by an earlier operation, so a relation can point at it. Too many operations at once are refused, and the refusal tells the limit."
+        + " `ref` names a Node created by an earlier operation, so a relation or an anchor can point at it. Too many operations at once are refused, and the refusal tells the limit."
+        + AnchorNote
+        + " In one proposal, a new Node may instead hang from another new Node that is anchored, through its anchor (`" + AnchorKeys.Ref + "`) or a create_relation; a Node left loose refuses the whole proposal, and the refusal names it."
         + " The answer is the proposal's id; when `requiresUser` is false you may apply it yourself with apply_changes, otherwise only the person can (deletes, Type changes, many changes to the person's own content).")]
     public static async Task<CallToolResult> SuggestChangesAsync(
         IAgentGraphWriter writer,
@@ -173,7 +187,8 @@ public sealed class GraphWriteTools
 
     [McpServerTool(Name = ApplyChangesName, Title = "Aplicar uma proposta", ReadOnly = false, Idempotent = true, Destructive = false, OpenWorld = false)]
     [Description("Applies a proposal you made with suggest_changes, as it is, if the person has not decided on it and it does not need their approval."
-        + " Send a new `idempotencyKey` for each proposal and the same one when you retry: a retry then answers the same, with nothing applied twice.")]
+        + " Send a new `idempotencyKey` for each proposal and the same one when you retry: a retry then answers the same, with nothing applied twice."
+        + " Every new Node of the proposal must still be anchored now, under the most specific Node it belongs to: if an anchor was deleted, hidden or left loose since, nothing is applied and the refusal names the Node; make a new proposal anchored elsewhere.")]
     public static async Task<CallToolResult> ApplyChangesAsync(
         IAgentGraphWriter writer,
         [Description("The proposal's id (from suggest_changes).")] Guid proposalId,

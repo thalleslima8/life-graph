@@ -8,6 +8,9 @@ import type { CaptureOutcome } from "@/features/resources/resourceCapture";
 /** The visible texts of the graph screens (FE-062: one place, formatted by locale). */
 
 export const UNEXPECTED_ERROR_MESSAGE = "Não foi possível concluir agora. Tente novamente em instantes.";
+/** The Account has no Raiz da Conta yet; it is created at the next sign-in (DA-201, DA-202). */
+export const ROOT_MISSING_MESSAGE = "Sua Raiz não foi encontrada. Ela é criada na próxima vez que você entrar.";
+
 export const LOAD_ERROR_MESSAGE = "Não foi possível carregar. Tente novamente em instantes.";
 export const VERSION_CONFLICT_MESSAGE = "Este Node foi alterado em outro lugar. Recarregue para ver a versão atual; nada foi sobrescrito.";
 export const NO_TYPE_LABEL = "Sem Type";
@@ -49,6 +52,7 @@ const WRITE_ERRORS: Readonly<Record<string, string>> = {
   "graph.property_usage_changed": "A quantidade de Nodes com valores mudou. Confira a nova contagem e confirme de novo.",
   "graph.collection_not_manual": "Só é possível adicionar ou remover Nodes de uma Collection manual; a dinâmica segue os critérios.",
   payload_too_large: "O conteúdo é grande demais para salvar de uma vez.",
+  "graph.root_missing": ROOT_MISSING_MESSAGE,
 };
 
 const dateTimeFormat = new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" });
@@ -221,6 +225,8 @@ export function undoRefusalMessage(refusal: UndoRefusal, changeSet: ChangeSetIte
       return "O prazo para desfazer terminou: o conteúdo foi removido de vez.";
     case "content_purged":
       return "Não dá para desfazer: parte do conteúdo desta alteração já foi removida de vez.";
+    case "account_root":
+      return "Não dá para desfazer: esta alteração criou a Raiz da Conta, que fica sempre no grafo.";
     case "not_found":
       return "Esta alteração não está mais disponível.";
   }

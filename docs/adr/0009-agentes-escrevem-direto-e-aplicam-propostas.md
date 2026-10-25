@@ -22,4 +22,4 @@ Um agente manipulado pode sobrescrever texto do usuário. A defesa é a
 visibilidade (diff em Agent Changes) e o Undo, não a prevenção.
 
 Origem: DA-040 a DA-047, épico
-`docs/epics/backlog/e05-mcp-escrita-agent-changes.md`.
+`docs/epics/done/e05-mcp-escrita-agent-changes.md`.

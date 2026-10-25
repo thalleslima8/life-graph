@@ -148,7 +148,7 @@ public sealed class ResourceFetchTests(PostgresDatabase database) : IAsyncLifeti
         _script.Html = """<html><head><title>Fetched title</title></head></html>""";
         var node = await CreateResourceAsync();
         await RunJobsAsync();
-        var fetchChangeSet = await IdAsync("SELECT id FROM changesets WHERE account_id = @account AND actor_kind = 'system'");
+        var fetchChangeSet = await IdAsync($"SELECT id FROM changesets WHERE account_id = @account AND actor_kind = 'system' AND id NOT IN ({GraphWriteHarness.RootCreationChangeSetsSql})");
 
         var undone = await _graph.UndoAsync(_account, fetchChangeSet);
 
@@ -187,7 +187,7 @@ public sealed class ResourceFetchTests(PostgresDatabase database) : IAsyncLifeti
         new NpgsqlParameter("node", node.ToString()));
 
     private async Task<long> SystemChangeSetsAsync() => await _graph.ScalarAsync<long>(
-        "SELECT count(*) FROM changesets WHERE account_id = @account AND actor_kind = 'system'",
+        $"SELECT count(*) FROM changesets WHERE account_id = @account AND actor_kind = 'system' AND id NOT IN ({GraphWriteHarness.RootCreationChangeSetsSql})",
         new NpgsqlParameter("account", _account));
 
     private Task<string> NodeTextAsync(Guid node, string column) => _graph.ScalarAsync<string>(

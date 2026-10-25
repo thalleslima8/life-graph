@@ -138,17 +138,26 @@ public sealed class NodeType
         return Result<bool>.Ok(true);
     }
 
+    /// <summary>
+    /// Sets Oculto para agentes on the Type. The Raiz da Conta's Type refuses it, as its Node does
+    /// (DA-189): restricting an agent is done by its scopes.
+    /// </summary>
     /// <returns><c>true</c> when the flag changed.</returns>
-    public bool SetHiddenFromAgents(bool hiddenFromAgents, DateTimeOffset now)
+    public Result<bool> SetHiddenFromAgents(bool hiddenFromAgents, DateTimeOffset now)
     {
+        if (hiddenFromAgents && SystemKey == SystemOntology.AccountRootTypeKey)
+        {
+            return Result<bool>.Fail(GraphErrors.AccountRootLocked.ToError("The account root's type cannot be hidden from agents."));
+        }
+
         if (hiddenFromAgents == HiddenFromAgents)
         {
-            return false;
+            return Result<bool>.Ok(false);
         }
 
         HiddenFromAgents = hiddenFromAgents;
         UpdatedAt = now;
-        return true;
+        return Result<bool>.Ok(true);
     }
 
     /// <summary>

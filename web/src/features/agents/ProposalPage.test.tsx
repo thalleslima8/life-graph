@@ -113,6 +113,31 @@ describe("a proposal", () => {
     expect(await screen.findByText(/a operação 1 usa um Node novo que ficou de fora/)).toBeInTheDocument();
   });
 
+  // DA-212: the approval checks the anchors again; the refusal names the loose Node's operation.
+  it("names and highlights the operation whose anchor came loose", async () => {
+    const user = userEvent.setup();
+    proposalApi(twoOperations, {
+      approve: () => problem(422, "graph.anchor_required", { errors: { "operations[1].anchor": ["loose"] } }),
+    });
+    renderRoute(`/agent-changes/proposals/${PROPOSAL_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Aprovar" }));
+
+    expect(await screen.findByText(/o Node novo da operação 2 ficaria solto/)).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: /Operação 2/ })).getByText("Esta operação impediu a aprovação.")).toBeInTheDocument();
+  });
+
+  it("says the root is missing when the approval finds none", async () => {
+    const user = userEvent.setup();
+    proposalApi(twoOperations, { approve: () => problem(422, "graph.root_missing") });
+    renderRoute(`/agent-changes/proposals/${PROPOSAL_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Aprovar" }));
+
+    expect(await screen.findByText(/sua Raiz não foi encontrada/)).toBeInTheDocument();
+    expect(screen.queryByText("Esta operação impediu a aprovação.")).not.toBeInTheDocument();
+  });
+
   // FE-032: the refusal takes the buttons away; focus goes to what happened, never to the page.
   it("moves focus to what happened when the approval finds it already decided", async () => {
     const user = userEvent.setup();

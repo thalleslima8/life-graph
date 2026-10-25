@@ -29,6 +29,7 @@ export const REMOVED_AGENT_LABEL = "Agente removido";
 export const UNAVAILABLE_UNDO_LABELS: Readonly<Record<NonNullable<ChangeSetDetail["undo"]["reason"]>, string>> = {
   window_closed: "Não dá mais para desfazer: o prazo terminou e o conteúdo foi removido de vez.",
   content_purged: "Não dá mais para desfazer: parte do conteúdo foi removida por purge.",
+  account_root: "Não dá para desfazer: esta alteração criou a Raiz da Conta, que fica sempre no grafo.",
 };
 
 /** The agent as the person knows it; the name is the person's own label, never trusted for anything else. */
@@ -130,5 +131,11 @@ export function refusalMessage(refusal: ProposalRefusal): string {
         : "Nada foi aplicado: um Node mudou depois que o agente o leu.";
     case "dependency":
       return `Nada foi aplicado: a operação ${operationList(refusal.operations)} usa um Node novo que ficou de fora. Marque também a operação de que ela depende.`;
+    case "anchor_required":
+      return refusal.operations.length > 0
+        ? `Nada foi aplicado: o Node novo da operação ${operationList(refusal.operations)} ficaria solto, porque o Node em que o agente o ancorou não está mais ligado à Raiz. Ligue esse Node à Raiz e aprove de novo.`
+        : "Nada foi aplicado: um Node novo ficaria solto, porque o Node em que o agente o ancorou não está mais ligado à Raiz. Ligue esse Node à Raiz e aprove de novo.";
+    case "root_missing":
+      return "Nada foi aplicado: sua Raiz não foi encontrada. Ela é criada quando você entra de novo; saia, entre e aprove outra vez.";
   }
 }

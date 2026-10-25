@@ -75,6 +75,38 @@ export function levelOfDetail(zoom: number, distance: number): LevelOfDetail {
   return level === "far" && distance <= FAR_TITLED_DISTANCE ? "middle" : level;
 }
 
+/** Where the graph opens with no Node named: the last focus, or the Raiz da Conta (DA-197). */
+export const GRAPH_ENTRY_PATH = "/graph";
+
+const LAST_FOCUS_KEY = "lifegraph.graph.lastFocus";
+
+/** The Node the local graph was last rooted at in this browser; undefined when none or storage is unavailable. */
+export function readLastFocus(): string | undefined {
+  try {
+    return window.localStorage.getItem(LAST_FOCUS_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Remembers the Node the local graph is rooted at, a convenience of this browser only. */
+export function rememberLastFocus(nodeId: string): void {
+  try {
+    window.localStorage.setItem(LAST_FOCUS_KEY, nodeId);
+  } catch {
+    // No storage: the graph opens at the root next time.
+  }
+}
+
+/** Forgets a last focus that no longer opens (the Node is gone or not this Account's). */
+export function forgetLastFocus(): void {
+  try {
+    window.localStorage.removeItem(LAST_FOCUS_KEY);
+  } catch {
+    // No storage: nothing was remembered.
+  }
+}
+
 /** The page of the local graph rooted at a Node. */
 export function graphPath(nodeId: string): string {
   return `/nodes/${nodeId}/graph`;

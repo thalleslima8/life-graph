@@ -274,7 +274,8 @@ internal sealed class AgentChanges(
             var agents = changeSet.AgentIdentityId is { } agentIdentityId
                 ? await AgentRefs.OfAsync(agentDirectory, [agentIdentityId], token)
                 : new Dictionary<Guid, AgentRef>();
-            var item = GraphReads.ToItem(changeSet, undoneBy, proposalId, agents);
+            var createdAccountRoot = await ChangeSetUndo.CreatedAccountRootAsync(db, [changeSet], token);
+            var item = GraphReads.ToItem(changeSet, undoneBy, proposalId, agents, createdAccountRoot.Count > 0);
             var changed = changeSet.Entries.OrderBy(entry => entry.Sequence).Select(entry => (
                 Entry: entry,
                 Changes: entry.IsPurged ? [] : FieldDiffs.Changed(FieldDiffs.Flatten(entry.Before), FieldDiffs.Flatten(entry.After))))
@@ -344,6 +345,8 @@ internal sealed class AgentChanges(
                 Ref = create.Ref,
                 TypeId = create.TypeId,
                 SuggestedType = create.SuggestedType,
+                Target = create.Anchor is { } anchor ? EndpointOf(anchor.Target) : null,
+                Kind = create.Anchor is { } anchored ? anchored.Kind ?? NodeAnchor.DefaultKind : null,
             },
             AgentCreateRelation relate => new ProposedOperationItem(index, ProposedOperationKind.CreateRelation, IsSensitive: false, isRejected, [], dependsOn)
             {

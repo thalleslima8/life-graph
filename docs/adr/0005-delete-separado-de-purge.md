@@ -14,4 +14,4 @@ gravado na mesma transação, garante que uma restauração de backup não
 ressuscite dados.
 
 Origem: DA-021 (`docs/epics/done/e02-nucleo-de-escrita.md`), DA-082 a DA-084
-(`docs/epics/backlog/e11-export-e-exclusao-de-conta.md`).
+(`docs/epics/backlog/e12-export-e-exclusao-de-conta.md`).

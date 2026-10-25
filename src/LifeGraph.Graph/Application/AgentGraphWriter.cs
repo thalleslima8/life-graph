@@ -469,6 +469,7 @@ internal sealed class AgentGraphWriter(
                 AgentCreateRelation relate when relate.Source.NodeId is { } source && !nodes.ContainsKey(source) => NodeNotFound(),
                 AgentCreateRelation relate when relate.Target.NodeId is { } target && !nodes.ContainsKey(target) => NodeNotFound(),
                 AgentCaptureResource { RelatedNodeId: { } related } when !nodes.ContainsKey(related) => NodeNotFound(),
+                AgentCreateNode { Anchor.Target.NodeId: { } anchor } when !nodes.ContainsKey(anchor) => NodeNotFound(),
                 AgentRemoveRelation remove when !relations.ContainsKey(remove.RelationId) =>
                     GraphErrors.RelationNotFound.ToError("The relation was not found."),
                 AgentCreateNode { TypeId: { } typeId } when !types.Contains(typeId) => TypeNotFound(),
@@ -554,7 +555,18 @@ internal sealed class AgentGraphWriter(
                 case null:
                     errors.Add(OperationKeys.Of(index), "An operation is missing.");
                     break;
-                case AgentCreateNode { Ref: { } reference }:
+                case AgentCreateNode create:
+                    // The anchor names an earlier Node, never the one it anchors (DA-192).
+                    if (create.Anchor is { } anchor)
+                    {
+                        CheckRef(errors, NodeEnd.AnchorOf(index), anchor.Target, refs);
+                    }
+
+                    if (create.Ref is not { } reference)
+                    {
+                        break;
+                    }
+
                     if (string.IsNullOrWhiteSpace(reference) || reference.Length > GraphLimits.NameMaxLength)
                     {
                         errors.Add(OperationKeys.Of(index, "ref"), $"Send between 1 and {GraphLimits.NameMaxLength} characters.");
@@ -572,8 +584,8 @@ internal sealed class AgentGraphWriter(
                     errors.Add(OperationKeys.Of(index, "expectedVersion"), "Send the version you read.");
                     break;
                 case AgentCreateRelation relate:
-                    CheckRef(errors, new RelationEnd(index, "source"), relate.Source, refs);
-                    CheckRef(errors, new RelationEnd(index, "target"), relate.Target, refs);
+                    CheckRef(errors, NodeEnd.RelationOf(index, "source"), relate.Source, refs);
+                    CheckRef(errors, NodeEnd.RelationOf(index, "target"), relate.Target, refs);
                     break;
                 case AgentTagNode tag:
                     TagName.Read(errors, OperationKeys.Of(index, "tag"), tag.Tag);
@@ -587,9 +599,10 @@ internal sealed class AgentGraphWriter(
         return errors;
     }
 
-    // An end of a relation names its Node by id or by ref, never both: the error is keyed by
-    // the field the agent sends (sourceNodeId, sourceRef...), both when it sent neither or both.
-    private static void CheckRef(FieldErrors errors, RelationEnd end, NodeRef? node, HashSet<string> refs)
+    // An end of a relation, or an anchor, names its Node by id or by ref, never both: the error
+    // is keyed by the field the agent sends (sourceNodeId, sourceRef, anchor.nodeId...), both
+    // when it sent neither or both.
+    private static void CheckRef(FieldErrors errors, NodeEnd end, NodeRef? node, HashSet<string> refs)
     {
         if (node is null || (node.NodeId is null) == (node.Ref is null))
         {
@@ -660,12 +673,14 @@ internal sealed class AgentGraphWriter(
         IReadOnlyList<ProposalReason> Reasons,
         DateTimeOffset Now);
 
-    /// <summary>An end of the relation of operation <see cref="Index"/>, and the keys of the two fields that name its Node.</summary>
-    private sealed record RelationEnd(int Index, string End)
+    /// <summary>The keys of the two fields that name a Node of an operation: an end of its relation, or its anchor.</summary>
+    private sealed record NodeEnd(string ByIdKey, string ByRefKey)
     {
-        public string ByIdKey => OperationKeys.Of(Index, End + "NodeId");
+        public static NodeEnd RelationOf(int index, string end) =>
+            new(OperationKeys.Of(index, end + "NodeId"), OperationKeys.Of(index, end + "Ref"));
 
-        public string ByRefKey => OperationKeys.Of(Index, End + "Ref");
+        public static NodeEnd AnchorOf(int index) =>
+            new(OperationKeys.Of(index, AnchorKeys.NodeId), OperationKeys.Of(index, AnchorKeys.Ref));
     }
 
     /// <summary>What applying came to: an outcome, or <c>null</c> when only the person may approve it now.</summary>

@@ -139,8 +139,9 @@ public sealed class ProposalListTests(PostgresDatabase database) : IAsyncLifetim
 
     private async Task<Guid> SuggestAsync(Guid agentIdentityId, string title)
     {
+        var root = await _graph.AccountRootIdAsync(_account);
         var suggested = await _graph.AsAgentAsync(_account, agentIdentityId, writer =>
-            writer.SuggestAsync(new AgentWriteRequest([new AgentCreateNode(title)]), TestContext.Current.CancellationToken));
+            writer.SuggestAsync(new AgentWriteRequest([new AgentCreateNode(title) { Anchor = GraphWriteHarness.AgentAnchorAt(root) }]), TestContext.Current.CancellationToken));
         return Assert.IsType<ChangeOutcome.PendingApproval>(suggested.Value).ProposalId;
     }
 

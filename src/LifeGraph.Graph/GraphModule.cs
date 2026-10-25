@@ -39,7 +39,9 @@ public static class GraphModule
         services.AddScoped<IJobHandler, GraphPurge>();
         services.AddScoped<IJobHandler, ProposalExpiry>();
         services.AddScoped<IAccountPurgeParticipant, GraphAccountPurge>();
+        services.AddScoped<AccountRootCreation>();
         services.AddScoped<IAccountSetupParticipant, SystemOntologySetup>();
+        services.AddScoped<IAccountSetupParticipant, AccountRootSetup>();
         services.AddScoped<IAgentRevocationParticipant, ProposalWithdrawalOnRevocation>();
 
         return services;

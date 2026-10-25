@@ -88,14 +88,16 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         var account = (await TestAccounts.ProvisionConfirmedAsync(_factory, email)).AccountId;
         using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, email);
         var tokens = await AgentAuthorization.ConnectAsync(_factory, browser);
+        var root = await database.QueryScalarAsMigratorAsync<Guid>(
+            "SELECT id FROM nodes WHERE account_id = @account AND system_key = 'account_root'", new NpgsqlParameter("account", account));
 
         // A read leaves an audit row that points at the connection (DB-004), whatever the participants' order.
         // So does an agent's Node (DA-133) and its proposal (E5).
         await using (var agent = await AgentMcp.ConnectAsync(_factory, tokens.AccessToken))
         {
             await AgentMcp.CallAsync(agent, GraphReadTools.ListTypesName);
-            await AgentMcp.CallAsync(agent, GraphWriteTools.CreateNodeName, new { title = "By the agent" });
-            await AgentMcp.CallAsync(agent, GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Proposed" } } });
+            await AgentMcp.CallAsync(agent, GraphWriteTools.CreateNodeName, new { title = "By the agent", anchor = new { nodeId = root } });
+            await AgentMcp.CallAsync(agent, GraphWriteTools.SuggestChangesName, new { operations = new[] { new { op = "create_node", title = "Proposed", anchor = new { nodeId = root } } } });
         }
 
         var graph = new GraphWriteHarness(database, _factory);

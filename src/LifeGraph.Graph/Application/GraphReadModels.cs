@@ -8,7 +8,8 @@ namespace LifeGraph.Graph.Application;
 public sealed record PagedList<T>(IReadOnlyList<T> Data, PageInfo Page);
 
 /// <param name="NextCursor">Opaque; <c>null</c> on the last page.</param>
-public sealed record PageInfo(string? NextCursor);
+/// <param name="TotalCount">How many items the whole list has, counted only by the lists that say so (the Unanchored list, DA-206); <c>null</c> elsewhere.</param>
+public sealed record PageInfo(string? NextCursor, int? TotalCount = null);
 
 /// <summary>A Node in a list: enough to show it and to pick it.</summary>
 /// <param name="SuggestedType">The Type an agent suggested for a Node it created without one, shown in the Inbox (DA-049).</param>
@@ -24,6 +25,9 @@ public sealed record NodeSummary(
 {
     /// <summary>The Node's Soft Relations the person may Accept or Ignore (DA-182).</summary>
     public required int SoftRelationCount { get; init; }
+
+    /// <summary>Whether the Node is the Raiz da Conta (DA-189, DA-206).</summary>
+    public required bool IsAccountRoot { get; init; }
 }
 
 /// <summary>
@@ -51,7 +55,13 @@ public sealed record NodeDetail(
 {
     /// <summary>The Node's Tags, by name (DA-160).</summary>
     public IReadOnlyList<NodeTagItem> Tags { get; init; } = [];
+
+    /// <summary>Whether the Node is the Raiz da Conta (DA-189), which the Inspector offers no "Conectar a…" for (DA-208).</summary>
+    public required bool IsAccountRoot { get; init; }
 }
+
+/// <summary>The Raiz da Conta of the person's Account (DA-206).</summary>
+public sealed record AccountRootItem(Guid Id);
 
 /// <summary>A Tag on a Node.</summary>
 public sealed record NodeTagItem(Guid Id, string Name);
@@ -174,7 +184,8 @@ public sealed record NodeSearchItem(Guid Id, string Title, string? TypeName, str
 
 /// <param name="WithoutType">Only the Nodes without a Type (DA-018); exclusive with <see cref="TypeId"/>.</param>
 /// <param name="InInbox">Only the Nodes in the Inbox (DA-019).</param>
-public sealed record NodeListQuery(Guid? TypeId, bool WithoutType, bool InInbox, string? Cursor, int? Limit);
+/// <param name="Unanchored">Only the Nodes the root does not reach (DA-191, DA-197); the page then carries the total count (DA-206).</param>
+public sealed record NodeListQuery(Guid? TypeId, bool WithoutType, bool InInbox, string? Cursor, int? Limit, bool Unanchored = false);
 
 /// <summary>
 /// A page of the ChangeSet feed (DA-024). <see cref="LatestCursor"/> is where to resume with

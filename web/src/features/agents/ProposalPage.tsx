@@ -137,7 +137,7 @@ function ProposalView({ detail, onGone }: { detail: ProposalDetail; onGone: () =
       <ChangeDiff
         source={{ kind: "proposal", detail }}
         selection={isPending && !detail.contentPurged ? { selected, onChange: setSelected, disabled: isBusy } : undefined}
-        highlight={refusal?.kind === "version_conflict" || refusal?.kind === "dependency" ? refusal.operations : undefined}
+        highlight={refusal !== null && "operations" in refusal ? refusal.operations : undefined}
       />
 
       {isPending && (

@@ -100,6 +100,12 @@ internal sealed class ChangeSetUndo
             return Result<GraphWriteReceipt>.Fail(GraphErrors.ChangeSetAlreadyReverted.ToError("The change was already undone."));
         }
 
+        // The Raiz da Conta stays: the GraphChangeSet that created it stays in the history, applied (DA-203).
+        if ((await CreatedAccountRootAsync(db, [undone], cancellationToken)).Count > 0)
+        {
+            return Result<GraphWriteReceipt>.Fail(GraphErrors.AccountRootLocked.ToError("The change created the account root. It cannot be undone."));
+        }
+
         if (PurgedReason(undone) is { } reason)
         {
             return Result<GraphWriteReceipt>.Fail(reason == UndoUnavailableReason.WindowClosed ? UndoWindowClosed() : ContentPurged());
@@ -107,6 +113,35 @@ internal sealed class ChangeSetUndo
 
         var undo = await LoadAsync(db, undone, now, cancellationToken);
         return undo.Run(provenance);
+    }
+
+    /// <summary>
+    /// The ids of the GraphChangeSets among <paramref name="changeSets"/> that created the Raiz da
+    /// Conta, which Undo refuses (DA-203). The GraphChangeSet screen shows the same answer before
+    /// the click (DA-210).
+    /// </summary>
+    public static async Task<HashSet<Guid>> CreatedAccountRootAsync(
+        LifeGraphDbContext db,
+        IReadOnlyCollection<GraphChangeSet> changeSets,
+        CancellationToken cancellationToken)
+    {
+        var createdNodes = changeSets
+            .SelectMany(changeSet => changeSet.Entries
+                .Where(entry => entry is { EntityKind: GraphEntityKind.Node, Operation: GraphChangeOperation.Created })
+                .Select(entry => (ChangeSetId: changeSet.Id, NodeId: entry.EntityId)))
+            .ToList();
+        if (createdNodes.Count == 0)
+        {
+            return [];
+        }
+
+        var createdNodeIds = createdNodes.Select(created => created.NodeId).Distinct().ToList();
+        var rootIds = await db.Set<Node>().AsNoTracking()
+            .Where(Node.IsAccountRootPredicate)
+            .Where(node => createdNodeIds.Contains(node.Id))
+            .Select(node => node.Id)
+            .ToListAsync(cancellationToken);
+        return [.. createdNodes.Where(created => rootIds.Contains(created.NodeId)).Select(created => created.ChangeSetId)];
     }
 
     /// <summary>
@@ -602,7 +637,8 @@ internal sealed class ChangeSetUndo
         }
 
         var type = NodeType.Create(entry.EntityId, _undone.AccountId, snapshot.Name, attached, _now).Value!;
-        type.SetHiddenFromAgents(snapshot.HiddenFromAgents, _now);
+        // NodeType.Create makes a Type with no system key, which the root's lock (DA-189) never refuses.
+        _ = type.SetHiddenFromAgents(snapshot.HiddenFromAgents, _now);
         _types[type.Id] = type;
         _removed.Remove(type.Id);
         _db.Add(type);

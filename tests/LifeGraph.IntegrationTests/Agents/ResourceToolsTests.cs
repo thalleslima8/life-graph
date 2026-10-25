@@ -51,6 +51,20 @@ public sealed class ResourceToolsTests(PostgresDatabase database) : IAsyncLifeti
         await _factory.DisposeAsync();
     }
 
+    // DA-205: the capture answer says whether the Resource hangs from the account root.
+    [Fact]
+    public async Task A_capture_answer_says_whether_the_resource_is_anchored()
+    {
+        var book = await PersonsNodeAsync("Meditations");
+        await _graph.WrittenAsync(_accountId, new CreateRelation(Guid.CreateVersion7(), book, await _graph.AccountRootIdAsync(_accountId), "part_of"));
+
+        using var loose = await CaptureAsync(new { url = "https://example.test/loose" });
+        using var related = await CaptureAsync(new { url = "https://example.test/related", relatedNodeId = book });
+
+        Assert.False(loose.RootElement.GetProperty("anchored").GetBoolean());
+        Assert.True(related.RootElement.GetProperty("anchored").GetBoolean());
+    }
+
     // Exit criterion: three links saved and one related, each undoable as one change.
     [Fact]
     public async Task An_agent_captures_links_into_the_inbox_and_relates_one_in_the_same_changeset()
@@ -151,8 +165,8 @@ public sealed class ResourceToolsTests(PostgresDatabase database) : IAsyncLifeti
     }
 
     // DA-154: the link of a Node hidden from agents is not created again, the Node is not named
-    // and no Relation is made; the answer has the fields of a new capture, without the ids,
-    // and takes no telling time apart from one.
+    // and no Relation is made; the answer has the fields of a new capture, without the ids and
+    // without `anchored` (DA-211), and takes no telling time apart from one.
     [Fact]
     public async Task A_link_kept_by_a_node_hidden_from_agents_answers_neutrally_without_naming_it()
     {
@@ -169,7 +183,7 @@ public sealed class ResourceToolsTests(PostgresDatabase database) : IAsyncLifeti
         using var neutral = JsonDocument.Parse(neutralText);
         using var fresh = JsonDocument.Parse(newText);
         Assert.Equal(
-            FieldNames(fresh).Except(["nodeId", "changeSetId"]),
+            FieldNames(fresh).Except(["nodeId", "changeSetId", "anchored"]),
             FieldNames(neutral));
         Assert.Equal(("applied", false, false, false), Flags(neutral));
         Assert.Equal(0L, await _graph.ScalarAsync<long>("SELECT count(*) FROM relations"));

@@ -613,6 +613,11 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("suggested_type");
 
+                    b.Property<string>("SystemKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("system_key");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -637,6 +642,11 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.HasAlternateKey("AccountId", "Id")
                         .HasName("ak_nodes_account_id_id");
+
+                    b.HasIndex("AccountId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_nodes_account_root")
+                        .HasFilter("system_key = 'account_root'");
 
                     b.HasIndex("CreatedByAgentIdentityId")
                         .HasDatabaseName("ix_nodes_created_by_agent_identity_id")
@@ -670,6 +680,8 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.ToTable("nodes", null, t =>
                         {
+                            t.HasCheckConstraint("ck_nodes_system_key", "system_key IS NULL OR system_key IN ('account_root')");
+
                             t.HasCheckConstraint("ck_nodes_version", "version >= 1");
                         });
                 });
@@ -838,7 +850,7 @@ namespace LifeGraph.Migrations.Migrations
 
                     b.ToTable("types", null, t =>
                         {
-                            t.HasCheckConstraint("ck_types_system_key", "system_key IS NULL OR system_key IN ('resource')");
+                            t.HasCheckConstraint("ck_types_system_key", "system_key IS NULL OR system_key IN ('resource', 'account_root')");
                         });
                 });
 

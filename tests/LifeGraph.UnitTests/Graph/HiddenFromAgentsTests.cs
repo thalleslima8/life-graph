@@ -51,8 +51,8 @@ public sealed class HiddenFromAgentsTests
     {
         var type = NodeType.Create(Guid.CreateVersion7(), Account, "Health", [], Created).Value!;
 
-        Assert.True(type.SetHiddenFromAgents(true, Later));
-        Assert.False(type.SetHiddenFromAgents(true, Later));
+        Assert.True(type.SetHiddenFromAgents(true, Later).Value);
+        Assert.False(type.SetHiddenFromAgents(true, Later).Value);
         Assert.Equal(Later, type.UpdatedAt);
 
         type.Revert("Health", [], hiddenFromAgents: false, Later);
@@ -71,7 +71,7 @@ public sealed class HiddenFromAgentsTests
         Assert.DoesNotContain("hiddenFromAgents", ChangeSnapshots.Of(type), StringComparison.Ordinal);
 
         node.Edit(new NodeEdit(null, null, null, null, HiddenFromAgents: true), Later);
-        type.SetHiddenFromAgents(true, Later);
+        _ = type.SetHiddenFromAgents(true, Later);
 
         Assert.True(ChangeSnapshots.ReadNode(ChangeSnapshots.Of(node)).ToState().HiddenFromAgents);
         Assert.True(ChangeSnapshots.ReadType(ChangeSnapshots.Of(type)).HiddenFromAgents);

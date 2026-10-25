@@ -352,6 +352,7 @@ internal sealed class GraphWorkingSet : ICollectionReferences
 
     private static IEnumerable<Guid> ReferencedNodeIds(GraphOperation operation) => operation switch
     {
+        CreateNode { Anchor: { } anchor } => [anchor.NodeId],
         UpdateNode update => [update.NodeId],
         DeleteNode delete => [delete.NodeId],
         ArchiveNode archive => [archive.NodeId],

@@ -20,7 +20,7 @@ menor. Ao adicionar ou alterar um épico, verifique esta tabela.
 | E7 | [Resources e captura](done/e07-resources-e-captura.md) | Resource como Node, fetch protegido contra SSRF, `capture_resource` | E2, E5 |
 | E8 | [Tags, Collections, editor](done/e08-tags-collections-editor.md) | Tags, Collections como queries, editor completo de Properties | E2 |
 | E9 | [Camada semântica](done/e09-camada-semantica.md) | Embeddings, Soft Relations, busca semântica | E2, E7 |
-| E10 | [Raiz da Conta e ancoragem](backlog/e10-raiz-e-ancoragem.md) | Raiz por conta, agentes sempre ancoram, view Desancorados | E2, E5, E6, E9 |
+| E10 | [Raiz da Conta e ancoragem](done/e10-raiz-e-ancoragem.md) | Raiz por conta, agentes sempre ancoram, view Desancorados | E2, E5, E6, E9 |
 | E11 | [SharedGraphView](backlog/e11-shared-graph-view.md) | Link compartilhado no Free | E2, E6, E8, E10 |
 | E12 | [Export e exclusão de conta](backlog/e12-export-e-exclusao-de-conta.md) | Portabilidade, purge imediato, ledger | E2–E11 |
 | E13 | [Entitlements](backlog/e13-entitlements-free-premium.md) | Limites Free/Premium (discussão da Q3) | E5, E10, E11 |

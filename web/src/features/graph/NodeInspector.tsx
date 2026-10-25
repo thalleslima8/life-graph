@@ -63,6 +63,7 @@ import {
   softRelationExplanationText,
   writeErrorMessage,
 } from "./graphMessages";
+import { ConnectToNode } from "./ConnectToNode";
 import { graphPath } from "./localGraph";
 import { PromoteDialog } from "./PromoteDialog";
 import { PropertyValueDisplay, PropertyValueEditor } from "./PropertyValueEditor";
@@ -690,6 +691,7 @@ function NodeRelations({ node }: { node: NodeDetail }) {
           </ul>
         ))}
       {!readOnly && <CreateRelationForm node={node} />}
+      {!readOnly && <ConnectToNode nodeId={node.id} isAccountRoot={node.isAccountRoot} />}
     </section>
   );
 }

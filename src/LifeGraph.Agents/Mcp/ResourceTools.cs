@@ -24,6 +24,7 @@ public sealed class ResourceTools
         + " Capturing a link the person already keeps answers that same Resource (`alreadyExists`), back in the Inbox if it had left it, so it is safe to retry."
         + " `relatedNodeId` relates the Resource to a Node in the same change, which the person can undo at once."
         + " The answer may have no `nodeId`: then the link is kept where you cannot see it, and nothing changed."
+        + " `anchored` says whether the Resource is linked to the account root by confirmed Relations; false means no confirmed path links it to the root yet. A missing `anchored` means it was not computed, never false."
         + " When the change needs the person's approval, the answer has status \"" + GraphWriteTools.PendingApprovalStatus + "\" and nothing changed yet.")]
     public static async Task<CallToolResult> CaptureResourceAsync(
         IAgentResourceCaptures captures,
@@ -55,7 +56,10 @@ public sealed class ResourceTools
             captured.Created,
             captured.AlreadyExists,
             captured.AlreadyInInbox,
-            applied.Receipt.ChangeSetId)));
+            applied.Receipt.ChangeSetId)
+        {
+            Anchored = captured.Anchored,
+        }));
     }
 
     private sealed record CaptureAnswer(
@@ -64,5 +68,9 @@ public sealed class ResourceTools
         bool Created,
         bool AlreadyExists,
         bool AlreadyInInbox,
-        Guid? ChangeSetId);
+        Guid? ChangeSetId)
+    {
+        /// <summary>Whether the Resource is anchored (DA-205); absent when the answer names no Resource.</summary>
+        public bool? Anchored { get; init; }
+    }
 }

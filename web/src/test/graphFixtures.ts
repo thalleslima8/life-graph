@@ -27,6 +27,7 @@ export function aNode(overrides: Partial<NodeDetail> = {}): NodeDetail {
     typeName: null,
     version: 1,
     inInbox: false,
+    isAccountRoot: false,
     inboxEnteredAt: null,
     createdAt: INSTANT,
     updatedAt: INSTANT,

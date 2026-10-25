@@ -78,6 +78,15 @@ describe("the GraphChangeSet screen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar. Tente novamente em instantes.");
   });
 
+  // DA-210: the GraphChangeSet that created the Raiz da Conta is never offered for Undo.
+  it("says the change that created the account root cannot be undone", async () => {
+    changeSetApi(aChangeSetDetail({ undo: { state: "unavailable", byChangeSetId: null, reason: "account_root" } }));
+    renderRoute(`/changesets/${CHANGESET_ID}`);
+
+    expect(await screen.findByText("Não dá para desfazer: esta alteração criou a Raiz da Conta, que fica sempre no grafo.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Desfazer" })).not.toBeInTheDocument();
+  });
+
   it("says why Undo is no longer possible, or links the Undo that reverted it", async () => {
     changeSetApi(aChangeSetDetail({ undo: { state: "unavailable", byChangeSetId: null, reason: "content_purged" } }));
     const { unmount } = renderRoute(`/changesets/${CHANGESET_ID}`);

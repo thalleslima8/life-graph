@@ -18,9 +18,9 @@ public interface IGraphReader
     Task<Result<GraphNodeRead>> GetNodeAsync(Guid nodeId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The subgraph around a Node (DA-036), never the whole graph. A subject that matches no
-    /// single Node strongly comes back <see cref="GraphContextStatus.Ambiguous"/>, with
-    /// candidates and nothing expanded.
+    /// The subgraph around a Node (DA-036), never the whole graph; with no Node and no subject,
+    /// around the Raiz da Conta (DA-194). A subject that matches no single Node strongly comes
+    /// back <see cref="GraphContextStatus.Ambiguous"/>, with candidates and nothing expanded.
     /// </summary>
     Task<Result<GraphContext>> GetContextAsync(GraphContextQuery query, CancellationToken cancellationToken);
 
@@ -82,7 +82,7 @@ public static class GraphReadLimits
 /// <param name="Count">How many hits, at most <see cref="GraphReadLimits.SearchMaxCount"/>.</param>
 public sealed record GraphSearchQuery(string? Text, Guid? TypeId = null, int? Count = null);
 
-/// <param name="NodeId">The Node to start from (preferred).</param>
+/// <param name="NodeId">The Node to start from (preferred). With no <paramref name="Subject"/> either, the read starts at the Raiz da Conta (DA-194).</param>
 /// <param name="Subject">What to start from when the id is unknown: an id, a title or words to find.</param>
 /// <param name="Depth">How many Relations away, 1 by default, at most 2.</param>
 /// <param name="IncludeSoft">Also follow Soft Relations, only from the starting Node.</param>
@@ -115,13 +115,29 @@ public enum TextSource
 }
 
 /// <summary>A Node, short: what a hit or a candidate shows.</summary>
-public sealed record NodeHeadline(Guid Id, EnvelopedText Title, string? TypeName, DateTimeOffset UpdatedAt);
+/// <remarks><see cref="Anchored"/> is computed for the candidates of a context only (DA-205).</remarks>
+public sealed record NodeHeadline(Guid Id, EnvelopedText Title, string? TypeName, DateTimeOffset UpdatedAt)
+{
+    /// <summary>
+    /// Whether the Node is linked to the Raiz da Conta by Hard Relations (DA-191), over the whole
+    /// graph, Nodes the caller cannot read included (DA-195). Absent means not computed, never
+    /// false.
+    /// </summary>
+    public bool? Anchored { get; init; }
+}
 
 /// <param name="Excerpt">The start of the body.</param>
 public sealed record SearchHit(Guid Id, EnvelopedText Title, string? TypeName, EnvelopedText Excerpt, DateTimeOffset UpdatedAt)
 {
     /// <summary>Whether the Node was found by its words, by meaning or by both (DA-183).</summary>
     public SearchMatch Match { get; init; } = SearchMatch.Text;
+
+    /// <summary>
+    /// Whether the Node is linked to the Raiz da Conta by Hard Relations (DA-191), over the whole
+    /// graph, Nodes the caller cannot read included (DA-195). Absent means not computed, never
+    /// false.
+    /// </summary>
+    public bool? Anchored { get; init; }
 }
 
 /// <summary>The hits, best first. <see cref="Degraded"/>: the search found by words only (DA-183).</summary>
@@ -173,7 +189,15 @@ public sealed record GraphNodeView(
     IReadOnlyList<GraphPropertyValue> OtherProperties,
     IReadOnlyList<string> Tags,
     ProvenanceSummary? Provenance,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt)
+{
+    /// <summary>
+    /// Whether the Node is linked to the Raiz da Conta by Hard Relations (DA-191), over the whole
+    /// graph, Nodes the caller cannot read included (DA-195). Absent means not computed, never
+    /// false.
+    /// </summary>
+    public bool? Anchored { get; init; }
+}
 
 /// <summary>A Relation between two Nodes of the context, with what says how much to rely on it (DA-128).</summary>
 /// <param name="Explanation">Why the system inferred it: present on a Soft Relation only (DA-070).</param>
