@@ -36,6 +36,7 @@ temp/
 dist/
 dist-visitor/
 build/
+!web/build/
 out/
 coverage/
 node_modules/
