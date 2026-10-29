@@ -57,7 +57,7 @@ internal sealed class GraphPurge(LifeGraphDbContext db, TimeProvider clock) : IJ
 
         var purgedIds = purge.EntityKind switch
         {
-            GraphEntityKind.Node => await RemoveNodeAsync(purge, cancellationToken),
+            GraphEntityKind.Node => await RemoveNodeAsync(purge, now, cancellationToken),
             GraphEntityKind.Relation => await RemoveRelationAsync(purge, cancellationToken),
             _ => throw new NotSupportedException($"Only Nodes and Relations are purged, not {purge.EntityKind}."),
         };
@@ -69,7 +69,7 @@ internal sealed class GraphPurge(LifeGraphDbContext db, TimeProvider clock) : IJ
 
     // A Node takes along the Relations that touch it, all tombstones by then since a Relation
     // only lives between live Nodes, its Tag links, its Collection memberships and its Ignores.
-    private async Task<IReadOnlyList<Guid>> RemoveNodeAsync(PurgePayload purge, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<Guid>> RemoveNodeAsync(PurgePayload purge, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var node = await db.Set<Node>().SingleOrDefaultAsync(entity => entity.Id == purge.EntityId, cancellationToken);
         if (node is null || node.DeletedAt != purge.DeletedAt)
@@ -101,6 +101,16 @@ internal sealed class GraphPurge(LifeGraphDbContext db, TimeProvider clock) : IJ
             .Where(relation => relation.SourceNodeId == node.Id || relation.TargetNodeId == node.Id)
             .ToListAsync(cancellationToken);
 
+        // Its places in SharedGraphViews go with it, and a share it is the root of is revoked for
+        // good (DA-075); a share holds no copy that would outlive the Node.
+        var shareMembers = await db.Set<SharedGraphViewNode>().Where(member => member.NodeId == node.Id).ToListAsync(cancellationToken);
+        var rootedShares = await db.Set<SharedGraphView>().Where(share => share.RootNodeId == node.Id).ToListAsync(cancellationToken);
+        foreach (var share in rootedShares)
+        {
+            share.RevokeOnRootPurge(now);
+        }
+
+        db.RemoveRange(shareMembers);
         db.RemoveRange(links);
         db.RemoveRange(members);
         db.RemoveRange(dismissals);

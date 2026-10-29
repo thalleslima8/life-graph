@@ -17,7 +17,8 @@ import {
   typeColorOf,
   type EdgeLine,
 } from "./graphVisuals";
-import { levelOfDetail, MAX_ZOOM, MIN_ZOOM, type LocalGraphNode } from "./localGraph";
+import type { RenderableNode } from "./graphShape";
+import { levelOfDetail, MAX_ZOOM, MIN_ZOOM } from "./graphView";
 
 /**
  * The Sigma.js adapter of the GraphRenderer port (DA-137): the only file that imports the
@@ -62,7 +63,7 @@ export function drawLabelWithAgentRing(isMarked: (nodeId: string) => boolean): N
 
 export function createSigmaRenderer(): GraphRenderer {
   const graph = new MultiDirectedGraph<NodeAttributes, EdgeAttributes>();
-  const nodesById = new Map<string, LocalGraphNode>();
+  const nodesById = new Map<string, RenderableNode>();
   // A Relation shows what its nearer end shows.
   const edgeDistances = new Map<string, number>();
   const markedEdges = new Set<string>();
@@ -84,8 +85,8 @@ export function createSigmaRenderer(): GraphRenderer {
       graph.mergeNode(node.id, {
         ...(positions.get(node.id) ?? { x: 0, y: 0 }),
         label: node.title,
-        size: nodeSizeOf(node.degree, node.distance),
-        color: typeColorOf(node.typeId ?? null),
+        size: nodeSizeOf(node.degree ?? 0, node.distance),
+        color: typeColorOf(node.typeId !== undefined ? node.typeId : node.typeName),
         // Nearer Nodes are drawn over farther ones.
         zIndex: -node.distance,
         // What is on screen stays put; the first layout keeps the root at the centre.
@@ -103,7 +104,7 @@ export function createSigmaRenderer(): GraphRenderer {
         size: style.size,
         color: EDGE_COLOR,
         type: EDGE_PROGRAMS[style.line],
-        weight: edge.strength,
+        weight: edge.strength ?? 1,
       });
       edgeDistances.set(edge.id, Math.min(distanceOf(edge.sourceNodeId), distanceOf(edge.targetNodeId)));
       if (edge.agentUnreviewed) {

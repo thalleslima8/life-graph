@@ -188,6 +188,16 @@ Requirements: Docker and VS Code with the Dev Containers extension.
 Mailpit (captured e-mails) is forwarded from `mailpit:8025`. Details in
 [`.devcontainer/README.md`](.devcontainer/README.md).
 
+   A shared link opens on its own origin, `http://share.localhost:5000/s#<token>`
+   (DA-215). The API serves that page from `web/dist-visitor` only on the
+   `share.localhost` host, under its strict CSP (DA-216); the Vite dev server
+   never serves it. To work on it, rebuild the visitor bundle on every change in
+   a third terminal:
+
+   ```bash
+   cd web && npm run dev:visitor             # rebuilds web/dist-visitor on change
+   ```
+
 4. Create your account. Open sign-up is off; the owner creates accounts from
    the command line, with no password. The e-mail (in Mailpit) carries the link
    where the user chooses the password, then signs in at
@@ -267,7 +277,8 @@ The .NET 10 SDK, Node 24 and Docker are enough to build and run every test
 PostgreSQL bootstrapped with [`db/bootstrap/`](db/bootstrap/) (roles, database,
 extensions), which the devcontainer does for you. The application connects as
 `lifegraph_app` (`ConnectionStrings__Default`), the owner's `accounts` CLI as
-`lifegraph_provisioner` (`ConnectionStrings__Provisioning`, DA-107) and
-migrations run as `lifegraph_migrator` (`ConnectionStrings__Migrations`).
+`lifegraph_provisioner` (`ConnectionStrings__Provisioning`, DA-107), the
+operator's `shares disable <public_ref>` CLI as `lifegraph_operator`
+(`ConnectionStrings__Operator`, DA-217) and migrations run as `lifegraph_migrator` (`ConnectionStrings__Migrations`).
 For the embeddings, download the model and point
 `Semantic__Embeddings__ModelDirectory` at its directory.

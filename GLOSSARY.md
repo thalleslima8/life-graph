@@ -144,3 +144,21 @@ Um recorte do grafo publicado por link não listado. Os Nodes que fazem parte
 dele são fixados na criação, e o conteúdo exibido é sempre o atual. O visitante
 só vê o que o usuário escolheu expor.
 _Avoid_: compartilhamento público, snapshot, Constellation
+
+**ShareVisitor**:
+Quem abre um link de SharedGraphView, sem conta nem sessão. Só lê os Nodes
+vivos do share e as Hard Relations entre eles, pelo mesmo filtro central de
+leitura, e todo link que não abre responde o mesmo "indisponível".
+_Avoid_: convidado, usuário anônimo, leitor público
+
+**Referência pública** (`public_ref`):
+O identificador opaco de um SharedGraphView, que não é o token nem o id interno.
+Aparece no assunto da denúncia e é o que o operador usa no kill-switch.
+_Avoid_: id do link, token
+
+**Kill-switch**:
+O bloqueio de um link pelo operador da plataforma, pela `public_ref`, sem acesso
+aos dados da Account. Para o visitante, o link bloqueado responde igual a um
+revogado; o dono o vê como "desativado pela plataforma" e não pode desbloqueá-lo.
+A flag `Sharing:Enabled` desliga todos os links de uma vez.
+_Avoid_: banimento, moderação, suspensão (suspenso é o share com a raiz apagada)

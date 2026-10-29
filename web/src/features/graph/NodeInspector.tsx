@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AddToCollectionMenu } from "@/features/collections/AddToCollectionMenu";
+import { SharedBadge } from "@/features/sharing/SharedBadge";
+import { newSharePath } from "@/features/sharing/sharesData";
 import { TagPicker } from "@/features/tags/TagPicker";
 import {
   ANY_TYPE,
@@ -52,6 +54,7 @@ import {
   NO_TYPE_LABEL,
   NODE_BODY_LABEL,
   REROOT_LABEL,
+  SHARE_LABEL,
   SHOW_IN_GRAPH_LABEL,
   SOFT_RELATIONS_TITLE,
   STALE_NODE_MESSAGE,
@@ -64,7 +67,7 @@ import {
   writeErrorMessage,
 } from "./graphMessages";
 import { ConnectToNode } from "./ConnectToNode";
-import { graphPath } from "./localGraph";
+import { graphPath } from "./graphView";
 import { PromoteDialog } from "./PromoteDialog";
 import { PropertyValueDisplay, PropertyValueEditor } from "./PropertyValueEditor";
 import { fromWire, propertyValueSchema, toWire, type PropertyField, type PropertyValue } from "./propertyValues";
@@ -181,6 +184,7 @@ function ReadyInspector({ node, onNavigate }: { node: NodeDetail; onNavigate?: (
 
   return (
     <>
+      <SharedBadge nodeId={node.id} />
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-muted-foreground">Type</dt>
         <dd>{node.typeId === null ? NO_TYPE_LABEL : (node.typeName ?? TYPE_UNAVAILABLE_LABEL)}</dd>
@@ -206,6 +210,14 @@ function ReadyInspector({ node, onNavigate }: { node: NodeDetail; onNavigate?: (
       )}
 
       {!readOnly && <NodeActions node={node} />}
+      {/* The Raiz da Conta is never shared (DA-219). */}
+      {!readOnly && !node.isAccountRoot && (
+        <p>
+          <Link to={newSharePath(node.id)} className="underline underline-offset-4">
+            {SHARE_LABEL}
+          </Link>
+        </p>
+      )}
       <NodeProperties node={node} />
       <NodeTags node={node} />
       {!readOnly && <NodeCollections node={node} />}

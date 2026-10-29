@@ -1,4 +1,4 @@
-import type { LocalGraphEdge } from "./localGraph";
+import type { RenderableEdge } from "./graphShape";
 
 /**
  * How the local graph looks, without any library (DA-137), so the drawing and its legend
@@ -53,7 +53,7 @@ export const AGENT_RING_WIDTH = 2;
 export const AGENT_EDGE_SCALE = 2;
 
 /** A Hard Relation is a straight, thicker line; a Soft one (E9) is curved and thinner. */
-export function edgeStyleOf(assertion: LocalGraphEdge["assertion"]): EdgeStyle {
+export function edgeStyleOf(assertion: RenderableEdge["assertion"]): EdgeStyle {
   return assertion === "soft" ? { line: "curved", size: SOFT_EDGE_SIZE } : { line: "straight", size: HARD_EDGE_SIZE };
 }
 
@@ -65,17 +65,17 @@ export const UNTYPED_COLOR = "#475569";
 const HASH_MULTIPLIER = 31;
 
 /**
- * The colour of a Type, from its id alone: the same Type keeps its colour on every root and
- * depth. With more Types than colours, two Types can share one; the legend and the near
+ * The colour of a Type, from its id alone (its name in a visitor's graph, which has no ids):
+ * the same Type keeps its colour on every root and depth. With more Types than colours, two Types can share one; the legend and the near
  * level's summary still name them.
  */
-export function typeColorOf(typeId: string | null): string {
-  if (typeId === null) {
+export function typeColorOf(typeKey: string | null): string {
+  if (typeKey === null) {
     return UNTYPED_COLOR;
   }
 
   let hash = 0;
-  for (const character of typeId) {
+  for (const character of typeKey) {
     hash = (hash * HASH_MULTIPLIER + character.charCodeAt(0)) % TYPE_COLORS.length;
   }
 

@@ -53,6 +53,10 @@ public sealed class ArchitectureTests
         ArchitectureRules.OnlyTheSemanticJobsUseTheSemanticGraph("LifeGraph").Check(Production);
 
     [Fact]
+    public void Only_the_sharing_endpoints_use_the_share_port() =>
+        ArchitectureRules.OnlySharingHttpUsesTheSharePort("LifeGraph").Check(Production);
+
+    [Fact]
     public void Only_the_relation_gate_reads_soft_relations_or_names_the_table_in_sql() =>
         Assert.Empty(ArchitectureRules.RelationsReadPastTheGate());
 

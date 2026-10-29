@@ -15,6 +15,7 @@ const GRAPH_LINKS = [
   { to: "/types", label: "Types" },
   { to: "/tags", label: "Tags" },
   { to: "/agentes", label: "Agentes conectados" },
+  { to: "/shares", label: "Links compartilhados" },
 ];
 
 export function AppLayout() {

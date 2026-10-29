@@ -110,6 +110,62 @@ public sealed class PrincipalClaimsTests
         Assert.Null(PrincipalClaims.Read(user)!.AgentIdentityId);
     }
 
+    [Fact]
+    public void A_share_visitor_carries_its_shared_graph_view()
+    {
+        var sharedGraphViewId = Guid.CreateVersion7();
+        var user = Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.ShareVisitorType),
+            Claim(LifeGraphClaimTypes.SharedGraphViewId, sharedGraphViewId.ToString()));
+
+        Assert.Equal(new AuthenticatedPrincipal(AccountId, PrincipalType.ShareVisitor, SharedGraphViewId: sharedGraphViewId), PrincipalClaims.Read(user));
+    }
+
+    [Theory]
+    [InlineData("not-a-guid")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    public void A_share_visitor_with_a_malformed_shared_graph_view_is_no_principal(string sharedGraphViewId) =>
+        Assert.Null(PrincipalClaims.Read(Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.ShareVisitorType),
+            Claim(LifeGraphClaimTypes.SharedGraphViewId, sharedGraphViewId))));
+
+    [Fact]
+    public void A_share_visitor_with_two_shared_graph_views_is_no_principal() =>
+        Assert.Null(PrincipalClaims.Read(Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.ShareVisitorType),
+            Claim(LifeGraphClaimTypes.SharedGraphViewId, Guid.CreateVersion7().ToString()),
+            Claim(LifeGraphClaimTypes.SharedGraphViewId, Guid.CreateVersion7().ToString()))));
+
+    [Fact]
+    public void Neither_a_person_nor_an_agent_carries_a_shared_graph_view()
+    {
+        var person = Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.HumanType),
+            Claim(LifeGraphClaimTypes.SharedGraphViewId, Guid.CreateVersion7().ToString()));
+        var agent = Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.AgentIdentityType),
+            Claim(LifeGraphClaimTypes.SharedGraphViewId, Guid.CreateVersion7().ToString()));
+
+        Assert.Null(PrincipalClaims.Read(person)!.SharedGraphViewId);
+        Assert.Null(PrincipalClaims.Read(agent)!.SharedGraphViewId);
+    }
+
+    [Fact]
+    public void A_share_visitor_never_carries_an_agent_identity()
+    {
+        var user = Authenticated(
+            Claim(LifeGraphClaimTypes.AccountId, AccountId.ToString()),
+            Claim(LifeGraphClaimTypes.PrincipalType, PrincipalClaims.ShareVisitorType),
+            Claim(LifeGraphClaimTypes.AgentIdentityId, Guid.CreateVersion7().ToString()));
+
+        Assert.Null(PrincipalClaims.Read(user)!.AgentIdentityId);
+    }
+
     private static Claim Claim(string type, string value) => new(type, value);
 
     private static ClaimsPrincipal Authenticated(params Claim[] claims) =>

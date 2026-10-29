@@ -1,4 +1,4 @@
-import type { LocalGraph } from "./localGraph";
+import type { RenderableGraph } from "./graphShape";
 
 /**
  * The keyboard model of the local graph (DA-142), shared by the drawing and the list so the two
@@ -28,7 +28,7 @@ export function isArrowKey(key: string): key is ArrowKey {
 }
 
 /** Indexes the graph for keyboard navigation. A root missing from the graph is a broken invariant, so it throws. */
-export function buildGraphIndex(graph: LocalGraph, rootId: string): GraphIndex {
+export function buildGraphIndex(graph: RenderableGraph, rootId: string): GraphIndex {
   if (!graph.nodes.some((node) => node.id === rootId)) {
     throw new Error(`The root ${rootId} is not in the graph.`);
   }

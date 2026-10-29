@@ -31,6 +31,7 @@ describe("app shell", () => {
       ["Types", "/types"],
       ["Tags", "/tags"],
       ["Agentes conectados", "/agentes"],
+      ["Links compartilhados", "/shares"],
     ]) {
       expect(await within(navigation).findByRole("link", { name })).toHaveAttribute("href", href);
     }

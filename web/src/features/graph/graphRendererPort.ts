@@ -1,4 +1,4 @@
-import type { LocalGraph, LocalGraphNode } from "./localGraph";
+import type { RenderableGraph, RenderableNode } from "./graphShape";
 
 /**
  * The port between GraphCanvas and the library that draws the graph (DA-137, DA-142). The
@@ -12,12 +12,13 @@ export type GraphCanvasLabels = {
   /** Next to the title of what an agent changed and the person has not reviewed (DA-141). */
   agentUnreviewed: string;
   /** The short summary of a Node the near level of the Semantic Zoom adds to its title (DA-140). */
-  nodeSummary: (node: LocalGraphNode) => string;
+  nodeSummary: (node: RenderableNode) => string;
 };
 
 /** What the renderer draws: the props of GraphCanvas that change the picture. */
 export type GraphRenderView = {
-  graph: LocalGraph;
+  graph: RenderableGraph;
+  /** The graph's root, `graph.rootId`. */
   rootId: string;
   selectedId: string | undefined;
   /** The Node the keyboard is on while the drawing has focus (DA-142); undefined otherwise. */

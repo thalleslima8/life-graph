@@ -8,7 +8,8 @@ import { csrfTokenHandler, problem, sessionHandler } from "@/test/msw/handlers";
 import { ACCOUNT_ROOT_ID, server } from "@/test/msw/server";
 import { renderRoute } from "@/test/renderRoute";
 import { GRAPH_ENTRY_LOADING_MESSAGE, ROOT_NOT_FOUND_TITLE } from "./GraphEntryPage";
-import { GRAPH_ENTRY_PATH, graphPath, readLastFocus, rememberLastFocus } from "./localGraph";
+import { graphPath } from "./graphView";
+import { GRAPH_ENTRY_PATH, readLastFocus, rememberLastFocus } from "./localGraph";
 
 /** Serves the Nodes in `existing`, a 404 for any other, and counts the root reads. */
 function entryApi(existing: string[] = [NODE_ID]) {

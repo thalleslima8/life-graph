@@ -130,6 +130,15 @@ public sealed class SoftRelationProjectionTests(PostgresDatabase database) : IAs
         Assert.DoesNotContain(soft, edge => edge.SourceNodeId == hidden || edge.TargetNodeId == hidden);
         Assert.DoesNotContain(soft, edge => new[] { edge.SourceNodeId, edge.TargetNodeId }.Order().SequenceEqual(new[] { root, shown }.Order()));
         Assert.DoesNotContain(withSoft.Nodes, view => view.Id == hidden);
+
+        // A ShareVisitor never gets a Soft Relation, nor the Node only one reaches (DA-077).
+        var share = await _graph.AsAsync(human, services => services.GetRequiredService<ISharedGraphViews>()
+            .CreateAsync(new CreateSharedGraphView(root, 1, [root, shown], null, false, true), TestContext.Current.CancellationToken));
+        var visitor = new AuthenticatedPrincipal(_account, PrincipalType.ShareVisitor, SharedGraphViewId: share.Value!.Id);
+        var visited = await _graph.AsAsync(visitor, services =>
+            services.GetRequiredService<ISharedGraphViews>().VisitAsync(TestContext.Current.CancellationToken));
+        Assert.Equal([hard], visited.Value!.Relations.Select(relation => relation.Id));
+        Assert.DoesNotContain(visited.Value.Nodes, member => member.Id == near);
     }
 
     [Fact]

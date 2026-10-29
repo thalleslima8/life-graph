@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { UNANCHORED_PATH, useAccountRoot } from "./anchoringData";
 import { isNotFound, nodeQuery } from "./graphData";
 import { LOAD_ERROR_MESSAGE, RETRY_LABEL } from "./graphMessages";
-import { forgetLastFocus, graphPath, readLastFocus } from "./localGraph";
+import { graphPath } from "./graphView";
+import { forgetLastFocus, readLastFocus } from "./localGraph";
 
 export const GRAPH_ENTRY_LOADING_MESSAGE = "Carregando o grafo…";
 export const ROOT_NOT_FOUND_TITLE = "Sua Raiz não foi encontrada";

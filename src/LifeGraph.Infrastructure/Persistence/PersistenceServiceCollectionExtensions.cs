@@ -13,6 +13,9 @@ public static class PersistenceServiceCollectionExtensions
     /// <summary>The provisioning role (<c>lifegraph_provisioner</c>): only the owner's CLI (DA-107).</summary>
     public const string ProvisioningConnectionStringName = "Provisioning";
 
+    /// <summary>The operator role (<c>lifegraph_operator</c>): only the operator's <c>shares</c> CLI (DA-217).</summary>
+    public const string OperatorConnectionStringName = "Operator";
+
     /// <param name="connectionStringName">
     /// <see cref="ConnectionStringName"/>, or <see cref="ProvisioningConnectionStringName"/> for the owner's CLI.
     /// </param>

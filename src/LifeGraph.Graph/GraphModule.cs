@@ -18,6 +18,7 @@ public static class GraphModule
     {
         services.AddErrorCodes(GraphErrors.All);
         services.AddErrorCodes(AgentWriteErrors.All);
+        services.AddErrorCodes(SharingErrors.All);
         services.AddOptions<AgentWriteOptions>().BindConfiguration(AgentWriteOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
         services.AddOptions<LocalGraphOptions>().BindConfiguration(LocalGraphOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
         services.TryAddSingleton(TimeProvider.System);
@@ -35,6 +36,8 @@ public static class GraphModule
         services.AddScoped<IGraphReader, GraphContextReads>();
         services.AddScoped<GraphWrites>();
         services.AddScoped<IResourceFetchGraph, ResourceFetchGraph>();
+        services.AddScoped<ISharedGraphViews, SharedGraphViews>();
+        services.AddScoped<ISharedGraphViewKillSwitch, SharedGraphViewKillSwitch>();
         services.AddScoped<ISemanticGraph, SemanticGraph>();
         services.AddScoped<IJobHandler, GraphPurge>();
         services.AddScoped<IJobHandler, ProposalExpiry>();

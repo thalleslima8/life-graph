@@ -27,6 +27,11 @@ internal sealed class GraphAccountPurge(LifeGraphDbContext db) : IAccountPurgePa
             .ExecuteUpdateAsync(changeSet => changeSet.SetProperty(entity => entity.RevertsChangeSetId, (Guid?)null), cancellationToken);
         await db.Set<GraphChangeSet>().Where(changeSet => changeSet.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
 
+        // The share directory has no RLS and the application role cannot delete from it: its rows
+        // go with their shares, by the foreign key's cascade (DA-217).
+        await db.Set<SharedGraphViewNode>().Where(member => member.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
+        await db.Set<SharedGraphViewProperty>().Where(property => property.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
+        await db.Set<SharedGraphView>().Where(share => share.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<CollectionMember>().Where(member => member.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<Collection>().Where(collection => collection.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<NodeTag>().Where(link => link.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);

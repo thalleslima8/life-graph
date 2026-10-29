@@ -74,6 +74,11 @@ public sealed class GraphWriteHarness(PostgresDatabase database, LifeGraphApiFac
             claims.Add(new(LifeGraphClaimTypes.AgentIdentityId, agentIdentityId.ToString()));
         }
 
+        if (principal.SharedGraphViewId is { } sharedGraphViewId)
+        {
+            claims.Add(new(LifeGraphClaimTypes.SharedGraphViewId, sharedGraphViewId.ToString()));
+        }
+
         scope.ServiceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext = new DefaultHttpContext
         {
             User = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "test")),

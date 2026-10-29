@@ -13,8 +13,11 @@ public sealed class RowLevelSecurityCatalogTests(PostgresDatabase database)
     // The credential directory is looked up before any Account is in context (DA-098).
     private static readonly string[] CredentialDirectoryTables = ["users", "user_claims", "user_logins", "user_tokens"];
 
+    /// <summary>The share directory resolves a visitor's token before any Account is in context (DA-217, DA-223).</summary>
+    private static readonly string[] ShareDirectoryTables = ["shared_graph_view_directory"];
+
     [Fact]
-    public async Task Every_table_with_an_account_id_has_rls_and_a_policy_except_the_credential_directory()
+    public async Task Every_table_with_an_account_id_has_rls_and_a_policy_except_the_credential_and_share_directories()
     {
         var tablesWithoutIsolation = await QueryTableNamesAsync("""
             SELECT c.relname
@@ -28,7 +31,7 @@ public sealed class RowLevelSecurityCatalogTests(PostgresDatabase database)
 
         // `users` is the one known exception, so it also proves the query finds offenders.
         Assert.Contains("users", tablesWithoutIsolation);
-        Assert.Empty(tablesWithoutIsolation.Except(CredentialDirectoryTables));
+        Assert.Empty(tablesWithoutIsolation.Except(CredentialDirectoryTables).Except(ShareDirectoryTables));
     }
 
     // An open WITH CHECK for the application role would let any web request create Account

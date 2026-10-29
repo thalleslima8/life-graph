@@ -1,19 +1,22 @@
-import { useId, useMemo, useRef, type KeyboardEvent } from "react";
+import { useId, useMemo, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { ASSERTION_LABELS, distanceHeading, graphKeyboardHelp, REROOT_LABEL, relationsOfLabel, relationText, softRelationExplanationText } from "./graphMessages";
+import { ASSERTION_LABELS, distanceHeading, graphKeyboardHelp, REROOT_LABEL, relationsOfLabel, relationText, softRelationExplanationText } from "./graphViewMessages";
 import { buildGraphIndex, isArrowKey, keyAction, nextFocus } from "./graphNavigation";
 import type { GraphCanvasLabels } from "./graphRendererPort";
-import type { LocalGraph, LocalGraphEdge, LocalGraphNode } from "./localGraph";
+import type { RenderableEdge, RenderableGraph, RenderableNode } from "./graphShape";
 
 export type GraphListProps = {
-  graph: LocalGraph;
-  rootId: string;
+  /** The root is `graph.rootId`. */
+  graph: RenderableGraph;
   selectedId?: string | undefined;
-  highlightAgent: boolean;
+  /** Marks what an agent changed and nobody reviewed; off unless asked (a visitor's view never asks). */
+  highlightAgent?: boolean;
   onSelect: (nodeId: string) => void;
   /** Absent, Shift+Enter does nothing and no Node offers "Centralizar aqui" (a visitor's view). */
   onReroot?: (nodeId: string) => void;
   labels: GraphCanvasLabels;
+  /** A mark beside a Node's title, such as the owner's "compartilhado" badge; the visitor's view has none. */
+  nodeBadge?: (nodeId: string) => ReactNode;
 };
 
 /**
@@ -23,7 +26,8 @@ export type GraphListProps = {
  * text, never by colour alone (FE-034). Every Node is a button in the tab order, and the
  * arrows move between them by the drawing's own model (graphNavigation).
  */
-export function GraphList({ graph, rootId, selectedId, highlightAgent, onSelect, onReroot, labels }: GraphListProps) {
+export function GraphList({ graph, selectedId, highlightAgent = false, onSelect, onReroot, labels, nodeBadge }: GraphListProps) {
+  const rootId = graph.rootId;
   const helpId = useId();
   const index = useMemo(() => buildGraphIndex(graph, rootId), [graph, rootId]);
   const nodesById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -90,6 +94,7 @@ export function GraphList({ graph, rootId, selectedId, highlightAgent, onSelect,
                   </button>
                   <span className="text-sm text-muted-foreground">{labels.nodeSummary(node)}</span>
                   {highlightAgent && node.agentUnreviewed && <AgentMark text={labels.agentUnreviewed} />}
+                  {nodeBadge?.(node.id)}
                   {onReroot && node.id !== rootId && (
                     <Button type="button" variant="ghost" size="sm" onClick={() => onReroot(node.id)}>
                       {REROOT_LABEL}
@@ -119,7 +124,7 @@ function RelationList({
   agentText,
 }: {
   nodeTitle: string;
-  relations: readonly LocalGraphEdge[];
+  relations: readonly RenderableEdge[];
   titleOf: (nodeId: string) => string;
   /** Null when the view does not ask for the agent highlight. */
   agentText: string | null;
@@ -132,7 +137,8 @@ function RelationList({
     <ul aria-label={relationsOfLabel(nodeTitle)} className="ml-4 list-disc space-y-0.5 pl-4 text-sm">
       {relations.map((edge) => (
         <li key={edge.id}>
-          {relationText(titleOf(edge.sourceNodeId), edge.kind, titleOf(edge.targetNodeId))} · {ASSERTION_LABELS[edge.assertion]}
+          {relationText(titleOf(edge.sourceNodeId), edge.kind, titleOf(edge.targetNodeId))}
+          {edge.assertion && ` · ${ASSERTION_LABELS[edge.assertion]}`}
           {edge.explanation && ` · ${softRelationExplanationText(edge.explanation)}`}
           {agentText !== null && edge.agentUnreviewed && (
             <>
@@ -156,8 +162,8 @@ function AgentMark({ text }: { text: string }) {
   );
 }
 
-function groupByDistance(order: readonly string[], nodesById: ReadonlyMap<string, LocalGraphNode>): { distance: number; nodes: LocalGraphNode[] }[] {
-  const groups: { distance: number; nodes: LocalGraphNode[] }[] = [];
+function groupByDistance(order: readonly string[], nodesById: ReadonlyMap<string, RenderableNode>): { distance: number; nodes: RenderableNode[] }[] {
+  const groups: { distance: number; nodes: RenderableNode[] }[] = [];
   for (const nodeId of order) {
     const node = nodesById.get(nodeId);
     if (!node) {
@@ -176,8 +182,8 @@ function groupByDistance(order: readonly string[], nodesById: ReadonlyMap<string
 }
 
 /** Each Node's Relations, either direction, in the order the read gave them. */
-function relationsOf(edges: readonly LocalGraphEdge[]): Map<string, LocalGraphEdge[]> {
-  const byNode = new Map<string, LocalGraphEdge[]>();
+function relationsOf(edges: readonly RenderableEdge[]): Map<string, RenderableEdge[]> {
+  const byNode = new Map<string, RenderableEdge[]>();
   for (const edge of edges) {
     for (const nodeId of new Set([edge.sourceNodeId, edge.targetNodeId])) {
       const relations = byNode.get(nodeId);

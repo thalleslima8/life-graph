@@ -1044,6 +1044,206 @@ namespace LifeGraph.Migrations.Migrations
                         });
                 });
 
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SharedGraphView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AccessDayCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("access_day_count");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CreatedVia")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("created_via");
+
+                    b.Property<bool>("IncludeTags")
+                        .HasColumnType("boolean")
+                        .HasColumnName("include_tags");
+
+                    b.Property<DateOnly?>("LastAccessedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("last_accessed_on");
+
+                    b.Property<int>("MaxDepth")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_depth");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("RevokedBy")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("revoked_by");
+
+                    b.Property<Guid?>("RootNodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("root_node_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_shared_graph_views");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_shared_graph_views_account_id_id");
+
+                    b.HasIndex("AccountId", "RootNodeId")
+                        .HasDatabaseName("ix_shared_graph_views_account_id_root_node_id");
+
+                    b.ToTable("shared_graph_views", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_shared_graph_views_access_day_count", "access_day_count >= 0");
+
+                            t.HasCheckConstraint("ck_shared_graph_views_created_by", "created_by IN ('agent_identity', 'human', 'system')");
+
+                            t.HasCheckConstraint("ck_shared_graph_views_created_via", "created_via IN ('api', 'import', 'mcp', 'system', 'ui')");
+
+                            t.HasCheckConstraint("ck_shared_graph_views_max_depth", "max_depth BETWEEN 1 AND 2");
+
+                            t.HasCheckConstraint("ck_shared_graph_views_revoked_by", "(revoked_at IS NULL) = (revoked_by IS NULL)");
+
+                            t.HasCheckConstraint("ck_shared_graph_views_root_node_id", "root_node_id IS NOT NULL OR revoked_at IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SharedGraphViewDirectoryEntry", b =>
+                {
+                    b.Property<Guid>("SharedGraphViewId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shared_graph_view_id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTimeOffset?>("BlockedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("blocked_at");
+
+                    b.Property<string>("PublicRef")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("public_ref");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("token_hash");
+
+                    b.HasKey("SharedGraphViewId")
+                        .HasName("pk_shared_graph_view_directory");
+
+                    b.HasIndex("PublicRef")
+                        .IsUnique()
+                        .HasDatabaseName("uq_shared_graph_view_directory_public_ref");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("uq_shared_graph_view_directory_token_hash");
+
+                    b.HasIndex("AccountId", "SharedGraphViewId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_shared_graph_view_directory_account_id_shared_graph_view_id");
+
+                    b.ToTable("shared_graph_view_directory", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_shared_graph_view_directory_token_hash", "octet_length(token_hash) = 32");
+                        });
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SharedGraphViewNode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<Guid>("SharedGraphViewId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shared_graph_view_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_shared_graph_view_nodes");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_shared_graph_view_nodes_account_id_id");
+
+                    b.HasIndex("AccountId", "NodeId")
+                        .HasDatabaseName("ix_shared_graph_view_nodes_account_id_node_id");
+
+                    b.HasIndex("AccountId", "SharedGraphViewId")
+                        .HasDatabaseName("ix_shared_graph_view_nodes_account_id_shared_graph_view_id");
+
+                    b.HasIndex("SharedGraphViewId", "NodeId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_shared_graph_view_nodes_shared_graph_view_id_node_id");
+
+                    b.ToTable("shared_graph_view_nodes", (string)null);
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SharedGraphViewProperty", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("PropertyDefinitionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_definition_id");
+
+                    b.Property<Guid>("SharedGraphViewId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shared_graph_view_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_shared_graph_view_properties");
+
+                    b.HasAlternateKey("AccountId", "Id")
+                        .HasName("ak_shared_graph_view_properties_account_id_id");
+
+                    b.HasIndex("AccountId", "PropertyDefinitionId")
+                        .HasDatabaseName("ix_shared_graph_view_properties_account_id_property_definition_id");
+
+                    b.HasIndex("AccountId", "SharedGraphViewId")
+                        .HasDatabaseName("ix_shared_graph_view_properties_account_id_shared_graph_view_id");
+
+                    b.HasIndex("SharedGraphViewId", "PropertyDefinitionId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_shared_graph_view_properties_shared_graph_view_id_property_definition_id");
+
+                    b.ToTable("shared_graph_view_properties", (string)null);
+                });
+
             modelBuilder.Entity("LifeGraph.Graph.Domain.SoftDismissal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1914,6 +2114,86 @@ namespace LifeGraph.Migrations.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_relations_target_node");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SharedGraphView", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_graph_views_account_id");
+
+                    b.HasOne("LifeGraph.Graph.Domain.Node", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "RootNodeId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_shared_graph_views_root_node");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SharedGraphViewDirectoryEntry", b =>
+                {
+                    b.HasOne("LifeGraph.Graph.Domain.SharedGraphView", null)
+                        .WithOne()
+                        .HasForeignKey("LifeGraph.Graph.Domain.SharedGraphViewDirectoryEntry", "AccountId", "SharedGraphViewId")
+                        .HasPrincipalKey("LifeGraph.Graph.Domain.SharedGraphView", "AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_graph_view_directory_shared_graph_view");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SharedGraphViewNode", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_graph_view_nodes_account_id");
+
+                    b.HasOne("LifeGraph.Graph.Domain.Node", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "NodeId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_graph_view_nodes_node");
+
+                    b.HasOne("LifeGraph.Graph.Domain.SharedGraphView", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "SharedGraphViewId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_graph_view_nodes_shared_graph_view");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.SharedGraphViewProperty", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_graph_view_properties_account_id");
+
+                    b.HasOne("LifeGraph.Graph.Domain.PropertyDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "PropertyDefinitionId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_graph_view_properties_property_definition");
+
+                    b.HasOne("LifeGraph.Graph.Domain.SharedGraphView", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId", "SharedGraphViewId")
+                        .HasPrincipalKey("AccountId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_graph_view_properties_shared_graph_view");
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.SoftDismissal", b =>

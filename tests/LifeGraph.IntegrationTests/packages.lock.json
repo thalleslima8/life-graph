@@ -1212,7 +1212,9 @@
       "lifegraph.sharing": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )"
+          "LifeGraph.Graph": "[1.0.0, )",
+          "LifeGraph.Http": "[1.0.0, )",
+          "LifeGraph.Infrastructure": "[1.0.0, )"
         }
       },
       "AngleSharp": {

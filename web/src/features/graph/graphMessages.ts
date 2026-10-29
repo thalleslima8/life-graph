@@ -2,10 +2,26 @@ import { isApiError } from "@/api/client";
 import type { PropertyValueKind } from "./graphData";
 import type { ChangeSetItem, UndoRefusal } from "./recentChanges";
 import type { SchemaRefusal } from "./graphData";
-import type { GraphViewMode, LevelOfDetail, LocalGraphEdge } from "./localGraph";
+import type { LevelOfDetail } from "./graphView";
+import { counted } from "./graphViewMessages";
+import type { GraphViewMode } from "./localGraph";
 import type { CaptureOutcome } from "@/features/resources/resourceCapture";
 
 /** The visible texts of the graph screens (FE-062: one place, formatted by locale). */
+
+// The drawing's and the list's own texts live apart, free of the API client (DA-222).
+export {
+  ASSERTION_LABELS,
+  distanceHeading,
+  graphKeyboardHelp,
+  REROOT_LABEL,
+  relationsOfLabel,
+  relationText,
+  ROOT_HEADING,
+  SELECTED_NODE_LABEL,
+  softRelationExplanationText,
+  type InferenceExplanation,
+} from "./graphViewMessages";
 
 export const UNEXPECTED_ERROR_MESSAGE = "Não foi possível concluir agora. Tente novamente em instantes.";
 /** The Account has no Raiz da Conta yet; it is created at the next sign-in (DA-201, DA-202). */
@@ -62,16 +78,8 @@ export function formatDateTime(isoInstant: string): string {
   return dateTimeFormat.format(new Date(isoInstant));
 }
 
-const countFormat = new Intl.NumberFormat("pt-BR");
-
-function counted(count: number, singular: string, plural: string): string {
-  return `${countFormat.format(count)} ${count === 1 ? singular : plural}`;
-}
-
 export const GRAPH_UPDATING_MESSAGE = "Atualizando…";
 export const GRAPH_DRAW_ERROR_MESSAGE = "Não foi possível desenhar o grafo; mostrando a lista.";
-export const SELECTED_NODE_LABEL = "selecionado";
-export const ROOT_HEADING = "Raiz";
 export const NO_RELATIONS_MESSAGE = "Este Node ainda não tem Relations.";
 export const AGENT_UNREVIEWED_LABEL = "mudança de agente não revisada";
 export const LEGEND_AGENT_TEXT = "Anel e texto “mudança de agente não revisada”: tocado por um agente, ainda não revisado";
@@ -81,8 +89,8 @@ export const SELECTED_GONE_MESSAGE = "O Node selecionado não existe mais.";
 export const SELECTED_AGENT_NOTICE = "Este Node tem uma mudança de agente não revisada.";
 export const REVIEW_AGENT_CHANGES_LABEL = "Revisar em Agent Changes";
 export const INSPECTOR_CLOSE_LABEL = "Fechar";
-export const REROOT_LABEL = "Centralizar aqui";
 export const SHOW_IN_GRAPH_LABEL = "Ver no grafo";
+export const SHARE_LABEL = "Compartilhar";
 export const NODE_BODY_LABEL = "Conteúdo";
 export const TYPE_NAME_LOADING_LABEL = "Type (carregando o nome…)";
 
@@ -117,34 +125,6 @@ export function localGraphTitle(rootTitle: string): string {
 /** The names of the two ways to show the local graph (DA-142). */
 export const GRAPH_VIEW_MODE_LABELS: Readonly<Record<GraphViewMode, string>> = { canvas: "Desenho", list: "Lista" };
 
-/** Hard or Soft, in words: the list cannot say it with a line (FE-034). */
-export const ASSERTION_LABELS: Readonly<Record<LocalGraphEdge["assertion"], string>> = { hard: "Hard", soft: "Soft" };
-
-/** The heading of the Nodes at one distance from the root, in the list. */
-export function distanceHeading(distance: number): string {
-  return distance === 0 ? ROOT_HEADING : `A ${counted(distance, "Relation", "Relations")} da raiz`;
-}
-
-/** A Relation in words, from its source to its target. */
-export function relationText(sourceTitle: string, kind: string, targetTitle: string): string {
-  return `${sourceTitle} → ${kind} → ${targetTitle}`;
-}
-
-/** The accessible name of a Node's Relations in the list. */
-export function relationsOfLabel(nodeTitle: string): string {
-  return `Relations de ${nodeTitle}`;
-}
-
-/** The keys of the local graph (DA-142); a visitor's view cannot re-root, and the list has no zoom. */
-export function graphKeyboardHelp({ canReroot, canZoom }: { canReroot: boolean; canZoom: boolean }): string {
-  return [
-    "Teclado: ↑ e ↓ percorrem os Nodes em ordem; → vai a um vizinho mais longe da raiz e ← a um mais perto.",
-    "Enter seleciona.",
-    ...(canReroot ? ["Shift+Enter centraliza no Node."] : []),
-    ...(canZoom ? ["+ e − aproximam e afastam; 0 restaura o zoom."] : []),
-    "Esc volta ao Node selecionado ou à raiz.",
-  ].join(" ");
-}
 
 /** The near level's summary of a Node: its Type and how many Relations it has (DA-139). */
 export function nodeSummaryText(typeName: string, degree: number): string {
@@ -311,20 +291,4 @@ export function ignoreSoftRelationLabel(nodeTitle: string): string {
 /** How many Soft Relations a Node in the Inbox has, as the link to its Inspector. */
 export function softRelationCountText(count: number): string {
   return counted(count, "Soft Relation", "Soft Relations");
-}
-
-const scoreFormat = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
-
-/** The explanation of an inferred Relation: what an absent field would print is left out, never "undefined". */
-export type InferenceExplanation = { method: string; modelId?: string | null; score?: number | string | null };
-
-/** `{method} · score {score}`, plus ` · {model}` for an embedding; only the method when the score is missing. */
-export function softRelationExplanationText(explanation: InferenceExplanation): string {
-  const score = explanation.score === null || explanation.score === undefined || explanation.score === "" ? Number.NaN : Number(explanation.score);
-  if (Number.isNaN(score)) {
-    return explanation.method;
-  }
-
-  const model = explanation.method === "embedding" && explanation.modelId ? ` · ${explanation.modelId}` : "";
-  return `${explanation.method} · score ${scoreFormat.format(score)}${model}`;
 }

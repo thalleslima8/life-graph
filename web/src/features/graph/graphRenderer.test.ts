@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { aLocalGraphModel } from "@/test/fakeGraphRenderer";
+import { aRenderableGraphModel } from "@/test/fakeGraphRenderer";
 import { NODE_ID, OTHER_NODE_ID, RELATION_ID, TYPE_ID } from "@/test/graphFixtures";
 import { RING_SPACING } from "./graphLayout";
 import { createSigmaRenderer } from "./graphRenderer";
 import type { GraphRendererEvents, GraphRenderView } from "./graphRendererPort";
 import { AGENT_EDGE_SCALE, AGENT_RING_GAP, HARD_EDGE_SIZE, SOFT_EDGE_SIZE, UNTYPED_COLOR, nodeSizeOf, typeColorOf } from "./graphVisuals";
-import { MAX_ZOOM, MIDDLE_ZOOM, MIN_ZOOM, NEAR_ZOOM, type LocalGraph, type LocalGraphNode } from "./localGraph";
+import type { RenderableGraph, RenderableNode } from "./graphShape";
+import { MAX_ZOOM, MIDDLE_ZOOM, MIN_ZOOM, NEAR_ZOOM } from "./graphView";
 
 type Handler = (payload: Record<string, unknown>) => void;
 
@@ -86,7 +87,7 @@ const zoomTo = (zoom: number) => {
 
 function aView(overrides: Partial<GraphRenderView> = {}): GraphRenderView {
   return {
-    graph: aLocalGraphModel(),
+    graph: aRenderableGraphModel(),
     rootId: NODE_ID,
     selectedId: undefined,
     focusedId: undefined,
@@ -95,7 +96,7 @@ function aView(overrides: Partial<GraphRenderView> = {}): GraphRenderView {
     labels: {
       canvas: "Grafo",
       agentUnreviewed: "mudança de agente não revisada",
-      nodeSummary: (node: LocalGraphNode) => `resumo de ${node.title}`,
+      nodeSummary: (node: RenderableNode) => `resumo de ${node.title}`,
     },
     ...overrides,
   };
@@ -106,8 +107,8 @@ function events(): GraphRendererEvents {
 }
 
 /** The model graph plus `extra` Nodes, each one Relation from `from` (the root by default). */
-function withNeighbors(extra: { id: string; title: string; distance: number; from?: string; strength?: number; soft?: boolean }[]): LocalGraph {
-  const graph = aLocalGraphModel();
+function withNeighbors(extra: { id: string; title: string; distance: number; from?: string; strength?: number; soft?: boolean }[]): RenderableGraph {
+  const graph = aRenderableGraphModel();
   const [root, other] = graph.nodes;
   const [edge] = graph.edges;
   if (!root || !other || !edge) {
@@ -139,7 +140,7 @@ describe("sigma renderer", () => {
   });
 
   it("draws each Node and Relation by id, the root at the centre, sized by relevance and coloured by Type", () => {
-    const graph = aLocalGraphModel();
+    const graph = aRenderableGraphModel();
     const container = document.createElement("div");
 
     createSigmaRenderer().mount(container, aView({ graph: { ...graph, nodes: graph.nodes.map((node) => ({ ...node, degree: node.id === OTHER_NODE_ID ? 40 : 1 })) } }), events());

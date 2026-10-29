@@ -1,5 +1,6 @@
 import type { GraphRendererEvents, GraphRendererFactory, GraphRenderView } from "@/features/graph/graphRendererPort";
-import type { LocalGraph } from "@/features/graph/localGraph";
+import type { RenderableGraph } from "@/features/graph/graphShape";
+import { renderableGraphOf, type LocalGraph } from "@/features/graph/localGraph";
 import { aLocalGraph } from "./graphFixtures";
 
 /**
@@ -64,4 +65,9 @@ export function aLocalGraphModel(): LocalGraph {
     omittedNodeCount: 0,
     omittedEdgeCount: 0,
   };
+}
+
+/** The model local graph as the drawing and the list take it (DA-222); untyped Nodes are "Sem Type", the rest "Livro". */
+export function aRenderableGraphModel(): RenderableGraph {
+  return renderableGraphOf(aLocalGraphModel(), (typeId) => (typeId === null ? "Sem Type" : "Livro"));
 }

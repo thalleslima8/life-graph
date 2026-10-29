@@ -30,6 +30,7 @@ public sealed class PostgresDatabase : IAsyncLifetime
     private const string MigratorPassword = "lifegraph_migrator_dev";
     private const string ApplicationPassword = "lifegraph_app_dev";
     private const string ProvisionerPassword = "lifegraph_provisioner_dev";
+    private const string OperatorPassword = "lifegraph_operator_dev";
 
     private readonly string _databaseName = $"lifegraph_test_{Guid.NewGuid():N}";
     private PostgreSqlContainer? _container;
@@ -42,6 +43,8 @@ public sealed class PostgresDatabase : IAsyncLifetime
 
     public string ProvisioningConnectionString { get; private set; } = string.Empty;
 
+    public string OperatorConnectionString { get; private set; } = string.Empty;
+
     public async ValueTask InitializeAsync()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -52,6 +55,7 @@ public sealed class PostgresDatabase : IAsyncLifetime
         MigratorConnectionString = ConnectionStringFor(DatabaseRoles.Migrator, MigratorPassword);
         ApplicationConnectionString = ConnectionStringFor(DatabaseRoles.Application, ApplicationPassword);
         ProvisioningConnectionString = ConnectionStringFor(DatabaseRoles.Provisioner, ProvisionerPassword);
+        OperatorConnectionString = ConnectionStringFor(DatabaseRoles.Operator, OperatorPassword);
 
         await ProvisionDatabaseAsync(cancellationToken);
         await MigrateAsync(cancellationToken);

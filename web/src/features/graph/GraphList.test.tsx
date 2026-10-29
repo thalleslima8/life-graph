@@ -2,18 +2,18 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
-import { aLocalGraphModel } from "@/test/fakeGraphRenderer";
+import { aRenderableGraphModel } from "@/test/fakeGraphRenderer";
 import { NODE_ID, OTHER_NODE_ID } from "@/test/graphFixtures";
 import { GraphList, type GraphListProps } from "./GraphList";
 import { graphKeyboardHelp } from "./graphMessages";
-import type { LocalGraph } from "./localGraph";
+import type { RenderableGraph } from "./graphShape";
 
 const THIRD_ID = "01920000-0000-7000-8000-000000000003";
 const labels = { canvas: "Grafo local de Leituras", agentUnreviewed: "mudança de agente não revisada", nodeSummary: () => "Livro, 1 Relation" };
 
 /** Leituras → cita → Meditações (Hard), Meditações → cita → Estoicismo (Soft, changed by an agent). */
-function aDeeperGraph(): LocalGraph {
-  const graph = aLocalGraphModel();
+function aDeeperGraph(): RenderableGraph {
+  const graph = aRenderableGraphModel();
   const [relation] = graph.edges;
   if (!relation) {
     throw new Error("The model graph has a Relation.");
@@ -21,13 +21,13 @@ function aDeeperGraph(): LocalGraph {
 
   return {
     ...graph,
-    nodes: [...graph.nodes, { id: THIRD_ID, title: "Estoicismo", typeId: null, distance: 2, degree: 1, agentUnreviewed: true }],
+    nodes: [...graph.nodes, { id: THIRD_ID, title: "Estoicismo", typeName: null, typeId: null, distance: 2, degree: 1, agentUnreviewed: true }],
     edges: [...graph.edges, { ...relation, id: "01920000-0000-7000-8000-0000000000f2", sourceNodeId: OTHER_NODE_ID, targetNodeId: THIRD_ID, assertion: "soft", agentUnreviewed: true }],
   };
 }
 
 function listProps(overrides: Partial<GraphListProps> = {}): GraphListProps {
-  return { graph: aDeeperGraph(), rootId: NODE_ID, highlightAgent: true, onSelect: vi.fn(), onReroot: vi.fn(), labels, ...overrides };
+  return { graph: aDeeperGraph(), highlightAgent: true, onSelect: vi.fn(), onReroot: vi.fn(), labels, ...overrides };
 }
 
 const nodeButton = (title: string) => screen.getByRole("button", { name: title });
@@ -135,7 +135,7 @@ describe("graph list", () => {
 
 describe("graph list with a Soft Relation from the root", () => {
   it("says Soft and explains the inference in words, never by colour", () => {
-    const graph = aLocalGraphModel();
+    const graph = aRenderableGraphModel();
     const softEdge = {
       id: "01920000-0000-7000-8000-0000000000f3",
       sourceNodeId: NODE_ID,

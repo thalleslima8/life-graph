@@ -8,4 +8,7 @@ public static class LifeGraphClaimTypes
 
     /// <summary>The AgentIdentity an agent's token was issued for (DA-030); only agent tokens carry it.</summary>
     public const string AgentIdentityId = "lifegraph:agent_identity_id";
+
+    /// <summary>The SharedGraphView a visitor's link resolved to (DA-213); only a ShareVisitor carries it.</summary>
+    public const string SharedGraphViewId = "lifegraph:shared_graph_view_id";
 }

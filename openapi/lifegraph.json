@@ -3453,6 +3453,438 @@
           }
         }
       }
+    },
+    "/api/shared-graph-views/proposal": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "operationId": "ProposeSharedGraphView",
+        "parameters": [
+          {
+            "name": "rootNodeId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "maxDepth",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedGraphViewProposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shared-graph-views": {
+      "post": {
+        "tags": [
+          "Sharing"
+        ],
+        "operationId": "CreateSharedGraphView",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSharedGraphViewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedGraphViewCreatedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "operationId": "ListSharedGraphViews",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedGraphViewPageOfSharedGraphViewSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shared-graph-views/node-ids": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "operationId": "ListSharedNodeIds",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedGraphViewPageOfGuid"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shared-graph-views/{sharedGraphViewId}": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "operationId": "GetSharedGraphView",
+        "parameters": [
+          {
+            "name": "sharedGraphViewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedGraphViewSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shared-graph-views/{sharedGraphViewId}/revocation": {
+      "post": {
+        "tags": [
+          "Sharing"
+        ],
+        "operationId": "RevokeSharedGraphView",
+        "parameters": [
+          {
+            "name": "sharedGraphViewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shared-graph-views/revocation": {
+      "post": {
+        "tags": [
+          "Sharing"
+        ],
+        "operationId": "RevokeAllSharedGraphViews",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/shared": {
+      "get": {
+        "tags": [
+          "Shared"
+        ],
+        "operationId": "VisitSharedGraphView",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitorGraph"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before trying again.",
+                "required": true,
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shared/nodes/{nodeId}": {
+      "get": {
+        "tags": [
+          "Shared"
+        ],
+        "operationId": "VisitSharedNode",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitorNode"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before trying again.",
+                "required": true,
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4342,6 +4774,58 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "CreateSharedGraphViewRequest": {
+        "required": [
+          "rootNodeId",
+          "maxDepth",
+          "nodeIds",
+          "propertyIds",
+          "includeTags",
+          "legalNoticeAccepted"
+        ],
+        "type": "object",
+        "properties": {
+          "rootNodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "maxDepth": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "nodeIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "propertyIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "includeTags": {
+            "type": "boolean"
+          },
+          "legalNoticeAccepted": {
+            "type": "boolean"
           }
         }
       },
@@ -5725,6 +6209,38 @@
           "untag_node"
         ]
       },
+      "ProposedSharedNode": {
+        "required": [
+          "id",
+          "title",
+          "typeName",
+          "distance"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "typeName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "distance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "RelationAssertion": {
         "enum": [
           "hard",
@@ -5917,6 +6433,215 @@
           },
           "email": {
             "type": "string"
+          }
+        }
+      },
+      "ShareableProperty": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "SharedGraphViewCreatedResponse": {
+        "required": [
+          "id",
+          "shareUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shareUrl": {
+            "type": "string"
+          }
+        }
+      },
+      "SharedGraphViewPageInfo": {
+        "required": [
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SharedGraphViewPageOfGuid": {
+        "required": [
+          "data",
+          "page"
+        ],
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/SharedGraphViewPageInfo"
+          }
+        }
+      },
+      "SharedGraphViewPageOfSharedGraphViewSummary": {
+        "required": [
+          "data",
+          "page"
+        ],
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SharedGraphViewSummary"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/SharedGraphViewPageInfo"
+          }
+        }
+      },
+      "SharedGraphViewProposal": {
+        "required": [
+          "rootNodeId",
+          "maxDepth",
+          "nodes",
+          "eligibleCount",
+          "truncated",
+          "properties"
+        ],
+        "type": "object",
+        "properties": {
+          "rootNodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "maxDepth": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedSharedNode"
+            }
+          },
+          "eligibleCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShareableProperty"
+            }
+          }
+        }
+      },
+      "SharedGraphViewStatus": {
+        "enum": [
+          "active",
+          "suspended",
+          "disabled_by_platform",
+          "revoked"
+        ]
+      },
+      "SharedGraphViewSummary": {
+        "required": [
+          "id",
+          "rootNodeId",
+          "rootTitle",
+          "nodeCount",
+          "createdAt",
+          "lastAccessedOn",
+          "accessDayCount",
+          "status",
+          "revokedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rootNodeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "rootTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "nodeCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastAccessedOn": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "accessDayCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SharedGraphViewStatus"
+          },
+          "revokedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -6237,6 +6962,172 @@
           }
         }
       },
+      "VisitorGraph": {
+        "required": [
+          "rootNodeId",
+          "publicRef",
+          "nodes",
+          "relations"
+        ],
+        "type": "object",
+        "properties": {
+          "rootNodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "publicRef": {
+            "type": "string"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VisitorGraphNode"
+            }
+          },
+          "relations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VisitorRelation"
+            }
+          }
+        }
+      },
+      "VisitorGraphNode": {
+        "required": [
+          "id",
+          "title",
+          "typeName",
+          "distance"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "typeName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "distance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "VisitorNode": {
+        "required": [
+          "id",
+          "title",
+          "body",
+          "typeName",
+          "resourceUrl",
+          "properties",
+          "tags",
+          "relations"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "typeName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "resourceUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VisitorProperty"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "relations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VisitorRelation"
+            }
+          }
+        }
+      },
+      "VisitorProperty": {
+        "required": [
+          "name",
+          "valueKind",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "valueKind": {
+            "$ref": "#/components/schemas/PropertyValueKind"
+          },
+          "value": {
+            "$ref": "#/components/schemas/JsonElement"
+          }
+        }
+      },
+      "VisitorRelation": {
+        "required": [
+          "id",
+          "sourceNodeId",
+          "targetNodeId",
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceNodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetNodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          }
+        }
+      },
       "WriteChannel": {
         "enum": [
           "ui",
@@ -6278,6 +7169,12 @@
     },
     {
       "name": "Resources"
+    },
+    {
+      "name": "Sharing"
+    },
+    {
+      "name": "Shared"
     }
   ],
   "x-error-codes": [
@@ -6534,6 +7431,31 @@
     {
       "code": "payload_too_large",
       "status": 413,
+      "recovery": "fix_input"
+    },
+    {
+      "code": "sharing.legal_notice_not_accepted",
+      "status": 422,
+      "recovery": "fix_input"
+    },
+    {
+      "code": "sharing.limit_reached",
+      "status": 422,
+      "recovery": "ask_user"
+    },
+    {
+      "code": "sharing.node_not_eligible",
+      "status": 422,
+      "recovery": "fix_input"
+    },
+    {
+      "code": "sharing.property_not_eligible",
+      "status": 422,
+      "recovery": "fix_input"
+    },
+    {
+      "code": "sharing.root_not_shareable",
+      "status": 422,
       "recovery": "fix_input"
     },
     {

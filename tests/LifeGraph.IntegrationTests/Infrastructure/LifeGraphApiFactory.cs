@@ -6,6 +6,7 @@ using LifeGraph.IntegrationTests.Semantic;
 using LifeGraph.Semantic.Embedding;
 using LifeGraph.Semantic.Search;
 using LifeGraph.Semantic.SoftRelations;
+using LifeGraph.Sharing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -22,11 +23,17 @@ public sealed class LifeGraphApiFactory : WebApplicationFactory<Program>
     /// <summary>Where the test server answers, and so the issuer and the MCP resource's origin.</summary>
     public static readonly Uri Origin = new("https://localhost/");
 
+    /// <summary>The visitor origin of shares: a host of its own (DA-215).</summary>
+    public static readonly Uri ShareOrigin = new("https://share.localhost/");
+
     /// <summary>Not Development, so nothing from appsettings.Development.json leaks into the tests.</summary>
     private const string TestingEnvironment = "Testing";
 
     private readonly PostgresDatabase _database;
     private readonly IReadOnlyDictionary<string, string> _settings;
+    /// <summary>Where the visitor's "Denunciar esta página" writes to in the tests (DA-218).</summary>
+    public const string AbuseReportAddress = "abuse@lifegraph.test";
+
     private readonly bool _isProvisioningHost;
     private LifeGraphApiFactory? _provisioning;
     private readonly Action<IServiceCollection>? _configureServices;
@@ -98,6 +105,9 @@ public sealed class LifeGraphApiFactory : WebApplicationFactory<Program>
         builder.UseSetting($"{JobsOptions.SectionName}:{nameof(JobsOptions.RunWorker)}", "false");
         // No model file in a test (DA-175): the DeterministicEmbedder below takes the model's place.
         builder.UseSetting($"{EmbeddingOptions.SectionName}:{nameof(EmbeddingOptions.Provider)}", nameof(EmbeddingProvider.None));
+        builder.UseSetting($"{SharingOptions.SectionName}:{nameof(SharingOptions.Origin)}", ShareOrigin.AbsoluteUri);
+        builder.UseSetting($"{SharingOptions.SectionName}:{nameof(SharingOptions.Enabled)}", "true");
+        builder.UseSetting($"{SharingOptions.SectionName}:{nameof(SharingOptions.AbuseReportAddress)}", AbuseReportAddress);
         builder.UseSetting($"{SoftRelationOptions.SectionName}:{nameof(SoftRelationOptions.MinimumScores)}:{DeterministicEmbedder.Model}", DeterministicEmbedder.MinimumScore);
         builder.UseSetting($"{SemanticSearchOptions.SectionName}:{nameof(SemanticSearchOptions.MinimumScores)}:{DeterministicEmbedder.Model}", DeterministicEmbedder.MinimumScore);
         foreach (var (key, value) in _settings)

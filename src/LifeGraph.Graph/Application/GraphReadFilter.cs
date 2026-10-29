@@ -13,8 +13,11 @@ namespace LifeGraph.Graph.Application;
 /// what the principal sees inside it. The person sees every live Node. An AgentIdentity never
 /// sees a Node Oculto para agentes, by its own flag or its Type's (DA-035): the Node does not
 /// exist for it, so a Relation to it is not there either, and a traversal stops at it, as at a
-/// wall. Any other principal, or none, sees nothing (a ShareVisitor arrives with E11). The
-/// GraphChangeSets and the ChangeProposals are read through it too.
+/// wall. A ShareVisitor sees only the live members of the SharedGraphView its link opened, as an
+/// agent would, never the Raiz da Conta, and only while that share is live (DA-075, DA-076,
+/// DA-219). It is no <see cref="GraphReader"/>: the raw SQL reads, the walk, the Soft Relations,
+/// the history and the proposals stay closed to it. Any other principal, or none, sees nothing.
+/// The GraphChangeSets and the ChangeProposals are read through it too.
 /// </summary>
 internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal currentPrincipal)
 {
@@ -61,6 +64,11 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
     /// </summary>
     public IQueryable<Relation> RelationsWithSoft()
     {
+        if (Reader is null)
+        {
+            return db.Set<Relation>().AsNoTracking().Where(_ => false);
+        }
+
         var visibleNodes = Nodes();
         return RelationReadGate.ShownRelations(db).AsNoTracking().Where(relation => relation.DeletedAt == null
             && visibleNodes.Any(node => node.Id == relation.SourceNodeId)
@@ -93,11 +101,18 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
     /// <summary>
     /// The Tags the reader sees: the person sees all of them; an AgentIdentity sees a Tag on at
     /// least one live Node it sees, or on no live Node at all, so a Tag only Nodes Oculto para
-    /// agentes have does not exist for it (DA-162); anyone else sees none.
+    /// agentes have does not exist for it (DA-162); a ShareVisitor sees a Tag of a member it sees,
+    /// only when the share shows Tags (DA-077); anyone else sees none.
     /// </summary>
     public IQueryable<Tag> Tags()
     {
         var tags = db.Set<Tag>().AsNoTracking();
+        if (VisitedShareId is not null)
+        {
+            var shownLinks = NodeTags();
+            return tags.Where(tag => shownLinks.Any(link => link.TagId == tag.Id));
+        }
+
         switch (Reader)
         {
             case GraphReader.Human:
@@ -121,17 +136,36 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
         return Reader == GraphReader.Human ? collections : collections.Where(_ => false);
     }
 
-    /// <summary>The Tag links of the live Nodes the reader sees (DA-160).</summary>
+    /// <summary>
+    /// The Tag links of the live Nodes the reader sees (DA-160); for a ShareVisitor, none unless
+    /// the share shows Tags (DA-077).
+    /// </summary>
     public IQueryable<NodeTag> NodeTags()
     {
         var visibleNodes = Nodes();
-        return db.Set<NodeTag>().AsNoTracking().Where(link => visibleNodes.Any(node => node.Id == link.NodeId));
+        var links = db.Set<NodeTag>().AsNoTracking().Where(link => visibleNodes.Any(node => node.Id == link.NodeId));
+        if (VisitedShareId is not { } shareId)
+        {
+            return links;
+        }
+
+        var showsTags = db.Set<SharedGraphView>().Where(share => share.Id == shareId && share.IncludeTags);
+        return links.Where(_ => showsTags.Any());
     }
 
-    /// <summary>The Types the reader sees: an agent never sees one that hides its Nodes (DA-039).</summary>
+    /// <summary>
+    /// The Types the reader sees: an agent never sees one that hides its Nodes (DA-039); a
+    /// ShareVisitor only the Types of the members it sees, for their names (DA-077).
+    /// </summary>
     public IQueryable<NodeType> Types()
     {
         var types = db.Set<NodeType>().AsNoTracking();
+        if (VisitedShareId is not null)
+        {
+            var visibleNodes = Nodes();
+            return types.Where(type => visibleNodes.Any(node => node.TypeId == type.Id));
+        }
+
         return Reader switch
         {
             GraphReader.Human => types,
@@ -167,15 +201,39 @@ internal sealed class GraphReadFilter(LifeGraphDbContext db, ICurrentPrincipal c
         };
     }
 
+    /// <summary>The SharedGraphView a ShareVisitor's link opened; <c>null</c> for anyone else (DA-213).</summary>
+    public Guid? VisitedShareId =>
+        currentPrincipal.Authenticated is { Type: PrincipalType.ShareVisitor, SharedGraphViewId: { } shareId } ? shareId : null;
+
     // What the reader sees among the Nodes: the person all, an agent none Oculto para agentes,
-    // by its own flag or its Type's (DA-035), anyone else nothing.
+    // by its own flag or its Type's (DA-035), a ShareVisitor the members of its share, anyone
+    // else nothing.
     private IQueryable<Node> SeenByReader(IQueryable<Node> nodes) => Reader switch
     {
         GraphReader.Human => nodes,
-        GraphReader.AgentIdentity => nodes.Where(node => !node.HiddenFromAgents
-            && !db.Set<NodeType>().Any(type => type.Id == node.TypeId && type.HiddenFromAgents)),
+        GraphReader.AgentIdentity => NotHiddenFromAgents(nodes),
+        _ when VisitedShareId is { } shareId => SeenByVisitor(nodes, shareId),
         _ => nodes.Where(_ => false),
     };
+
+    internal IQueryable<Node> NotHiddenFromAgents(IQueryable<Node> nodes) =>
+        nodes.Where(node => !node.HiddenFromAgents && !db.Set<NodeType>().Any(type => type.Id == node.TypeId && type.HiddenFromAgents));
+
+    // The live members of the share, seen as an agent sees them and never the Raiz da Conta
+    // (DA-076, DA-219), while the share is live: not revoked, not blocked by the operator, its
+    // root live and seen the same way (DA-075, DA-217). Otherwise nothing, so the link is 404.
+    private IQueryable<Node> SeenByVisitor(IQueryable<Node> nodes, Guid shareId)
+    {
+        var seenRoots = NotHiddenFromAgents(db.Set<Node>().Where(node => node.DeletedAt == null)).Where(Node.IsNotAccountRootPredicate);
+        var liveShare = db.Set<SharedGraphView>().Where(share => share.Id == shareId
+            && share.RevokedAt == null
+            && seenRoots.Any(root => root.Id == share.RootNodeId)
+            && !db.Set<SharedGraphViewDirectoryEntry>().Any(entry => entry.SharedGraphViewId == share.Id && entry.BlockedAt != null));
+        var members = db.Set<SharedGraphViewNode>().Where(member => member.SharedGraphViewId == shareId);
+        return NotHiddenFromAgents(nodes.Where(node => node.DeletedAt == null))
+            .Where(Node.IsNotAccountRootPredicate)
+            .Where(node => members.Any(member => member.NodeId == node.Id) && liveShare.Any());
+    }
 }
 
 /// <summary>Who a read is for; the central read filter decides what each one sees.</summary>

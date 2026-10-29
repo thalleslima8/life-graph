@@ -11,4 +11,7 @@ public static class DatabaseRoles
 
     /// <summary>Creates Accounts for the owner's CLI and reads nothing else (DA-107).</summary>
     public const string Provisioner = "lifegraph_provisioner";
+
+    /// <summary>Blocks a SharedGraphView by its public reference for the operator's CLI and reads no Account data (DA-217).</summary>
+    public const string Operator = "lifegraph_operator";
 }

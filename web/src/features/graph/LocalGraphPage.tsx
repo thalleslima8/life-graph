@@ -48,23 +48,20 @@ import { AGENT_RING_COLOR, AGENT_RING_WIDTH, EDGE_COLOR, edgeStyleOf, typeColorO
 import {
   GRAPH_DEPTHS,
   GRAPH_VIEW_MODES,
-  INITIAL_ZOOM,
-  MAX_ZOOM,
-  MIN_ZOOM,
-  graphPath,
   localGraphQuery,
   rememberLastFocus,
-  steppedZoom,
+  renderableGraphOf,
   useGraphView,
-  zoomLevelOf,
   type GraphDepth,
   type GraphViewMode,
   type LocalGraph,
   type LocalGraphEdge,
-  type LocalGraphNode,
 } from "./localGraph";
 import { NodeInspector } from "./NodeInspector";
+import type { RenderableNode } from "./graphShape";
+import { INITIAL_ZOOM, MAX_ZOOM, MIN_ZOOM, graphPath, steppedZoom, zoomLevelOf } from "./graphView";
 import { useChangeSetProbe } from "./recentChanges";
+import { SharedBadge } from "@/features/sharing/SharedBadge";
 
 type TypeNameOf = (typeId: string | null) => string;
 
@@ -273,22 +270,32 @@ function LocalGraphView({
   onReroot: (nodeId: string) => void;
   onDrawingFailed: () => void;
 }) {
+  const shown = useMemo(() => renderableGraphOf(graph, typeNameOf), [graph, typeNameOf]);
   const labels = useMemo(
     () => ({
       canvas: localGraphLabel(rootTitle, graph.nodes.length, graph.edges.length),
       agentUnreviewed: AGENT_UNREVIEWED_LABEL,
-      nodeSummary: (node: LocalGraphNode) => nodeSummaryText(typeNameOf(node.typeId ?? null), node.degree),
+      nodeSummary: (node: RenderableNode) => nodeSummaryText(node.typeName ?? NO_TYPE_LABEL, node.degree ?? 0),
     }),
-    [rootTitle, graph.nodes.length, graph.edges.length, typeNameOf],
+    [rootTitle, graph.nodes.length, graph.edges.length],
   );
   if (mode === "list") {
-    return <GraphList graph={graph} rootId={graph.rootNodeId} selectedId={selectedId} highlightAgent onSelect={onSelect} onReroot={onReroot} labels={labels} />;
+    return (
+      <GraphList
+        graph={shown}
+        selectedId={selectedId}
+        highlightAgent
+        onSelect={onSelect}
+        onReroot={onReroot}
+        labels={labels}
+        nodeBadge={(nodeId) => <SharedBadge nodeId={nodeId} />}
+      />
+    );
   }
 
   return (
     <GraphCanvas
-      graph={graph}
-      rootId={graph.rootNodeId}
+      graph={shown}
       selectedId={selectedId}
       highlightAgent
       zoom={zoom}
