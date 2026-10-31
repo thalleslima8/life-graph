@@ -1,7 +1,8 @@
+using System.Net;
+using System.Text.Json;
 using LifeGraph.Agents.Mcp;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Infrastructure.Accounts;
-using LifeGraph.Infrastructure.Persistence;
 using LifeGraph.IntegrationTests.Graph;
 using LifeGraph.IntegrationTests.Infrastructure;
 using LifeGraph.IntegrationTests.Semantic;
@@ -11,17 +12,19 @@ using Npgsql;
 namespace LifeGraph.IntegrationTests.Accounts;
 
 /// <summary>
-/// The whole Account purge (DA-012, DA-124), driven by the schema instead of a list of tables: every
-/// table with an <c>account_id</c> is left without rows of the purged Account, and another
-/// Account's rows survive. A table added by a later epic without extending the purge fails here.
+/// The whole Account deletion (DA-012, DA-124, DA-252), driven by the schema instead of a list of
+/// tables: after the real deletion, every table with an <c>account_id</c> is left without rows of
+/// the deleted Account, the Account and its user are gone, and another Account's rows survive. A
+/// table added by a later epic without extending the purge fails here.
 /// </summary>
 public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetime
 {
     private const string Email = "ada@example.test";
     private const string OtherEmail = "grace@example.test";
+    private const string DeletionPath = "/api/account/deletion";
 
-    // The credential directory (DA-098) is not a participant's: E12 removes the user with the Account itself.
-    private static readonly string[] RemovedWithTheAccount = ["users"];
+    // The RLS harness's own table (RlsProbes) exists only in the test database and holds no Account data.
+    private const string TestOnlyTable = "rls_probes";
 
     private readonly LifeGraphApiFactory _factory = new(database, AgentAuthorization.Settings());
 
@@ -30,37 +33,36 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
     public ValueTask DisposeAsync() => _factory.DisposeAsync();
 
     [Fact]
-    public async Task Every_participant_together_leave_no_row_of_the_account_in_any_table_with_account_id()
+    public async Task Deleting_the_account_leaves_no_row_of_it_in_any_table_with_account_id()
     {
         var purged = await AccountWithDataAsync(Email);
         var other = await AccountWithDataAsync(OtherEmail);
+        var tables = (await AccountTablesAsync()).Where(table => table != TestOnlyTable).ToList();
+        var purgedUser = await UserOfAsync(purged);
+        var otherUser = await UserOfAsync(other);
 
-        Assert.True(await CountAsync("agent_reads", purged) > 0);
-        Assert.True(await CountAsync("node_embeddings", purged) > 0);
-        Assert.True(await CountAsync("soft_dismissals", purged) > 0);
-        Assert.True(await SoftRelationsAsync(purged) > 0);
-
-        await RunAllParticipantsAsync(purged);
-
-        var tables = await AccountTablesAsync();
-        Assert.Contains("agent_identities", tables);
-        Assert.Contains("nodes", tables);
-        Assert.Contains("jobs", tables);
-        Assert.Contains("agent_reads", tables);
-        Assert.Contains("change_proposals", tables);
-        foreach (var table in tables.Except(RemovedWithTheAccount))
+        // Every table starts with rows of the Account, so an empty table proves nothing by accident.
+        foreach (var table in tables)
         {
-            Assert.True(0 == await CountAsync(table, purged), $"{table} still has rows of the purged Account.");
+            Assert.True(await CountAsync(table, purged) > 0, $"{table} has no rows of the Account before the deletion; seed it here.");
         }
 
-        Assert.True(await CountAsync("nodes", other) > 0);
-        Assert.True(await CountAsync("jobs", other) > 0);
-        Assert.True(await CountAsync("agent_identities", other) > 0);
-        Assert.True(await CountAsync("agent_reads", other) > 0);
-        Assert.True(await CountAsync("change_proposals", other) > 0);
-        Assert.True(await CountAsync("node_embeddings", other) > 0);
-        Assert.True(await CountAsync("soft_dismissals", other) > 0);
-        Assert.True(await SoftRelationsAsync(other) > 0);
+        await DeleteAccountAsync(Email);
+
+        Assert.Contains("agent_identities", tables);
+        Assert.Contains("nodes", tables);
+        Assert.Contains("users", tables);
+        foreach (var table in tables)
+        {
+            Assert.True(0 == await CountAsync(table, purged), $"{table} still has rows of the deleted Account.");
+            Assert.True(await CountAsync(table, other) > 0, $"{table} lost rows of another Account.");
+        }
+
+        Assert.Equal(0L, await database.QueryScalarAsMigratorAsync<long>("SELECT count(*) FROM accounts WHERE id = @id", new NpgsqlParameter("id", purged)));
+        Assert.Equal(0L, await IssuedToAsync("oidc_authorizations", purgedUser));
+        Assert.Equal(0L, await IssuedToAsync("oidc_tokens", purgedUser));
+        Assert.True(await IssuedToAsync("oidc_authorizations", otherUser) > 0);
+        Assert.True(await IssuedToAsync("oidc_tokens", otherUser) > 0);
     }
 
     // DA-119: the grants are removed in the Account's transaction, so a later participant's failure brings them back.
@@ -72,12 +74,13 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
             AgentAuthorization.Settings(),
             services => services.AddScoped<IAccountPurgeParticipant, FailingParticipant>());
         await database.ResetAsync();
-        var account = (await TestAccounts.ProvisionConfirmedAsync(failing, Email)).AccountId;
+        await TestAccounts.ProvisionConfirmedAsync(failing, Email);
         using var browser = await AgentAuthorization.SignedInBrowserAsync(failing, Email);
         await AgentAuthorization.ConnectAsync(failing, browser);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => RunAllParticipantsAsync(account, failing));
+        var deletion = await browser.PostAsync(DeletionPath, new { password = TestAccounts.Password, confirmation = Email });
 
+        Assert.Equal(HttpStatusCode.InternalServerError, deletion.StatusCode);
         Assert.Equal(1L, await database.QueryScalarAsMigratorAsync<long>("SELECT count(*) FROM agent_identities"));
         Assert.Equal(1L, await database.QueryScalarAsMigratorAsync<long>("SELECT count(*) FROM oidc_authorizations"));
         Assert.True(await database.QueryScalarAsMigratorAsync<long>("SELECT count(*) FROM oidc_tokens") > 0);
@@ -125,6 +128,28 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
             new NpgsqlParameter("account", account),
             new NpgsqlParameter("node", stoicism));
         await graph.WrittenAsync(account, new IgnoreSoftRelation(stoicism, softRelation));
+
+        // A Tag, a Collection, a share link and an export, so their tables hold rows of the Account too.
+        var tag = Guid.CreateVersion7();
+        var collection = Guid.CreateVersion7();
+        var pages = Guid.CreateVersion7();
+        var shared = Guid.CreateVersion7();
+        var book = Guid.CreateVersion7();
+        await graph.WrittenAsync(
+            account,
+            new DefineProperty(pages, "Páginas", PropertyValueKind.Number),
+            new CreateType(book, "Livro", [pages]),
+            new CreateNode(shared, "Cartas a Lucílio", TypeId: book, Properties: new Dictionary<Guid, JsonElement> { [pages] = JsonSerializer.SerializeToElement(320) }),
+            new CreateTag(tag, "Filosofia"),
+            new TagNode(stoicism, tag),
+            new CreateCollection(collection, "Estoicos", null, false),
+            new AddToCollection(collection, stoicism));
+        var share = await browser.PostAsync(
+            "/api/shared-graph-views",
+            new { rootNodeId = shared, maxDepth = 1, nodeIds = new[] { shared }, propertyIds = new[] { pages }, includeTags = true, legalNoticeAccepted = true });
+        Assert.Equal(HttpStatusCode.Created, share.StatusCode);
+        var export = await browser.PostAsync("/api/account/export", new { });
+        Assert.Equal(HttpStatusCode.Accepted, export.StatusCode);
         return account;
     }
 
@@ -133,26 +158,19 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
             "SELECT count(*) FROM relations WHERE account_id = @account AND assertion = 'soft'",
             new NpgsqlParameter("account", accountId));
 
-    private Task RunAllParticipantsAsync(Guid accountId) => RunAllParticipantsAsync(accountId, _factory);
-
-    private static async Task RunAllParticipantsAsync(Guid accountId, LifeGraphApiFactory factory)
+    private async Task DeleteAccountAsync(string email)
     {
-        await using var scope = factory.Services.CreateAsyncScope();
-        scope.ServiceProvider.GetRequiredService<TestAccountContext>().ActAs(accountId);
-        var db = scope.ServiceProvider.GetRequiredService<LifeGraphDbContext>();
-        var participants = scope.ServiceProvider.GetServices<IAccountPurgeParticipant>().ToList();
-        await db.InAccountTransactionAsync(
-            async token =>
-            {
-                foreach (var participant in participants)
-                {
-                    await participant.PurgeAsync(accountId, token);
-                }
-
-                return true;
-            },
-            TestContext.Current.CancellationToken);
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, email);
+        var deletion = await browser.PostAsync(DeletionPath, new { password = TestAccounts.Password, confirmation = email });
+        Assert.Equal(HttpStatusCode.OK, deletion.StatusCode);
     }
+
+    private Task<Guid> UserOfAsync(Guid accountId) =>
+        database.QueryScalarAsMigratorAsync<Guid>("SELECT id FROM users WHERE account_id = @account", new NpgsqlParameter("account", accountId));
+
+    // The issuer's grants and tokens carry the user as subject, not an account_id (DA-119).
+    private Task<long> IssuedToAsync(string table, Guid userId) =>
+        database.QueryScalarAsMigratorAsync<long>($"SELECT count(*) FROM {table} WHERE subject = @subject", new NpgsqlParameter("subject", userId.ToString()));
 
     private async Task<List<string>> AccountTablesAsync()
     {

@@ -34,6 +34,30 @@ public sealed class RowLevelSecurityCatalogTests(PostgresDatabase database)
         Assert.Empty(tablesWithoutIsolation.Except(CredentialDirectoryTables).Except(ShareDirectoryTables));
     }
 
+    /// <summary>The purge ledger outlives the Account it records, so it has no account_id and no RLS (DA-253).</summary>
+    private const string PurgeLedgerTable = "purge_ledger_entries";
+
+    // Besides the directories, only the migrations history and the issuer's oidc_* tables (DA-119) go without RLS.
+    [Fact]
+    public async Task The_purge_ledger_is_the_one_table_left_out_of_rls_without_being_a_directory()
+    {
+        var tablesWithoutRls = await QueryTableNamesAsync("""
+            SELECT c.relname
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity
+              AND c.relname <> '__ef_migrations_history' AND c.relname NOT LIKE 'oidc\_%'
+            """);
+        var ledgerHasAccountId = await QueryTableNamesAsync("""
+            SELECT table_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'purge_ledger_entries' AND column_name = 'account_id'
+            """);
+
+        Assert.Contains(PurgeLedgerTable, tablesWithoutRls);
+        Assert.Empty(tablesWithoutRls.Except(CredentialDirectoryTables).Except(ShareDirectoryTables).Except([PurgeLedgerTable]));
+        Assert.Empty(ledgerHasAccountId);
+    }
+
     // An open WITH CHECK for the application role would let any web request create Account
     // rows; only the provisioning role of the CLI has one (DA-107).
     [Fact]

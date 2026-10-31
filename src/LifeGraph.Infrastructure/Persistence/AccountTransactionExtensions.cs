@@ -1,3 +1,4 @@
+using System.Data;
 using Limaj.Framework.Core;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,6 +22,32 @@ public static class AccountTransactionExtensions
             async (_, pendingWork, token) =>
             {
                 await using var transaction = await dbContext.Database.BeginTransactionAsync(token);
+                var outcome = await pendingWork(token);
+                await transaction.CommitAsync(token);
+                return outcome;
+            },
+            verifySucceeded: null,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Like <see cref="InAccountTransactionAsync{TResult}"/>, but read-only and
+    /// <c>REPEATABLE READ</c>: every query of <paramref name="work"/> sees the same snapshot, so
+    /// a long read that spans many tables (the Account export, DA-248) never mixes states.
+    /// </summary>
+    public static Task<TResult> InAccountSnapshotAsync<TResult>(
+        this LifeGraphDbContext dbContext,
+        Func<CancellationToken, Task<TResult>> work,
+        CancellationToken cancellationToken)
+    {
+        var strategy = dbContext.Database.CreateExecutionStrategy();
+
+        return strategy.ExecuteAsync(
+            work,
+            async (_, pendingWork, token) =>
+            {
+                await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, token);
+                await dbContext.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY", token);
                 var outcome = await pendingWork(token);
                 await transaction.CommitAsync(token);
                 return outcome;

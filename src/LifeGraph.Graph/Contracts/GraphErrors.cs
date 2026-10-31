@@ -147,6 +147,12 @@ public static class GraphErrors
     /// <summary>The message of <see cref="ResourceUrlInvalid"/>, the same for every cause.</summary>
     public const string ResourceUrlInvalidMessage = "This link cannot be kept as a Resource.";
 
+    /// <summary>The person has no Account export ready to download (DA-248): none asked for, still being built, failed or expired.</summary>
+    public static readonly ErrorCode ExportNotFound = ErrorCode.NotFound("graph.export_not_found");
+
+    /// <summary>An Account export is still being built (DA-248): one at a time per Account.</summary>
+    public static readonly ErrorCode ExportInProgress = ErrorCode.Conflict("graph.export_in_progress");
+
     public static IReadOnlyList<ErrorCode> All { get; } =
     [
         NodeNotFound,
@@ -181,5 +187,7 @@ public static class GraphErrors
         ResourceUrlTaken,
         ResourceUrlInvalid,
         CollectionNotManual,
+        ExportNotFound,
+        ExportInProgress,
     ];
 }

@@ -7,7 +7,7 @@ namespace LifeGraph.Graph.Persistence;
 
 /// <summary>
 /// The Graph's part of deleting an Account (DA-012): the whole graph, its history, the agents'
-/// proposals, the agents' read audit (DA-037), the sources (DA-114) and the Semantic Layer's
+/// proposals, the agents' read audit (DA-037), the export archive (DA-248) and the Semantic Layer's
 /// derived data (the embeddings, the Soft Relations and the dismissals, DA-070, DA-176), at
 /// once. Not a graph write, so no GraphChangeSet: there is no one left
 /// to undo it for. Runs inside the Account's transaction, as every participant, and RLS
@@ -17,6 +17,7 @@ internal sealed class GraphAccountPurge(LifeGraphDbContext db) : IAccountPurgePa
 {
     public async Task PurgeAsync(Guid accountId, CancellationToken cancellationToken)
     {
+        await db.Set<AccountExport>().Where(export => export.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<AgentRead>().Where(read => read.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<ChangeProposal>().Where(proposal => proposal.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         await db.Set<ChangeEntry>().Where(entry => entry.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);

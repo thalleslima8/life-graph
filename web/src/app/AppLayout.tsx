@@ -57,6 +57,9 @@ export function AppLayout() {
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <SearchBox />
               <span className="text-muted-foreground">{session.email}</span>
+              <Link to="/conta" className="underline-offset-4 hover:underline">
+                Conta
+              </Link>
               <Button type="button" variant="secondary" size="sm" onClick={() => logout.mutate()} disabled={logout.isPending}>
                 Sair
               </Button>

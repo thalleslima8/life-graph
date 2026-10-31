@@ -102,6 +102,81 @@ namespace LifeGraph.Migrations.Migrations
                     b.ToTable("agent_identities", (string)null);
                 });
 
+            modelBuilder.Entity("LifeGraph.Graph.Domain.AccountExport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<Guid>("BuildJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("build_job_id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<byte[]>("Content")
+                        .HasColumnType("bytea")
+                        .HasColumnName("content");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Failure")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("failure");
+
+                    b.Property<string>("OversizedData")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("oversized_data");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<long?>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("state");
+
+                    b.HasKey("Id")
+                        .HasName("pk_account_exports");
+
+                    b.HasIndex("AccountId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_account_exports_account_id");
+
+                    b.ToTable("account_exports", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_account_exports_content", "content IS NULL OR state = 'ready'");
+
+                            t.HasCheckConstraint("ck_account_exports_failed_with_failure", "(state = 'failed') = (failure IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_account_exports_failure", "failure IN ('internal', 'size_cap')");
+
+                            t.HasCheckConstraint("ck_account_exports_oversized_data", "oversized_data IN ('agent_identities', 'agent_reads', 'change_proposals', 'change_sets', 'collections', 'node_markdown', 'nodes', 'property_definitions', 'relations', 'shared_graph_views', 'tags', 'types')");
+
+                            t.HasCheckConstraint("ck_account_exports_size_bytes", "size_bytes IS NULL OR size_bytes >= 0");
+
+                            t.HasCheckConstraint("ck_account_exports_size_cap_with_data", "((failure = 'size_cap') IS TRUE) = (oversized_data IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_account_exports_state", "state IN ('expired', 'failed', 'pending', 'ready')");
+                        });
+                });
+
             modelBuilder.Entity("LifeGraph.Graph.Domain.AgentRead", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1542,6 +1617,58 @@ namespace LifeGraph.Migrations.Migrations
                         });
                 });
 
+            modelBuilder.Entity("LifeGraph.Infrastructure.Purging.PurgeLedgerEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<short>("HashVersion")
+                        .HasColumnType("smallint")
+                        .HasColumnName("hash_version");
+
+                    b.Property<DateTimeOffset>("PurgedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("purged_at");
+
+                    b.Property<string>("ReceiptReference")
+                        .HasMaxLength(19)
+                        .HasColumnType("character varying(19)")
+                        .HasColumnName("receipt_reference");
+
+                    b.Property<byte[]>("SubjectHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("subject_hash");
+
+                    b.Property<string>("SubjectKind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("subject_kind");
+
+                    b.HasKey("Id")
+                        .HasName("pk_purge_ledger_entries");
+
+                    b.HasIndex("ReceiptReference")
+                        .IsUnique()
+                        .HasDatabaseName("uq_purge_ledger_entries_receipt_reference");
+
+                    b.HasIndex("SubjectHash")
+                        .HasDatabaseName("ix_purge_ledger_entries_subject_hash");
+
+                    b.ToTable("purge_ledger_entries", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_purge_ledger_entries_hash_version", "hash_version >= 1");
+
+                            t.HasCheckConstraint("ck_purge_ledger_entries_receipt_only_for_accounts", "(subject_kind = 'account') = (receipt_reference IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_purge_ledger_entries_subject_hash_length", "octet_length(subject_hash) = 32");
+
+                            t.HasCheckConstraint("ck_purge_ledger_entries_subject_kind", "subject_kind IN ('account', 'node')");
+                        });
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<System.Guid>", b =>
                 {
                     b.Property<int>("Id")
@@ -1902,6 +2029,16 @@ namespace LifeGraph.Migrations.Migrations
                         .HasForeignKey("AuthorizationId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_agent_identities_authorization_id");
+                });
+
+            modelBuilder.Entity("LifeGraph.Graph.Domain.AccountExport", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_account_exports_account_id");
                 });
 
             modelBuilder.Entity("LifeGraph.Graph.Domain.AgentRead", b =>

@@ -26,4 +26,15 @@ public sealed class AccountEmailTests
         Assert.Contains(Link.ToString(), email.TextBody, StringComparison.Ordinal);
         Assert.Contains("within 2 hours", email.TextBody, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Deletion_notice_says_when_the_account_went_its_receipt_and_that_external_agents_keep_what_they_received()
+    {
+        var email = AccountEmail.AccountDeleted("ada@example.test", new DateTimeOffset(2026, 10, 31, 14, 5, 0, TimeSpan.FromHours(-3)), "3F9A-0C21-B7E4-58D6");
+
+        Assert.Equal("ada@example.test", email.To);
+        Assert.Contains("deleted on 2026-10-31 17:05 UTC", email.TextBody, StringComparison.Ordinal);
+        Assert.Contains("ChatGPT or Claude", email.TextBody, StringComparison.Ordinal);
+        Assert.Contains("Deletion receipt: 3F9A-0C21-B7E4-58D6, 2026-10-31 17:05 UTC.", email.TextBody, StringComparison.Ordinal);
+    }
 }

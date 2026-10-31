@@ -6,4 +6,7 @@ internal enum CredentialAttempt
     SignIn,
     PasswordResetRequest,
     EmailedLinkRedemption,
+
+    /// <summary>The password typed again to delete the Account (DA-249).</summary>
+    AccountDeletionReauthentication,
 }

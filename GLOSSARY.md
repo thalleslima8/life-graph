@@ -10,6 +10,14 @@ O titular de um Life Graph e a fronteira de isolamento dos dados. Nenhum dado
 cruza de uma Account para outra.
 _Avoid_: tenant, workspace, usuário (quando se refere ao dono dos dados)
 
+**Account export**:
+O arquivo `.zip` com tudo o que a Account tem: um `export.json` com os dados e
+um Markdown por Node, legível sem o app. Um job o monta a pedido da pessoa, e o
+download fica disponível por no máximo 24 horas. Deixa de fora só os dados
+derivados ou apagados (embeddings, Soft Relations e suas dispensas, tombstones).
+Nunca vira Premium (DA-247, DA-248).
+_Avoid_: backup, dump
+
 **AgentIdentity**:
 Uma conexão de agente externo: a concessão OAuth que o usuário autorizou, com
 seus scopes. O usuário pode renomeá-la e revogá-la. O nome e o provedor

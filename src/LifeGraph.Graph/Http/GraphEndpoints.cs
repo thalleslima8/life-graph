@@ -31,6 +31,7 @@ public static class GraphEndpoints
         api.MapChangeSetEndpoints();
         api.MapAgentChangeEndpoints();
         api.MapSearchEndpoints();
+        api.MapExportEndpoints();
 
         // The Raiz da Conta, where the local graph opens and "Conectar a…" points (DA-197, DA-206).
         api.MapGet("/account-root", (GraphReads reads, GraphWrites writes, CancellationToken cancellationToken) =>

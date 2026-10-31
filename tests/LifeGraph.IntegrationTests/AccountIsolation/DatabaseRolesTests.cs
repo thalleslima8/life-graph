@@ -48,6 +48,47 @@ public sealed class DatabaseRolesTests(PostgresDatabase database)
         Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, violation.SqlState);
     }
 
+    // DA-253: the purge ledger outlives the Account, so a web request may append to it and nothing more.
+    [Theory]
+    [InlineData("SELECT count(*) FROM purge_ledger_entries")]
+    [InlineData("UPDATE purge_ledger_entries SET hash_version = 2")]
+    [InlineData("DELETE FROM purge_ledger_entries")]
+    public async Task Application_role_only_appends_to_the_purge_ledger(string statement)
+    {
+        var violation = await Assert.ThrowsAsync<PostgresException>(() => QueryAsApplicationAsync(async connection =>
+        {
+            await using var command = new NpgsqlCommand(statement, connection);
+            return await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }));
+
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, violation.SqlState);
+    }
+
+    // The migration grants INSERT explicitly and revokes the rest, so no default privilege added later widens it.
+    [Fact]
+    public async Task Application_role_holds_insert_and_nothing_else_on_the_purge_ledger()
+    {
+        string[] privileges = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"];
+
+        var held = await QueryAsApplicationAsync(async connection =>
+        {
+            var granted = new List<string>();
+            foreach (var privilege in privileges)
+            {
+                await using var command = new NpgsqlCommand("SELECT has_table_privilege(current_user, 'purge_ledger_entries', @privilege)", connection);
+                command.Parameters.AddWithValue("privilege", privilege);
+                if ((bool)(await command.ExecuteScalarAsync(TestContext.Current.CancellationToken))!)
+                {
+                    granted.Add(privilege);
+                }
+            }
+
+            return granted;
+        });
+
+        Assert.Equal(["INSERT"], held);
+    }
+
     private async Task<T> QueryAsApplicationAsync<T>(Func<NpgsqlConnection, Task<T>> query)
     {
         await using var connection = new NpgsqlConnection(database.ApplicationConnectionString);

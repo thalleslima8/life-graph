@@ -41,6 +41,13 @@ public static class GraphModule
         services.AddScoped<ISemanticGraph, SemanticGraph>();
         services.AddScoped<IJobHandler, GraphPurge>();
         services.AddScoped<IJobHandler, ProposalExpiry>();
+
+        // The Account export (DA-247, DA-248): a job builds the archive, another drops it.
+        services.AddOptions<AccountExportOptions>().BindConfiguration(AccountExportOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+        services.AddScoped<AccountExportReader>();
+        services.AddScoped<AccountExports>();
+        services.AddScoped<ITwoPhaseJobHandler, AccountExportBuild>();
+        services.AddScoped<IJobHandler, AccountExportExpiry>();
         services.AddScoped<IAccountPurgeParticipant, GraphAccountPurge>();
         services.AddScoped<AccountRootCreation>();
         services.AddScoped<IAccountSetupParticipant, SystemOntologySetup>();

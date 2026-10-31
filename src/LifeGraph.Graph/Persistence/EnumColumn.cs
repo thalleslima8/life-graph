@@ -38,6 +38,10 @@ internal static class EnumColumn
                     values => values.Aggregate(0, (hash, value) => HashCode.Combine(hash, value)),
                     values => values.ToList()));
 
+    /// <summary>The name <paramref name="value"/> is stored as, for a CHECK that names one value.</summary>
+    public static string NameOf<TEnum>(TEnum value)
+        where TEnum : struct, Enum => Names<TEnum>.ToName(value);
+
     public static void HasEnumCheck<TEnum>(this TableBuilder table, string column)
         where TEnum : struct, Enum =>
         table.HasCheckConstraint($"ck_{table.Name}_{column}", $"{column} IN ({Names<TEnum>.SqlList})");

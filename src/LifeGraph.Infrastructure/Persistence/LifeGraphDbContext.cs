@@ -1,6 +1,7 @@
 using LifeGraph.Infrastructure.Accounts;
 using LifeGraph.Infrastructure.Identity;
 using LifeGraph.Infrastructure.Jobs;
+using LifeGraph.Infrastructure.Purging;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -38,6 +39,9 @@ public sealed class LifeGraphDbContext(
 
         // The job queue is shared by the modules (DA-113), so it is part of every model.
         modelBuilder.ApplyConfiguration(new JobConfiguration());
+
+        // So is the purge ledger: the Account deletion and the Graph's Node purge both write it (DA-254).
+        modelBuilder.ApplyConfiguration(new PurgeLedgerConfiguration());
 
         ConfigureIdentityTables(modelBuilder);
         ConfigureOpenIddictTables(modelBuilder);

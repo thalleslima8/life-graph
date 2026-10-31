@@ -83,6 +83,11 @@ export const routes: RouteObject[] = [
         loader: requireSession,
         lazy: async () => ({ Component: (await import("@/features/sharing/NewSharePage")).NewSharePage }),
       },
+      {
+        path: "conta",
+        loader: requireSession,
+        lazy: async () => ({ Component: (await import("@/features/account/AccountPage")).AccountPage }),
+      },
       { path: "login", loader: redirectIfAuthenticated, element: <LoginPage /> },
       { path: "forgot-password", loader: redirectIfAuthenticated, element: <ForgotPasswordPage /> },
       {

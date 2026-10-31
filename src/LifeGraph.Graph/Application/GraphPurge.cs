@@ -5,6 +5,7 @@ using LifeGraph.Graph.Domain;
 using LifeGraph.Graph.Persistence;
 using LifeGraph.Infrastructure.Jobs;
 using LifeGraph.Infrastructure.Persistence;
+using LifeGraph.Infrastructure.Purging;
 using Microsoft.EntityFrameworkCore;
 
 namespace LifeGraph.Graph.Application;
@@ -117,6 +118,10 @@ internal sealed class GraphPurge(LifeGraphDbContext db, TimeProvider clock) : IJ
         db.RemoveRange(softRelations);
         db.RemoveRange(relations);
         db.Remove(node);
+
+        // The PII-free trace of the purge, committed with it by the job runner (DA-084, DA-254).
+        // A Relation's purge has no row of its own: the Node's row covers the ones that go with it.
+        db.Add(PurgeLedgerEntry.ForNode(node.Id, now));
         return [node.Id, .. relations.Select(relation => relation.Id), .. links.Select(link => link.Id), .. members.Select(member => member.Id), .. dismissals.Select(dismissal => dismissal.Id)];
     }
 
