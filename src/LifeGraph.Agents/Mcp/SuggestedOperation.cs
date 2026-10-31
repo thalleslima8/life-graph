@@ -44,8 +44,11 @@ public sealed record SuggestedOperation
     [Description("create_node without Type: the Type you would give it.")]
     public string? SuggestedType { get; init; }
 
-    [Description("create_node: a name for the new Node, for later relations of this proposal.")]
+    [Description("create_node: a name for the new Node, for later relations and anchors of this proposal.")]
     public string? Ref { get; init; }
+
+    [Description("create_node: the Node the new one belongs under, { nodeId or ref, kind? }. Every new Node needs one, or a create_relation to an anchored Node.")]
+    public AnchorArgument? Anchor { get; init; }
 
     [Description("create_relation: the starting Node's id, or sourceRef.")]
     public Guid? SourceNodeId { get; init; }
@@ -93,7 +96,10 @@ public sealed record SuggestedOperation
                         break;
                     }
 
-                    parsed.Add(new AgentCreateNode(operation.Title, operation.Body, operation.TypeId, operation.Properties, operation.Ref, operation.SuggestedType));
+                    parsed.Add(new AgentCreateNode(operation.Title, operation.Body, operation.TypeId, operation.Properties, operation.Ref, operation.SuggestedType)
+                    {
+                        Anchor = operation.Anchor?.ToAgentAnchor(),
+                    });
                     break;
                 case UpdateNode:
                 case DeleteNode:

@@ -9,11 +9,13 @@ import { useLogout } from "@/features/session/useLogout";
 const GRAPH_LINKS = [
   { to: "/nodes", label: "Nodes" },
   { to: "/nodes?inbox=1", label: "Inbox" },
+  { to: "/graph", label: "Grafo" },
   { to: "/changes", label: "Recent Changes" },
   { to: "/agent-changes", label: "Agent Changes" },
   { to: "/types", label: "Types" },
   { to: "/tags", label: "Tags" },
   { to: "/agentes", label: "Agentes conectados" },
+  { to: "/shares", label: "Links compartilhados" },
 ];
 
 export function AppLayout() {
@@ -55,6 +57,9 @@ export function AppLayout() {
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <SearchBox />
               <span className="text-muted-foreground">{session.email}</span>
+              <Link to="/conta" className="underline-offset-4 hover:underline">
+                Conta
+              </Link>
               <Button type="button" variant="secondary" size="sm" onClick={() => logout.mutate()} disabled={logout.isPending}>
                 Sair
               </Button>

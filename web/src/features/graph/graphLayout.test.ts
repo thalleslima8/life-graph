@@ -1,27 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { aLocalGraph, NODE_ID, OTHER_NODE_ID } from "@/test/graphFixtures";
+import { aRenderableGraphModel } from "@/test/fakeGraphRenderer";
+import { NODE_ID, OTHER_NODE_ID } from "@/test/graphFixtures";
 import { NEIGHBOR_OFFSET, placeNodes, RING_SPACING } from "./graphLayout";
-import type { LocalGraph } from "./localGraph";
+import type { RenderableGraph } from "./graphShape";
 
 const THIRD_ID = "01920000-0000-7000-8000-000000000003";
 
 /** The root, one neighbor and, unless left out, a Node two Relations away behind it. */
-function aChain({ withThird = true } = {}): LocalGraph {
-  const wire = aLocalGraph();
+function aChain({ withThird = true } = {}): RenderableGraph {
+  const model = aRenderableGraphModel();
   return {
-    ...wire,
+    ...model,
     nodes: [
-      ...wire.nodes.map((node) => ({ ...node, distance: Number(node.distance), degree: Number(node.degree) })),
-      ...(withThird ? [{ id: THIRD_ID, title: "Estoicismo", typeId: null, distance: 2, degree: 1, agentUnreviewed: false }] : []),
+      ...model.nodes,
+      ...(withThird ? [{ id: THIRD_ID, title: "Estoicismo", typeName: null, typeId: null, distance: 2, degree: 1, agentUnreviewed: false }] : []),
     ],
     edges: [
-      ...wire.edges.map((edge) => ({ ...edge, strength: Number(edge.strength) })),
+      ...model.edges,
       ...(withThird
-        ? [{ id: "e2", sourceNodeId: OTHER_NODE_ID, targetNodeId: THIRD_ID, kind: "cita", assertion: "hard" as const, origin: "user" as const, strength: 1, agentUnreviewed: false }]
+        ? [{ id: "e2", sourceNodeId: OTHER_NODE_ID, targetNodeId: THIRD_ID, kind: "cita", assertion: "hard" as const, strength: 1, agentUnreviewed: false }]
         : []),
     ],
-    omittedNodeCount: 0,
-    omittedEdgeCount: 0,
   };
 }
 

@@ -17,11 +17,16 @@ using LifeGraph.Resources;
 using LifeGraph.Resources.Http;
 using LifeGraph.Semantic;
 using LifeGraph.Sharing;
+using LifeGraph.Sharing.Http;
+using LifeGraph.Sharing.Http.Visits;
+using LifeGraph.Sharing.Operations;
 using Microsoft.AspNetCore.Authorization;
 
-// `accounts ...` runs the owner's account command instead of the web server (DA-095).
+// `accounts ...` runs the owner's account command (DA-095) and `shares ...` the operator's
+// kill-switch (DA-217) instead of the web server.
 var isAccountsCommand = AccountsCommandLine.IsInvocation(args);
-var builder = WebApplication.CreateBuilder(isAccountsCommand ? [] : args);
+var isSharesCommand = SharesCommandLine.IsInvocation(args);
+var builder = WebApplication.CreateBuilder(isAccountsCommand || isSharesCommand ? [] : args);
 
 if (BuildTimeDocumentGeneration.IsRunningUnder(Assembly.GetEntryAssembly()))
 {
@@ -38,8 +43,11 @@ builder.Services.AddOpenApi(options => options
     .AddOperationTransformer<QueryEnumParameterTransformer>()
     .AddDocumentTransformer<ErrorCatalogDocumentTransformer>());
 
-// The owner's CLI connects as the provisioning role, the web process never does (DA-107).
-builder.Services.AddLifeGraphPersistence(builder.Configuration, AccountsCommandLine.ConnectionStringNameFor(args));
+// The owner's CLI connects as the provisioning role (DA-107) and the operator's as the operator
+// role (DA-217); the web process never does.
+builder.Services.AddLifeGraphPersistence(
+    builder.Configuration,
+    isSharesCommand ? SharesCommandLine.ConnectionStringName : AccountsCommandLine.ConnectionStringNameFor(args));
 builder.Services.AddLifeGraphHealthChecks();
 builder.Services.AddLifeGraphPublicExposure();
 builder.Services.AddLifeGraphJobs(builder.Configuration);
@@ -65,6 +73,11 @@ if (isAccountsCommand)
     return await AccountsCommandLine.RunAsync(app.Services, args, Console.Out, CancellationToken.None);
 }
 
+if (isSharesCommand)
+{
+    return await SharesCommandLine.RunAsync(app.Services, args, Console.Out, CancellationToken.None);
+}
+
 // First: the tunnel's forwarded scheme and client, and nothing beyond MCP and OAuth exposed (DA-028).
 app.UseLifeGraphPublicExposure();
 
@@ -86,6 +99,7 @@ app.UseIssuerRequestBodyLimit();
 app.UseOAuthRateLimits();
 app.UseClientMetadataDocuments();
 
+app.UseShareVisitorOrigin();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -98,6 +112,7 @@ app.MapAccountsEndpoints();
 app.MapGraphEndpoints();
 app.MapResourceEndpoints();
 app.MapAgentsEndpoints();
+app.MapSharingEndpoints();
 
 app.Run();
 return 0;

@@ -650,7 +650,12 @@
         }
       },
       "lifegraph.sharing": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "LifeGraph.Graph": "[1.0.0, )",
+          "LifeGraph.Http": "[1.0.0, )",
+          "LifeGraph.Infrastructure": "[1.0.0, )"
+        }
       },
       "AngleSharp": {
         "type": "CentralTransitive",

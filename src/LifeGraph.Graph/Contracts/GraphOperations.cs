@@ -32,6 +32,34 @@ public sealed record CreateNode(
     /// system writes otherwise (DA-150). Only the pipeline's expansion of a capture sets it.
     /// </summary>
     internal bool MadeByCapture { get; init; }
+
+    /// <summary>
+    /// The Node is the Raiz da Conta (DA-189). Only the pipeline's System entry for the root
+    /// sets it (DA-201).
+    /// </summary>
+    internal bool MakesAccountRoot { get; init; }
+
+    /// <summary>
+    /// The Relation that anchors the new Node, created with it in the same GraphChangeSet: both
+    /// or neither (DA-192). <c>null</c> creates the Node alone.
+    /// </summary>
+    public NodeAnchor? Anchor { get; init; }
+}
+
+/// <summary>
+/// The anchor of a new Node (DA-192): a Hard Relation from the new Node to
+/// <see cref="NodeId"/>, an existing Node or one created earlier in the same write. The
+/// direction is fixed, new Node to target (DA-193).
+/// </summary>
+/// <param name="Kind">What the link means; <see cref="DefaultKind"/> when not given (DA-193).</param>
+/// <param name="RelationId">The id of the anchoring Relation, chosen by the server-side caller (UUIDv7).</param>
+public sealed record NodeAnchor(Guid NodeId, string? Kind, Guid RelationId)
+{
+    /// <summary>The kind of an anchor that names none, the one the Accept of Soft Relations uses (DA-177, DA-193).</summary>
+    public const string DefaultKind = CaptureResource.DefaultRelationKind;
+
+    /// <summary>The kind the anchoring Relation is created with.</summary>
+    public string KindOrDefault => string.IsNullOrWhiteSpace(Kind) ? DefaultKind : Kind;
 }
 
 /// <summary>

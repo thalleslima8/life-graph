@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 using LifeGraph.Graph.Application;
 using LifeGraph.Graph.Contracts;
@@ -10,7 +11,7 @@ using Microsoft.AspNetCore.Routing;
 
 namespace LifeGraph.Graph.Http;
 
-/// <summary>Nodes: list (with the "Sem Type" and Inbox filters), Inspector, local graph, create, edit, delete, archive and restore, and the Soft Relations of a Node with Accept and Ignore.</summary>
+/// <summary>Nodes: list (with the "Sem Type", Inbox and Unanchored filters), Inspector, local graph, create, edit, delete, archive and restore, and the Soft Relations of a Node with Accept and Ignore.</summary>
 internal static class NodeEndpoints
 {
     public static IEndpointRouteBuilder MapNodeEndpoints(this IEndpointRouteBuilder endpoints)
@@ -104,13 +105,14 @@ internal static class NodeEndpoints
         [FromQuery] Guid? typeId,
         [FromQuery] bool? withoutType,
         [FromQuery] bool? inInbox,
+        [FromQuery, Description("true lists only the Nodes no path of Hard Relations links to the account root (DA-197); the root itself is never listed. Combines with the other filters; page.totalCount, on the first page only, counts the whole filtered list.")] bool? unanchored,
         [FromQuery] string? cursor,
         [FromQuery] int? limit,
         GraphReads reads,
         GraphWrites writes,
         CancellationToken cancellationToken)
     {
-        var query = new NodeListQuery(typeId, withoutType ?? false, inInbox ?? false, cursor, limit);
+        var query = new NodeListQuery(typeId, withoutType ?? false, inInbox ?? false, cursor, limit, unanchored ?? false);
         var page = await reads.ListNodesAsync(query, cancellationToken);
         return writes.Responder.ToHttpResult(page, value => TypedResults.Ok(value));
     }
@@ -163,8 +165,16 @@ internal static class NodeEndpoints
             return Task.FromResult(writes.Responder.Fail(tooMany));
         }
 
+        if (request.Anchor is { NodeId: null })
+        {
+            return Task.FromResult(writes.Responder.Fail(RequestLimits.Invalid(AnchorKeys.NodeId, "Required.")));
+        }
+
         var nodeId = Guid.CreateVersion7();
-        var create = new CreateNode(nodeId, request.Title!, request.Body, request.TypeId, request.Properties, request.InInbox ?? false);
+        var create = new CreateNode(nodeId, request.Title!, request.Body, request.TypeId, request.Properties, request.InInbox ?? false)
+        {
+            Anchor = request.Anchor is { NodeId: { } anchorId } anchor ? new NodeAnchor(anchorId, anchor.Kind, Guid.CreateVersion7()) : null,
+        };
         return writes.WriteAsync(create, receipt => TypedResults.Created($"/api/nodes/{nodeId}", receipt), cancellationToken);
     }
 
@@ -217,6 +227,22 @@ public sealed record CreateNodeRequest
 
     /// <summary>Captures the Node into the Inbox (DA-019).</summary>
     public bool? InInbox { get; init; }
+
+    /// <summary>
+    /// Optional: a Relation from the new Node to an existing one, created with it in the same
+    /// GraphChangeSet (DA-196). Absent creates the Node alone, as the Inbox and the quick capture do.
+    /// </summary>
+    public NodeAnchorRequest? Anchor { get; init; }
+}
+
+/// <summary>The anchor of a new Node (DA-192, DA-196): a Node of the Account it hangs under.</summary>
+public sealed record NodeAnchorRequest
+{
+    /// <summary>The Node the new one is related to; another Account's answers 404.</summary>
+    public Guid? NodeId { get; init; }
+
+    /// <summary>What the link means; <c>related_to</c> when absent (DA-193). The Relation goes from the new Node to this one.</summary>
+    public string? Kind { get; init; }
 }
 
 /// <summary>Absent fields stay as they are (API-045).</summary>

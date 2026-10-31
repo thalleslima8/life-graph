@@ -84,6 +84,18 @@ describe("embedded node inspector", () => {
     expect(screen.queryByRole("button", { name: "Arquivar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Remover/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Ver no grafo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Compartilhar" })).not.toBeInTheDocument();
+  });
+
+  it("links to sharing this Node as the root of a link, never the Raiz da Conta (DA-219)", async () => {
+    const { unmount } = renderInspector({});
+
+    expect(await screen.findByRole("link", { name: "Compartilhar" })).toHaveAttribute("href", `/shares/new?rootNodeId=${NODE_ID}`);
+    unmount();
+
+    renderInspector({}, aNode({ isAccountRoot: true }));
+    expect(await screen.findByRole("heading", { level: 2, name: "Leituras" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Compartilhar" })).not.toBeInTheDocument();
   });
 
   describe("a Resource", () => {

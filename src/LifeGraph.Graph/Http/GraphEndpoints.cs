@@ -31,8 +31,23 @@ public static class GraphEndpoints
         api.MapChangeSetEndpoints();
         api.MapAgentChangeEndpoints();
         api.MapSearchEndpoints();
+        api.MapExportEndpoints();
+
+        // The Raiz da Conta, where the local graph opens and "Conectar a…" points (DA-197, DA-206).
+        api.MapGet("/account-root", (GraphReads reads, GraphWrites writes, CancellationToken cancellationToken) =>
+                GetAccountRootAsync(reads, writes, cancellationToken))
+            .WithTags("Nodes")
+            .WithName("GetAccountRoot")
+            .Produces<AccountRootItem>()
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         return endpoints;
+    }
+
+    private static async Task<IResult> GetAccountRootAsync(GraphReads reads, GraphWrites writes, CancellationToken cancellationToken)
+    {
+        var root = await reads.GetAccountRootAsync(cancellationToken);
+        return writes.Responder.ToHttpResult(root, value => TypedResults.Ok(value));
     }
 
     private static IEndpointRouteBuilder MapRelationEndpoints(this IEndpointRouteBuilder endpoints)

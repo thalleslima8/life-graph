@@ -28,6 +28,22 @@ public sealed class ProposalApprovalTests
     }
 
     [Fact]
+    public void A_new_node_anchored_by_ref_depends_on_the_create_node_operation_of_that_ref()
+    {
+        IReadOnlyList<AgentOperation> operations =
+        [
+            new AgentCreateNode("Life Graph", Ref: "project") { Anchor = new AgentAnchor(NodeRef.Of(Existing)) },
+            new AgentCreateNode("ADR 0001") { Anchor = new AgentAnchor(new NodeRef(null, "project"), "part_of") },
+        ];
+
+        var dependencies = ProposalApproval.DependenciesOf(operations);
+        var withoutTheProject = ProposalApproval.Choose(operations, [1]);
+
+        Assert.Equal([[], [0]], dependencies.Select(list => list.ToArray()).ToArray());
+        Assert.Equal(AgentWriteErrors.OperationDependency.Code, withoutTheProject.Error!.Code);
+    }
+
+    [Fact]
     public void Without_a_choice_every_operation_is_approved()
     {
         var chosen = ProposalApproval.Choose(Operations, null);

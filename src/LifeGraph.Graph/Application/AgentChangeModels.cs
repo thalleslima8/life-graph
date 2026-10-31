@@ -106,10 +106,11 @@ public sealed record ProposedOperationItem(
     [Required]
     public NodeEndpoint? Source { get; init; }
 
+    /// <summary>The target of a proposed Relation, of a capture's Relation, or of a new Node's anchor (DA-192).</summary>
     [Required]
     public NodeEndpoint? Target { get; init; }
 
-    /// <summary>The kind of a proposed Relation.</summary>
+    /// <summary>The kind of a proposed Relation, or of a new Node's anchor (DA-193).</summary>
     [Required]
     public string? Kind { get; init; }
 
@@ -163,6 +164,9 @@ public enum UndoUnavailableReason
 
     /// <summary>It touched content that Purge removed.</summary>
     ContentPurged,
+
+    /// <summary>It created the Raiz da Conta, which stays (DA-203, DA-210).</summary>
+    AccountRoot,
 }
 
 public sealed record ChangeEntryDetail(

@@ -76,11 +76,12 @@ public sealed class GraphWriterTests(PostgresDatabase database) : IAsyncLifetime
         var first = Guid.CreateVersion7();
         var second = Guid.CreateVersion7();
         var relation = Guid.CreateVersion7();
+        var root = await _graph.AccountRootIdAsync(_account);
 
         var written = await _graph.WriteAsync(
             _account,
             new Provenance(new GraphActor.AgentIdentity(agentIdentity), channel),
-            new CreateNode(first, "Stoicism"),
+            new CreateNode(first, "Stoicism") { Anchor = GraphWriteHarness.AnchorAt(root) },
             new CreateNode(second, "Ethics"),
             new CreateRelation(relation, first, second, "related_to"));
 

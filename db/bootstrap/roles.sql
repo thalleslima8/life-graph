@@ -7,6 +7,9 @@
 -- lifegraph_provisioner: what the owner's `accounts` CLI connects as. Inserts Accounts and
 --                     their users, reads no Account data and no graph table, no BYPASSRLS
 --                     (DA-107). Its grants come from the migrations.
+-- lifegraph_operator: what the operator's `shares` CLI connects as. Reads the public reference
+--                     and writes only the block of the share directory, reads no Account data,
+--                     no BYPASSRLS (DA-217). Its grants come from the migrations.
 --
 -- The passwords are dev-only placeholders. Real environments create these roles with
 -- their own secrets (E14).
@@ -25,6 +28,11 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lifegraph_provisioner') THEN
         CREATE ROLE lifegraph_provisioner LOGIN PASSWORD 'lifegraph_provisioner_dev'
+            NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lifegraph_operator') THEN
+        CREATE ROLE lifegraph_operator LOGIN PASSWORD 'lifegraph_operator_dev'
             NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT;
     END IF;
 END

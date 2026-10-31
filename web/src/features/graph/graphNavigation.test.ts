@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { aLocalGraphModel } from "@/test/fakeGraphRenderer";
+import { aRenderableGraphModel } from "@/test/fakeGraphRenderer";
 import { buildGraphIndex, isArrowKey, keyAction, nextFocus } from "./graphNavigation";
-import type { LocalGraph, LocalGraphEdge, LocalGraphNode } from "./localGraph";
+import type { RenderableEdge, RenderableGraph, RenderableNode } from "./graphShape";
 
 const ROOT = "root";
 
-function aNodeAt(id: string, title: string, distance: number): LocalGraphNode {
-  return { id, title, typeId: null, distance, degree: 1, agentUnreviewed: false };
+function aNodeAt(id: string, title: string, distance: number): RenderableNode {
+  return { id, title, typeName: null, typeId: null, distance, degree: 1, agentUnreviewed: false };
 }
 
-function aRelation(id: string, sourceNodeId: string, targetNodeId: string): LocalGraphEdge {
-  const [template] = aLocalGraphModel().edges;
+function aRelation(id: string, sourceNodeId: string, targetNodeId: string): RenderableEdge {
+  const [template] = aRenderableGraphModel().edges;
   if (!template) {
     throw new Error("The model graph has a Relation.");
   }
@@ -22,10 +22,10 @@ function aRelation(id: string, sourceNodeId: string, targetNodeId: string): Loca
  * Root ─ Zeno, Root ─ Aristóteles, Zeno ─ Crisipo, Aristóteles ─ Zeno (same distance), and a
  * Relation of Crisipo to itself.
  */
-function aGraph(): LocalGraph {
+function aGraph(): RenderableGraph {
   return {
-    ...aLocalGraphModel(),
-    rootNodeId: ROOT,
+    ...aRenderableGraphModel(),
+    rootId: ROOT,
     nodes: [aNodeAt("crisipo", "Crisipo", 2), aNodeAt("zeno", "Zeno", 1), aNodeAt(ROOT, "Raiz", 0), aNodeAt("aristoteles", "Aristóteles", 1)],
     edges: [
       aRelation("e1", ROOT, "zeno"),

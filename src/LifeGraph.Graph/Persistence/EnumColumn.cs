@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace LifeGraph.Graph.Persistence;
 
@@ -19,6 +20,12 @@ internal static class EnumColumn
         where TEnum : struct, Enum =>
         property.HasConversion(value => Names<TEnum>.ToName(value), name => Names<TEnum>.FromName(name)).HasMaxLength(MaxLength);
 
+    /// <summary>The nullable form of <see cref="StoredAsSnakeCase{TEnum}(PropertyBuilder{TEnum})"/>: a null stays NULL.</summary>
+    public static PropertyBuilder<TEnum?> StoredAsSnakeCase<TEnum>(this PropertyBuilder<TEnum?> property)
+        where TEnum : struct, Enum =>
+        property.HasConversion(new ValueConverter<TEnum, string>(value => Names<TEnum>.ToName(value), name => Names<TEnum>.FromName(name)))
+            .HasMaxLength(MaxLength);
+
     public static PropertyBuilder<List<TEnum>> StoredAsSnakeCaseArray<TEnum>(this PropertyBuilder<List<TEnum>> property)
         where TEnum : struct, Enum =>
         property
@@ -30,6 +37,10 @@ internal static class EnumColumn
                     (left, right) => left!.SequenceEqual(right!),
                     values => values.Aggregate(0, (hash, value) => HashCode.Combine(hash, value)),
                     values => values.ToList()));
+
+    /// <summary>The name <paramref name="value"/> is stored as, for a CHECK that names one value.</summary>
+    public static string NameOf<TEnum>(TEnum value)
+        where TEnum : struct, Enum => Names<TEnum>.ToName(value);
 
     public static void HasEnumCheck<TEnum>(this TableBuilder table, string column)
         where TEnum : struct, Enum =>

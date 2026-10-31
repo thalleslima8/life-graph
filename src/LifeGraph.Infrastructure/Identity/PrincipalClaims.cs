@@ -24,7 +24,9 @@ public static class PrincipalClaims
     /// Fails closed (DA-094): unauthenticated, a missing or repeated claim, an Account id
     /// that is not a non-empty Guid, or an unknown type all read as no principal. An
     /// AgentIdentity id is read only for an agent, and a malformed or repeated one is no
-    /// principal either; whoever serves agents requires it (DA-030).
+    /// principal either; whoever serves agents requires it (DA-030). A ShareVisitor's
+    /// SharedGraphView id is read the same way, only for a visitor; without one it sees nothing
+    /// (DA-213).
     /// </summary>
     public static AuthenticatedPrincipal? Read(ClaimsPrincipal? user)
     {
@@ -53,20 +55,32 @@ public static class PrincipalClaims
             return null;
         }
 
-        if (type != PrincipalType.AgentIdentity)
+        // Each type reads only its own id: a person never carries an agent's or a share's.
+        var ownIdClaim = type switch
+        {
+            PrincipalType.AgentIdentity => LifeGraphClaimTypes.AgentIdentityId,
+            PrincipalType.ShareVisitor => LifeGraphClaimTypes.SharedGraphViewId,
+            _ => null,
+        };
+        if (ownIdClaim is null)
         {
             return new AuthenticatedPrincipal(accountId, type.Value);
         }
 
-        var agentIdentityClaims = user.FindAll(LifeGraphClaimTypes.AgentIdentityId).Take(2).ToArray();
-        if (agentIdentityClaims.Length == 0)
+        var ownIdClaims = user.FindAll(ownIdClaim).Take(2).ToArray();
+        if (ownIdClaims.Length == 0)
         {
             return new AuthenticatedPrincipal(accountId, type.Value);
         }
 
-        return agentIdentityClaims.Length == 1 && Guid.TryParse(agentIdentityClaims[0].Value, out var agentIdentityId) && agentIdentityId != Guid.Empty
-            ? new AuthenticatedPrincipal(accountId, type.Value, agentIdentityId)
-            : null;
+        if (ownIdClaims.Length != 1 || !Guid.TryParse(ownIdClaims[0].Value, out var ownId) || ownId == Guid.Empty)
+        {
+            return null;
+        }
+
+        return type == PrincipalType.AgentIdentity
+            ? new AuthenticatedPrincipal(accountId, type.Value, AgentIdentityId: ownId)
+            : new AuthenticatedPrincipal(accountId, type.Value, SharedGraphViewId: ownId);
     }
 
     // Two values for the same claim are ambiguous, so they count as none.

@@ -2,7 +2,7 @@
 
 - **Ordem:** 13
 - **Depende de:** E5, E10, E11
-- **Última revisão:** 2026-10-23
+- **Última revisão:** 2026-10-24
 
 ## Contexto
 
@@ -35,6 +35,7 @@ pediu para discutir a **Q3** neste épico. Até lá, os limites de segurança
 - [ ] Aplicação só nos comandos de criação e na quota de escrita de agentes
 - [ ] Converter as constantes de share (E11) em limites por plano
 - [ ] Mensagens de limite atingido sem bloquear o acesso
+- [ ] A Raiz da Conta fica fora dos limites do Free (DA-204)
 
 ## Fora de escopo
 

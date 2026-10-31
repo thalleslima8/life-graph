@@ -45,6 +45,7 @@ internal static class AgentOperations
             AgentDeleteNode delete => [delete.NodeId],
             AgentCreateRelation relate => new[] { relate.Source.NodeId, relate.Target.NodeId }.OfType<Guid>(),
             AgentCaptureResource { RelatedNodeId: { } related } => [related],
+            AgentCreateNode { Anchor.Target.NodeId: { } anchor } => [anchor],
             AgentTagNode tag => [tag.NodeId],
             AgentUntagNode untag => [untag.NodeId],
             _ => [],
@@ -110,7 +111,12 @@ internal static class AgentOperations
                         create.TypeId,
                         create.Properties,
                         InInbox: create.TypeId is null,
-                        SuggestedType: create.SuggestedType));
+                        SuggestedType: create.SuggestedType)
+                    {
+                        Anchor = create.Anchor is { } anchor
+                            ? new NodeAnchor(Resolve(anchor.Target, created), anchor.Kind, Guid.CreateVersion7(now))
+                            : null,
+                    });
                     break;
                 case AgentUpdateNode update:
                     graphOperations.Add(new UpdateNode(update.NodeId, update.ExpectedVersion)
@@ -171,6 +177,7 @@ internal static class AgentOperations
             Properties = Ordered(create.Properties),
             Ref = create.Ref,
             SuggestedType = create.SuggestedType,
+            Anchor = create.Anchor,
         },
         AgentUpdateNode update => new StoredOperation(StoredKind.UpdateNode)
         {
@@ -203,7 +210,10 @@ internal static class AgentOperations
 
     private static AgentOperation FromStored(StoredOperation stored) => stored.Op switch
     {
-        StoredKind.CreateNode => new AgentCreateNode(stored.Title!, stored.Body, stored.TypeId, stored.Properties, stored.Ref, stored.SuggestedType),
+        StoredKind.CreateNode => new AgentCreateNode(stored.Title!, stored.Body, stored.TypeId, stored.Properties, stored.Ref, stored.SuggestedType)
+        {
+            Anchor = stored.Anchor,
+        },
         StoredKind.UpdateNode => new AgentUpdateNode(stored.NodeId!.Value, stored.ExpectedVersion!.Value)
         {
             Title = stored.Title,
@@ -272,5 +282,7 @@ internal static class AgentOperations
         public string? Url { get; init; }
 
         public string? Tag { get; init; }
+
+        public AgentAnchor? Anchor { get; init; }
     }
 }

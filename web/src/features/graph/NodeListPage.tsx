@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CaptureResourceForm } from "@/features/resources/CaptureResourceForm";
+import { UnanchoredBadge } from "./UnanchoredBadge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ANY_TYPE,
@@ -49,6 +50,7 @@ export function NodeListPage() {
       <h1 id="nodes-title" className="text-2xl font-semibold">
         {title}
       </h1>
+      {filter.inbox && <UnanchoredBadge />}
 
       <CaptureResourceForm inInbox={filter.inbox} />
       <CreateNodeForm inInbox={filter.inbox} />

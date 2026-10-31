@@ -34,7 +34,9 @@ temp/
 
 # --- Build / dependências (genérico; ajustar quando a stack for definida) ---
 dist/
+dist-visitor/
 build/
+!web/build/
 out/
 coverage/
 node_modules/

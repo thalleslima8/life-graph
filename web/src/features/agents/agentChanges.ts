@@ -205,6 +205,8 @@ export type ProposalRefusal =
   | { kind: "not_pending" }
   | { kind: "version_conflict"; operations: number[] }
   | { kind: "dependency"; operations: number[] }
+  | { kind: "anchor_required"; operations: number[] }
+  | { kind: "root_missing" }
   | { kind: "not_found" };
 
 const OPERATION_DETAIL = /^operations\[(\d+)\]/;
@@ -232,6 +234,11 @@ export function toProposalRefusal(error: unknown): ProposalRefusal | null {
       return { kind: "version_conflict", operations: operationsNamedIn(error) };
     case "agents.operation_dependency":
       return { kind: "dependency", operations: operationsNamedIn(error) };
+    // The approval checks the anchors again (DA-199, DA-212): one may have come loose since the proposal.
+    case "graph.anchor_required":
+      return { kind: "anchor_required", operations: operationsNamedIn(error) };
+    case "graph.root_missing":
+      return { kind: "root_missing" };
     default:
       return null;
   }

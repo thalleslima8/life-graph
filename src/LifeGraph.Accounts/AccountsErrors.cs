@@ -25,6 +25,22 @@ public static class AccountsErrors
     /// <summary>The AgentIdentity kept changing under a rename, a revoke or a consent (API-030); sending it again works.</summary>
     public static readonly ErrorCode AgentIdentityConflict = ErrorCode.Conflict("accounts.agent_identity_conflict");
 
+    /// <summary>The password typed to delete the Account is wrong; nothing else is said about it (DA-249).</summary>
+    public static readonly ErrorCode ReauthenticationFailed = ErrorCode.BusinessRule("accounts.reauthentication_failed", ErrorRecovery.AskUser);
+
+    /// <summary>The typed confirmation is not the Account's e-mail (DA-251).</summary>
+    public static readonly ErrorCode DeletionConfirmationMismatch = ErrorCode.BusinessRule("accounts.deletion_confirmation_mismatch");
+
     public static IReadOnlyList<ErrorCode> All { get; } =
-        [InvalidCredentials, PasswordRejected, InvalidOrExpiredToken, TooManyAttempts, EmailTooLong, AgentIdentityNotFound, AgentIdentityConflict];
+    [
+        InvalidCredentials,
+        PasswordRejected,
+        InvalidOrExpiredToken,
+        TooManyAttempts,
+        EmailTooLong,
+        AgentIdentityNotFound,
+        AgentIdentityConflict,
+        ReauthenticationFailed,
+        DeletionConfirmationMismatch,
+    ];
 }

@@ -26,6 +26,8 @@ internal sealed class GraphContextReads(
 {
     public const string NodeNotFoundMessage = "The node was not found.";
 
+    public const string RootMissingMessage = "The account has no root yet. It is created at the person's next sign-in.";
+
     private static readonly CountRange SearchCountRange = new(GraphReadLimits.SearchDefaultCount, GraphReadLimits.SearchMaxCount);
 
     private static readonly CountRange ContextDepthRange = new(GraphReadLimits.ContextDefaultDepth, GraphReadLimits.ContextMaxDepth);
@@ -51,7 +53,11 @@ internal sealed class GraphContextReads(
                 var outcome = await hybridSearch.SearchAsync(reader, new NodeSearch(text, query.TypeId, count), embedding, token);
                 var matches = outcome.Hits.ToDictionary(hit => hit.NodeId, hit => hit.Match);
                 var hits = await views.HitsAsync([.. outcome.Hits.Select(hit => hit.NodeId)], token);
-                var result = new GraphSearchResult([.. hits.Select(hit => hit with { Match = matches[hit.Id] })]) { Degraded = outcome.Degraded };
+                var anchored = await AnchorReach.AnchoredAmongAsync(db, [.. hits.Select(hit => hit.Id)], token);
+                var result = new GraphSearchResult([.. hits.Select(hit => hit with { Match = matches[hit.Id], Anchored = anchored.Contains(hit.Id) })])
+                {
+                    Degraded = outcome.Degraded,
+                };
                 return Read.Of(result, hits.Select(hit => hit.Id));
             },
             cancellationToken);
@@ -88,7 +94,9 @@ internal sealed class GraphContextReads(
                         relation.Strength,
                         others[relation.SourceNodeId == nodeId ? relation.TargetNodeId : relation.SourceNodeId]))
                     .ToList();
-                return Read.Of(new GraphNodeRead(found[0], links, relationCount), [nodeId, .. otherIds]);
+                var anchored = await AnchorReach.AnchoredAmongAsync(db, [nodeId], token);
+                var node = found[0] with { Anchored = anchored.Contains(nodeId) };
+                return Read.Of(new GraphNodeRead(node, links, relationCount), [nodeId, .. otherIds]);
             },
             cancellationToken);
 
@@ -96,11 +104,7 @@ internal sealed class GraphContextReads(
     {
         var errors = new FieldErrors();
         var subject = query.Subject?.Trim();
-        if (query.NodeId is null && string.IsNullOrEmpty(subject))
-        {
-            errors.Add("nodeId", "Send a node id or a subject.");
-        }
-
+        var fromRoot = query.NodeId is null && string.IsNullOrEmpty(subject);
         if (subject?.Length > GraphReadLimits.QueryMaxLength)
         {
             errors.Add("subject", $"Must be at most {GraphReadLimits.QueryMaxLength} characters.");
@@ -110,7 +114,7 @@ internal sealed class GraphContextReads(
 
         // The last way to find a subject is by meaning (DA-036); the model is asked before the
         // transaction opens, as the search does, and only for words that are not an id.
-        var embedding = errors.IsEmpty && query.NodeId is null && !Guid.TryParse(subject, out _)
+        var embedding = errors.IsEmpty && query.NodeId is null && !fromRoot && !Guid.TryParse(subject, out _)
             ? await hybridSearch.EmbedAsync(subject!, cancellationToken)
             : null;
         return await RunAsync(
@@ -119,10 +123,20 @@ internal sealed class GraphContextReads(
             errors,
             async (reader, token) =>
             {
-                var resolved = query.NodeId is { } nodeId ? SubjectResolution.Decide(nodeId, [], [], []) : await ResolveAsync(reader, subject!, embedding, token);
+                var accountRootId = fromRoot ? await AccountRootIdAsync(token) : null;
+                if (fromRoot && accountRootId is null)
+                {
+                    return Read.Failed<GraphContext>(GraphErrors.RootMissing.ToError(RootMissingMessage));
+                }
+
+                var resolved = (accountRootId ?? query.NodeId) is { } nodeId
+                    ? SubjectResolution.Decide(nodeId, [], [], [])
+                    : await ResolveAsync(reader, subject!, embedding, token);
                 if (resolved.Candidates is { } candidateIds)
                 {
-                    var candidates = await views.HeadlinesAsync(candidateIds, GraphReadLimits.ContextTextMaxLength, token);
+                    var headlines = await views.HeadlinesAsync(candidateIds, GraphReadLimits.ContextTextMaxLength, token);
+                    var anchored = await AnchorReach.AnchoredAmongAsync(db, [.. headlines.Select(headline => headline.Id)], token);
+                    var candidates = headlines.Select(headline => headline with { Anchored = anchored.Contains(headline.Id) }).ToList();
                     return Read.Of(
                         new GraphContext(GraphContextStatus.Ambiguous, null, [], [], false, 0, 0, candidates),
                         candidates.Select(candidate => candidate.Id));
@@ -140,6 +154,10 @@ internal sealed class GraphContextReads(
             },
             cancellationToken);
     }
+
+    // The Raiz da Conta, through the central filter: it is never hidden from agents (DA-189).
+    private Task<Guid?> AccountRootIdAsync(CancellationToken cancellationToken) =>
+        filter.Nodes().Where(Node.IsAccountRootPredicate).Select(node => (Guid?)node.Id).SingleOrDefaultAsync(cancellationToken);
 
     // A page at a time (API-060), by id as the REST list of Types, so a cursor survives a rename.
     public Task<Result<GraphTypeList>> ListTypesAsync(GraphTypeListQuery query, CancellationToken cancellationToken)
@@ -276,7 +294,9 @@ internal sealed class GraphContextReads(
             .Take(GraphReadLimits.ContextMaxNodes)
             .ToList();
         var distances = ranked.ToDictionary(step => step.NodeId, step => step.Distance);
-        var nodes = await views.ViewsAsync([.. ranked.Select(step => step.NodeId)], ViewLimits.Context, distances, cancellationToken);
+        var viewed = await views.ViewsAsync([.. ranked.Select(step => step.NodeId)], ViewLimits.Context, distances, cancellationToken);
+        var anchored = await AnchorReach.AnchoredAmongAsync(db, [.. viewed.Select(node => node.Id)], cancellationToken);
+        var nodes = viewed.Select(node => node with { Anchored = anchored.Contains(node.Id) }).ToList();
         var reach = await ContextWalk.CountReachAsync(db, reader, scope, cancellationToken);
 
         var budget = new ContextBudget(scope.RootNodeId);

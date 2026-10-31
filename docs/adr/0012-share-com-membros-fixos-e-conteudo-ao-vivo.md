@@ -16,4 +16,4 @@ conteúdo exibido é sempre o atual. O que o visitante vê é uma allowlist fech
 - **Snapshot (cópia):** rejeitado. A cópia sobreviveria ao Purge, contra LGPD
   e Lei 25.
 
-Origem: DA-075 a DA-077, épico `docs/epics/backlog/e10-shared-graph-view.md`.
+Origem: DA-075 a DA-077, épico `docs/epics/done/e11-shared-graph-view.md`.

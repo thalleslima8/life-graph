@@ -2,6 +2,7 @@ using LifeGraph.Accounts.Application;
 using LifeGraph.Accounts.ClientMetadata;
 using LifeGraph.Accounts.Contracts;
 using LifeGraph.Accounts.Csrf;
+using LifeGraph.Accounts.Deletion;
 using LifeGraph.Accounts.Email;
 using LifeGraph.Accounts.Http;
 using LifeGraph.Accounts.Identity;
@@ -49,9 +50,11 @@ public static class AccountsModule
         services.AddSingleton<IModelContributor, AccountsModelContributor>();
         services.AddScoped<ClientDiscontinuation>();
         services.AddScoped<AgentConnections>();
+        services.AddScoped<AccountDeletion>();
         services.AddScoped<IAgentIdentities>(provider => provider.GetRequiredService<AgentConnections>());
         services.AddScoped<IAccountPurgeParticipant, AgentIdentitiesAccountPurge>();
         services.AddScoped<IAgentIdentityDirectory, AgentIdentityDirectory>();
+        services.AddScoped<IAccountHolderExport, AccountHolderExport>();
 
         // The issuer's sign-in and consent pages are server-rendered Razor components.
         services.AddRazorComponents();
@@ -75,10 +78,11 @@ public static class AccountsModule
         api.MapPasswordResetEndpoints();
 
         // Signed-in routes: under the per-principal budgets (DA-116).
-        endpoints.MapGroup(ApiPrefix)
+        var signedIn = endpoints.MapGroup(ApiPrefix)
             .RequireCsrfTokenOnUnsafeMethods()
-            .RequirePrincipalRateLimits()
-            .MapAgentIdentityEndpoints();
+            .RequirePrincipalRateLimits();
+        signedIn.MapAgentIdentityEndpoints();
+        signedIn.MapAccountDeletionEndpoints();
 
         // The issuer's own routes (DA-029): outside /api, reachable through the tunnel (DA-028).
         endpoints.MapAuthorizationEndpoints();

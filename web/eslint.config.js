@@ -22,4 +22,30 @@ export default tseslint.config(
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
     },
   },
+  {
+    // The visitor's bundle never carries the authenticated app (DA-216, DA-222); the build's
+    // bundle guard (build/visitorBundleGuard.ts) also catches what arrives indirectly.
+    files: ["src/share/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: "^(@/|(\\.\\./)+)(api/client|app/|features/(session|account|agents|sharing)/)",
+              message: "The visitor's page has its own client (visitorApi.ts) and no session (DA-216).",
+            },
+            {
+              regex: "^(@/|(\\.\\./)+)features/graph/(localGraph|graphData|graphMessages|NodeInspector|recentChanges)$",
+              message: "This module reads the API through the authenticated client; use graphView, graphShape or graphViewMessages (DA-222).",
+            },
+            {
+              regex: "csrf|auth",
+              message: "No auth or CSRF code in the visitor's page (DA-216).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

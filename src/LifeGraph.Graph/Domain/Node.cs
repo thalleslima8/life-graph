@@ -1,4 +1,6 @@
+using System.Linq.Expressions;
 using System.Text.Json;
+using LifeGraph.Graph.Contracts;
 using Limaj.Framework.Core;
 
 namespace LifeGraph.Graph.Domain;
@@ -48,6 +50,26 @@ public sealed class Node
     public DateTimeOffset? InboxEnteredAt { get; private set; }
 
     public bool IsInInbox => InboxEnteredAt is not null;
+
+    /// <summary>
+    /// The key of a system Node: <see cref="SystemOntology.AccountRootTypeKey"/> on the Raiz da
+    /// Conta (DA-189), <c>null</c> on every Node of the user. One root per Account, by a partial
+    /// unique index on it.
+    /// </summary>
+    public string? SystemKey { get; private set; }
+
+    /// <summary>The one predicate that tells the Raiz da Conta (DA-189, DA-204).</summary>
+    public static Expression<Func<Node, bool>> IsAccountRootPredicate { get; } =
+        node => node.SystemKey == SystemOntology.AccountRootTypeKey;
+
+    /// <summary>The negation of <see cref="IsAccountRootPredicate"/>, for queries that leave the root out.</summary>
+    public static Expression<Func<Node, bool>> IsNotAccountRootPredicate { get; } =
+        Expression.Lambda<Func<Node, bool>>(Expression.Not(IsAccountRootPredicate.Body), IsAccountRootPredicate.Parameters);
+
+    private static readonly Func<Node, bool> IsAccountRootCompiled = IsAccountRootPredicate.Compile();
+
+    /// <summary>Whether this Node is the Raiz da Conta (DA-189).</summary>
+    public bool IsAccountRoot => IsAccountRootCompiled(this);
 
     /// <summary>
     /// Oculto para agentes, set on the Node itself (DA-035). The Node is also hidden when its
@@ -167,9 +189,28 @@ public sealed class Node
     /// <summary>A Node captured into the Inbox, to be classified later (DA-019).</summary>
     public static Result<Node> CaptureIntoInbox(NodeDraft draft, DateTimeOffset now) => Start(draft, now, inboxEnteredAt: now);
 
-    private static Result<Node> Start(NodeDraft draft, DateTimeOffset now, DateTimeOffset? inboxEnteredAt)
+    /// <summary>
+    /// The Raiz da Conta of the Account (DA-189), of the system Type <see cref="SystemOntology.AccountRootTypeKey"/>,
+    /// outside the Inbox. Only the pipeline's System entry for the root creates it (DA-201).
+    /// </summary>
+    internal static Result<Node> CreateAccountRoot(NodeDraft draft, DateTimeOffset now)
+    {
+        if (draft.Schema?.Type.SystemKey != SystemOntology.AccountRootTypeKey)
+        {
+            throw new InvalidOperationException("The Raiz da Conta takes its system Type.");
+        }
+
+        return Start(draft, now, inboxEnteredAt: null, SystemOntology.AccountRootTypeKey);
+    }
+
+    private static Result<Node> Start(NodeDraft draft, DateTimeOffset now, DateTimeOffset? inboxEnteredAt, string? systemKey = null)
     {
         var (id, accountId, title, body, schema, values, _, _) = draft;
+        if (systemKey is null && IsRootType(schema))
+        {
+            return Result<Node>.Fail(RootTypeTaken());
+        }
+
         var errors = new FieldErrors();
         var trimmedTitle = TextInput.RequireName(errors, "title", title, GraphLimits.TitleMaxLength);
         var suggestedType = CheckSuggestedType(errors, draft.SuggestedType, schema);
@@ -190,8 +231,15 @@ public sealed class Node
             InboxEnteredAt = inboxEnteredAt,
             CreatedByAgentIdentityId = draft.CreatedByAgentIdentityId,
             SuggestedType = suggestedType,
+            SystemKey = systemKey,
         });
     }
+
+    private static bool IsRootType(TypeSchema? schema) => schema?.Type.SystemKey == SystemOntology.AccountRootTypeKey;
+
+    private static Error RootLocked(string message) => GraphErrors.AccountRootLocked.ToError(message);
+
+    private static Error RootTypeTaken() => RootLocked("Only the account root takes the account root's type.");
 
     // A hint only for a Node without Type (DA-049).
     private static string? CheckSuggestedType(FieldErrors errors, string? suggestedType, TypeSchema? schema)
@@ -228,6 +276,21 @@ public sealed class Node
 
         var newTypeId = edit.Schema?.Type.Id;
         var newHiddenFromAgents = edit.HiddenFromAgents ?? HiddenFromAgents;
+        if (IsAccountRoot && newTypeId != TypeId)
+        {
+            return Result<bool>.Fail(RootLocked("The account root keeps its type."));
+        }
+
+        if (IsAccountRoot && newHiddenFromAgents)
+        {
+            return Result<bool>.Fail(RootLocked("The account root cannot be hidden from agents."));
+        }
+
+        if (!IsAccountRoot && newTypeId != TypeId && IsRootType(edit.Schema))
+        {
+            return Result<bool>.Fail(RootTypeTaken());
+        }
+
         var changed = newTitle != Title
             || newBody != Body
             || newTypeId != TypeId
@@ -283,6 +346,10 @@ public sealed class Node
     /// Deletes the Node as a tombstone: it stays stored, and restorable, for the delete
     /// window, then Purge removes it (DA-021).
     /// </summary>
+    /// <summary>Refuses to delete the Raiz da Conta: it goes only with the Account's Purge (DA-189).</summary>
+    public Result CheckDeletable() =>
+        IsAccountRoot ? Result.Fail(RootLocked("The account root cannot be deleted.")) : Result.Ok();
+
     /// <returns><c>false</c> when it already was deleted.</returns>
     public bool Delete(DateTimeOffset now)
     {

@@ -44,12 +44,13 @@ public sealed class GraphCollectionTests(PostgresDatabase database) : IAsyncLife
         Assert.Empty(await MembersAsync(queroLer));
 
         var agent = await _graph.CreateAgentIdentityAsync(_account);
+        var anchor = GraphWriteHarness.AgentAnchorAt(await _graph.AccountRootIdAsync(_account));
         var written = await _graph.AsAgentAsync(_account, agent, writer => writer.WriteAsync(
             new AgentWriteRequest(
             [
-                new AgentCreateNode("Meditations", TypeId: book, Properties: new Dictionary<Guid, JsonElement> { [status] = Json(wantToRead) }),
-                new AgentCreateNode("Already read", TypeId: book),
-                new AgentCreateNode("Not a book", Properties: null),
+                new AgentCreateNode("Meditations", TypeId: book, Properties: new Dictionary<Guid, JsonElement> { [status] = Json(wantToRead) }) { Anchor = anchor },
+                new AgentCreateNode("Already read", TypeId: book) { Anchor = anchor },
+                new AgentCreateNode("Not a book", Properties: null) { Anchor = anchor },
             ]),
             TestContext.Current.CancellationToken));
         Assert.IsType<ChangeOutcome.Applied>(written.Value);

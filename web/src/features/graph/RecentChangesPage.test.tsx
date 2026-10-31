@@ -93,6 +93,16 @@ describe("recent changes", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("O prazo para desfazer terminou");
   });
 
+  // DA-210: the GraphChangeSet that created the Raiz da Conta stays.
+  it("explains that the account root cannot be undone", async () => {
+    changesApi([deletion], () => problem(422, "graph.account_root_locked"));
+    renderRoute("/changes");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Desfazer" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não dá para desfazer: esta alteração criou a Raiz da Conta, que fica sempre no grafo.");
+  });
+
   it("says when there is nothing yet", async () => {
     changesApi([], () => HttpResponse.json({}));
     renderRoute("/changes");

@@ -31,6 +31,18 @@ describe("toProposalRefusal", () => {
     expect(toProposalRefusal(dependency)).toEqual({ kind: "dependency", operations: [1] });
   });
 
+  // DA-212: a loose anchor names its operations; details missing or malformed name none.
+  it("reads the operations a loose anchor names, and knows a missing root", () => {
+    const loose = new ApiError(422, "graph.anchor_required", "loose", { details: { "operations[3].anchor": ["x"], "operations[1].anchor.nodeId": ["y"] } });
+    const malformed = new ApiError(422, "graph.anchor_required", "loose", { details: { "operations[x].anchor": ["x"], anchor: ["y"] } });
+    const bare = new ApiError(422, "graph.anchor_required", "loose");
+
+    expect(toProposalRefusal(loose)).toEqual({ kind: "anchor_required", operations: [1, 3] });
+    expect(toProposalRefusal(malformed)).toEqual({ kind: "anchor_required", operations: [] });
+    expect(toProposalRefusal(bare)).toEqual({ kind: "anchor_required", operations: [] });
+    expect(toProposalRefusal(new ApiError(422, "graph.root_missing", "no root"))).toEqual({ kind: "root_missing" });
+  });
+
   it("knows a decided and a missing proposal, and nothing else", () => {
     expect(toProposalRefusal(new ApiError(422, "agents.proposal_not_pending", "decided"))).toEqual({ kind: "not_pending" });
     expect(toProposalRefusal(new ApiError(404, "agents.proposal_not_found", "gone"))).toEqual({ kind: "not_found" });

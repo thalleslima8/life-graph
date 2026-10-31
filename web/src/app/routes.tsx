@@ -6,10 +6,12 @@ import { ForgotPasswordPage } from "@/features/account/ForgotPasswordPage";
 import { LoginPage } from "@/features/account/LoginPage";
 import { ResetPasswordPage } from "@/features/account/ResetPasswordPage";
 import { SignedOutOnly } from "@/features/account/SignedOutOnly";
+import { GraphEntryPage } from "@/features/graph/GraphEntryPage";
 import { NodeInspectorPage } from "@/features/graph/NodeInspectorPage";
 import { NodeListPage } from "@/features/graph/NodeListPage";
 import { OntologyPage } from "@/features/graph/OntologyPage";
 import { RecentChangesPage } from "@/features/graph/RecentChangesPage";
+import { UnanchoredPage } from "@/features/graph/UnanchoredPage";
 import { HomePage } from "@/features/home/HomePage";
 import { NotFoundPage } from "@/features/not-found/NotFoundPage";
 import { TagsPage } from "@/features/tags/TagsPage";
@@ -34,6 +36,8 @@ export const routes: RouteObject[] = [
       { index: true, loader: requireSession, element: <HomePage /> },
       { path: "nodes", loader: requireSession, element: <NodeListPage /> },
       { path: "nodes/:nodeId", loader: requireSession, element: <NodeInspectorPage /> },
+      { path: "unanchored", loader: requireSession, element: <UnanchoredPage /> },
+      { path: "graph", loader: requireSession, element: <GraphEntryPage /> },
       {
         path: "nodes/:nodeId/graph",
         loader: requireSession,
@@ -68,6 +72,21 @@ export const routes: RouteObject[] = [
         path: "agentes",
         loader: requireSession,
         lazy: async () => ({ Component: (await import("@/features/agents/AgentsPage")).AgentsPage }),
+      },
+      {
+        path: "shares",
+        loader: requireSession,
+        lazy: async () => ({ Component: (await import("@/features/sharing/SharesPage")).SharesPage }),
+      },
+      {
+        path: "shares/new",
+        loader: requireSession,
+        lazy: async () => ({ Component: (await import("@/features/sharing/NewSharePage")).NewSharePage }),
+      },
+      {
+        path: "conta",
+        loader: requireSession,
+        lazy: async () => ({ Component: (await import("@/features/account/AccountPage")).AccountPage }),
       },
       { path: "login", loader: redirectIfAuthenticated, element: <LoginPage /> },
       { path: "forgot-password", loader: redirectIfAuthenticated, element: <ForgotPasswordPage /> },

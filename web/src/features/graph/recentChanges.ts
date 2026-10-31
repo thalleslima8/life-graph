@@ -142,6 +142,7 @@ export type UndoRefusal =
   | { kind: "already_reverted" }
   | { kind: "window_closed" }
   | { kind: "content_purged" }
+  | { kind: "account_root" }
   | { kind: "not_found" };
 
 const UNDO_REFUSALS: Readonly<Record<string, UndoRefusal>> = {
@@ -152,6 +153,7 @@ const UNDO_REFUSALS: Readonly<Record<string, UndoRefusal>> = {
   "graph.changeset_already_reverted": { kind: "already_reverted" },
   "graph.undo_window_closed": { kind: "window_closed" },
   "graph.changeset_content_purged": { kind: "content_purged" },
+  "graph.account_root_locked": { kind: "account_root" },
   "graph.changeset_not_found": { kind: "not_found" },
 };
 

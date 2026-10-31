@@ -2,9 +2,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { aLocalGraphModel, fakeGraphRenderer as fake } from "@/test/fakeGraphRenderer";
+import { aRenderableGraphModel, fakeGraphRenderer as fake } from "@/test/fakeGraphRenderer";
 import { NODE_ID, OTHER_NODE_ID } from "@/test/graphFixtures";
-import { INITIAL_ZOOM, steppedZoom } from "./localGraph";
+import { INITIAL_ZOOM, steppedZoom } from "./graphView";
 import { GraphCanvas, type GraphCanvasProps } from "./GraphCanvas";
 import { graphKeyboardHelp } from "./graphMessages";
 
@@ -15,8 +15,7 @@ const labels = { canvas: "Grafo local de Leituras", agentUnreviewed: "mudança d
 
 function canvasProps(overrides: Partial<GraphCanvasProps> = {}): GraphCanvasProps {
   return {
-    graph: aLocalGraphModel(),
-    rootId: NODE_ID,
+    graph: aRenderableGraphModel(),
     highlightAgent: true,
     zoom: 1,
     onZoomChange: vi.fn(),

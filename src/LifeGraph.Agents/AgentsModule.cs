@@ -29,6 +29,18 @@ public static class AgentsModule
     /// <summary>An agent token, for the MCP resource, of a connection that is still active.</summary>
     public const string AgentPolicy = "agent";
 
+    /// <summary>
+    /// What every agent is told when it connects (DA-194): the person's graph hangs from one
+    /// account root, so a new Node always goes under the most specific Node it belongs to.
+    /// </summary>
+    public const string ServerInstructions =
+        "Life Graph is the person's own graph of subjects, Resources, people, events and projects, all hanging from one account root."
+        + " Before you create anything, search for the subject (" + GraphReadTools.SearchGraphName + " or " + GraphReadTools.GetContextName + "): it may already exist."
+        + " Every Node you create needs an `anchor`: the most specific existing Node it belongs under."
+        + " When the subject has no Node yet, create that Node first, anchored, and anchor the new ones under it."
+        + " Call " + GraphReadTools.GetContextName + " with no arguments to start at the account root and learn its id; anchor at the root only when nothing more specific fits."
+        + " Every change you make is shown to the person, who can undo it.";
+
     public const string ResourceName = "Life Graph";
 
     /// <summary>What the MCP server calls itself in the initialize handshake.</summary>
@@ -67,7 +79,11 @@ public static class AgentsModule
         services.AddSingleton<AgentReadBudget>();
         services.AddSingleton<AgentWriteBudget>();
 
-        services.AddMcpServer(options => options.ServerInfo = new() { Name = McpServerName, Title = ResourceName, Version = McpServerVersion })
+        services.AddMcpServer(options =>
+            {
+                options.ServerInfo = new() { Name = McpServerName, Title = ResourceName, Version = McpServerVersion };
+                options.ServerInstructions = ServerInstructions;
+            })
             // Stateless: every call carries its token and runs in its own request scope, so the
             // principal is the caller's and nothing ties a session to one instance.
             .WithHttpTransport(transport => transport.Stateless = true)

@@ -20,6 +20,11 @@ internal static class GraphConstraints
 
     public const string TypeSystemKeyCheck = "ck_types_system_key";
 
+    /// <summary>One Raiz da Conta per Account (DA-189, DA-201).</summary>
+    public const string NodeAccountRootUnique = "uq_nodes_account_root";
+
+    public const string NodeSystemKeyCheck = "ck_nodes_system_key";
+
     public const string PropertySystemKeyCheck = "ck_property_definitions_system_key";
 
     /// <summary>The CHECK that keeps <c>system_key</c> null or one of the catalog's keys.</summary>

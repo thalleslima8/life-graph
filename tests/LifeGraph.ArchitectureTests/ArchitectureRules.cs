@@ -94,6 +94,12 @@ public static class ArchitectureRules
             .Should().NotDependOnAnyTypesThat().HaveFullName($"{rootNamespace}.Graph.Contracts.ISemanticGraph")
             .Because("only the Semantic jobs read a Node's text for the model, store its embedding and infer its Soft Relations (DA-176)");
 
+    /// <summary>Creating a share is Sensitive and has no MCP tool (DA-080): only the Sharing module's HTTP adapter reaches the share port.</summary>
+    public static IArchRule OnlySharingHttpUsesTheSharePort(string rootNamespace) =>
+        Types().That().DoNotResideInNamespaceMatching($@"^{Regex.Escape(rootNamespace)}\.(Graph(\..+)?|Sharing(\..+)?)$")
+            .Should().NotDependOnAnyTypesThat().HaveFullName($"{rootNamespace}.Graph.Contracts.ISharedGraphViews")
+            .Because("no MCP tool and no other module creates a share; only the owner does, through the Sharing endpoints (DA-080)");
+
     // Soft Relations share the relations table with the Hard ones; the model sees only Hard, and
     // only the gate reads past that or names the table in SQL (DA-178). The patterns are split so
     // this file's own text never matches them.

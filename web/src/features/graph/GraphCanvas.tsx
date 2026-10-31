@@ -1,15 +1,17 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createSigmaRenderer } from "./graphRenderer";
-import { distanceHeading, graphKeyboardHelp, SELECTED_NODE_LABEL } from "./graphMessages";
+import type { RenderableGraph, RenderableNode } from "./graphShape";
+import { INITIAL_ZOOM, steppedZoom } from "./graphView";
+import { distanceHeading, graphKeyboardHelp, SELECTED_NODE_LABEL } from "./graphViewMessages";
 import { buildGraphIndex, isArrowKey, keyAction, nextFocus } from "./graphNavigation";
 import type { GraphCanvasLabels, GraphRenderer, GraphRendererFactory, GraphRenderView } from "./graphRendererPort";
-import { INITIAL_ZOOM, steppedZoom, type LocalGraph, type LocalGraphNode } from "./localGraph";
 
 export type GraphCanvasProps = {
-  graph: LocalGraph;
-  rootId: string;
+  /** The root is `graph.rootId`. */
+  graph: RenderableGraph;
   selectedId?: string | undefined;
-  highlightAgent: boolean;
+  /** Marks what an agent changed and nobody reviewed; off unless asked (a visitor's view never asks). */
+  highlightAgent?: boolean;
   zoom: number;
   onZoomChange: (zoom: number) => void;
   onSelect: (nodeId: string) => void;
@@ -33,9 +35,8 @@ export type GraphCanvasProps = {
  */
 export function GraphCanvas({
   graph,
-  rootId,
   selectedId,
-  highlightAgent,
+  highlightAgent = false,
   zoom,
   onZoomChange,
   onSelect,
@@ -45,6 +46,7 @@ export function GraphCanvas({
   onRenderError,
   rendererFactory = createSigmaRenderer,
 }: GraphCanvasProps) {
+  const rootId = graph.rootId;
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<GraphRenderer | null>(null);
   const drawnRef = useRef<GraphRenderView | null>(null);
@@ -178,7 +180,7 @@ export function GraphCanvas({
  * The Node the keyboard is on: where the arrows last went while it is still in the graph,
  * otherwise the selected Node, otherwise the root.
  */
-function useKeyboardNode(graph: LocalGraph, rootId: string, selectedId: string | undefined) {
+function useKeyboardNode(graph: RenderableGraph, rootId: string, selectedId: string | undefined) {
   const index = useMemo(() => buildGraphIndex(graph, rootId), [graph, rootId]);
   const nodesById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
   const [movedTo, setMovedTo] = useState<string>();
@@ -188,7 +190,7 @@ function useKeyboardNode(graph: LocalGraph, rootId: string, selectedId: string |
     index,
     nodeId,
     /** Moves to a Node, or back to the start with undefined; returns the Node it lands on. */
-    moveTo: (next: string | undefined): LocalGraphNode | undefined => {
+    moveTo: (next: string | undefined): RenderableNode | undefined => {
       setMovedTo(next);
       return nodesById.get(next ?? start);
     },
@@ -196,7 +198,7 @@ function useKeyboardNode(graph: LocalGraph, rootId: string, selectedId: string |
 }
 
 function announcementOf(
-  node: LocalGraphNode | undefined,
+  node: RenderableNode | undefined,
   { selectedId, highlightAgent, labels }: { selectedId: string | undefined; highlightAgent: boolean; labels: GraphCanvasLabels },
 ): string {
   if (!node) {

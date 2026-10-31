@@ -21,12 +21,14 @@ public sealed class AgentGraphWriterTests(PostgresDatabase database) : IAsyncLif
     private readonly LifeGraphApiFactory _factory = new(database);
     private GraphWriteHarness _graph = null!;
     private Guid _account;
+    private Guid _root;
 
     public async ValueTask InitializeAsync()
     {
         await database.ResetAsync();
         _graph = new GraphWriteHarness(database, _factory);
         _account = await _graph.CreateAccountAsync();
+        _root = await _graph.AccountRootIdAsync(_account);
     }
 
     public ValueTask DisposeAsync() => _factory.DisposeAsync();
@@ -76,7 +78,7 @@ public sealed class AgentGraphWriterTests(PostgresDatabase database) : IAsyncLif
         var agent = await _graph.CreateAgentIdentityAsync(_account, requiresApproval: true);
 
         var written = await _graph.AsAgentAsync(_account, agent, writer =>
-            writer.WriteAsync(new AgentWriteRequest([new AgentCreateNode("Idea")]), TestContext.Current.CancellationToken));
+            writer.WriteAsync(new AgentWriteRequest([new AgentCreateNode("Idea") { Anchor = GraphWriteHarness.AgentAnchorAt(_root) }]), TestContext.Current.CancellationToken));
 
         var pending = Assert.IsType<ChangeOutcome.PendingApproval>(written.Value);
         Assert.True(pending.RequiresUser);
@@ -114,9 +116,9 @@ public sealed class AgentGraphWriterTests(PostgresDatabase database) : IAsyncLif
             new NpgsqlParameter("id", agent));
 
         var written = await _graph.AsAgentAsync(_account, agent, writer =>
-            writer.WriteAsync(new AgentWriteRequest([new AgentCreateNode("Another")]), TestContext.Current.CancellationToken));
+            writer.WriteAsync(new AgentWriteRequest([new AgentCreateNode("Another") { Anchor = GraphWriteHarness.AgentAnchorAt(_root) }]), TestContext.Current.CancellationToken));
         var suggested = await _graph.AsAgentAsync(_account, agent, writer =>
-            writer.SuggestAsync(new AgentWriteRequest([new AgentCreateNode("Another")]), TestContext.Current.CancellationToken));
+            writer.SuggestAsync(new AgentWriteRequest([new AgentCreateNode("Another") { Anchor = GraphWriteHarness.AgentAnchorAt(_root) }]), TestContext.Current.CancellationToken));
         var applied = await _graph.AsAgentAsync(_account, agent, writer => writer.ApplyProposalAsync(proposal, "k1", TestContext.Current.CancellationToken));
         var withdrawn = await _graph.AsAgentAsync(_account, agent, writer => writer.WithdrawProposalAsync(proposal, TestContext.Current.CancellationToken));
 
@@ -140,8 +142,8 @@ public sealed class AgentGraphWriterTests(PostgresDatabase database) : IAsyncLif
         var suggested = await _graph.AsAgentAsync(_account, agent, writer => writer.SuggestAsync(
             new AgentWriteRequest(
             [
-                new AgentCreateNode("Kept", Ref: "kept"),
-                new AgentCreateNode("Deleted", Ref: "deleted"),
+                new AgentCreateNode("Kept", Ref: "kept") { Anchor = GraphWriteHarness.AgentAnchorAt(_root) },
+                new AgentCreateNode("Deleted", Ref: "deleted") { Anchor = GraphWriteHarness.AgentAnchorAt(_root) },
                 new AgentCreateNode("Hidden", Ref: "hidden"),
                 new AgentCreateRelation(new NodeRef(null, "kept"), new NodeRef(null, "hidden"), "about"),
             ]),
@@ -149,14 +151,15 @@ public sealed class AgentGraphWriterTests(PostgresDatabase database) : IAsyncLif
         var proposal = Assert.IsType<ChangeOutcome.PendingApproval>(suggested.Value).ProposalId;
         var first = Assert.IsType<ChangeOutcome.Applied>((await ApplyAsync(agent, proposal, "k1")).Value);
         var (kept, deleted, hidden) = (first.CreatedNodes["kept"], first.CreatedNodes["deleted"], first.CreatedNodes["hidden"]);
-        var relation = Assert.Single(first.Receipt.Changes, change => change.Kind == GraphEntityKind.Relation).EntityId;
+        var relation = first.Receipt.Changes.Last(change => change.Kind == GraphEntityKind.Relation).EntityId;
         await _graph.WrittenAsync(_account, new DeleteNode(deleted, 1), new UpdateNode(hidden, 1) { HiddenFromAgents = true });
 
         var retry = Assert.IsType<ChangeOutcome.Applied>((await ApplyAsync(agent, proposal, "k1")).Value);
 
         Assert.Equal(first.Receipt.ChangeSetId, retry.Receipt.ChangeSetId);
-        Assert.Equal([kept, deleted, hidden, relation], first.Receipt.Changes.Select(change => change.EntityId));
-        Assert.Equal([kept, deleted], retry.Receipt.Changes.Select(change => change.EntityId));
+        Assert.Equal([kept, deleted, hidden], NodesOf(first.Receipt));
+        Assert.Equal([kept, deleted], NodesOf(retry.Receipt));
+        Assert.DoesNotContain(retry.Receipt.Changes, change => change.EntityId == relation);
         Assert.Equal(["deleted", "kept"], retry.CreatedNodes.Keys.Order(StringComparer.Ordinal));
         Assert.DoesNotContain(hidden, retry.CreatedNodes.Values);
     }
@@ -173,8 +176,8 @@ public sealed class AgentGraphWriterTests(PostgresDatabase database) : IAsyncLif
         var suggested = await _graph.AsAgentAsync(_account, agent, writer => writer.SuggestAsync(
             new AgentWriteRequest(
             [
-                new AgentCreateNode("Letters", Ref: "letters"),
-                new AgentCreateNode("Secret note", Ref: "note"),
+                new AgentCreateNode("Letters", Ref: "letters") { Anchor = GraphWriteHarness.AgentAnchorAt(_root) },
+                new AgentCreateNode("Secret note", Ref: "note") { Anchor = GraphWriteHarness.AgentAnchorAt("letters") },
                 new AgentCreateRelation(new NodeRef(null, "letters"), NodeRef.Of(target), "written_by"),
             ]),
             TestContext.Current.CancellationToken));
@@ -189,7 +192,7 @@ public sealed class AgentGraphWriterTests(PostgresDatabase database) : IAsyncLif
 
         Assert.Equal(first.Receipt.ChangeSetId, retry.Receipt.ChangeSetId);
         Assert.Equal(("letters", letters), Assert.Single(retry.CreatedNodes.Select(created => (created.Key, created.Value))));
-        Assert.Equal([letters], retry.Receipt.Changes.Select(change => change.EntityId));
+        Assert.Equal([letters], NodesOf(retry.Receipt));
         Assert.Equal("[]|true|letters", await _graph.ScalarAsync<string>(
             "SELECT operations::text || '|' || (redacted_at IS NOT NULL) || '|' || (SELECT string_agg(name, ',') FROM jsonb_object_keys(created_nodes) AS name) FROM change_proposals WHERE id = @id",
             new NpgsqlParameter("id", proposal)));
@@ -226,7 +229,7 @@ public sealed class AgentGraphWriterTests(PostgresDatabase database) : IAsyncLif
     private async Task<Guid> SuggestAsync(Guid agentIdentityId, string title)
     {
         var suggested = await _graph.AsAgentAsync(_account, agentIdentityId, writer =>
-            writer.SuggestAsync(new AgentWriteRequest([new AgentCreateNode(title)]), TestContext.Current.CancellationToken));
+            writer.SuggestAsync(new AgentWriteRequest([new AgentCreateNode(title) { Anchor = GraphWriteHarness.AgentAnchorAt(_root) }]), TestContext.Current.CancellationToken));
         return Assert.IsType<ChangeOutcome.PendingApproval>(suggested.Value).ProposalId;
     }
 
@@ -242,4 +245,7 @@ public sealed class AgentGraphWriterTests(PostgresDatabase database) : IAsyncLif
 
     private Task<string> ProposalStatusAsync(Guid proposal) =>
         _graph.ScalarAsync<string>("SELECT status FROM change_proposals WHERE id = @id", new NpgsqlParameter("id", proposal));
+
+    private static IEnumerable<Guid> NodesOf(GraphWriteReceipt receipt) =>
+        receipt.Changes.Where(change => change.Kind == GraphEntityKind.Node).Select(change => change.EntityId);
 }

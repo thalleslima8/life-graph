@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Limaj.Framework.Core;
 
 namespace LifeGraph.Graph.Contracts;
@@ -53,4 +54,13 @@ public sealed record CaptureResource(Guid NodeId, string Url) : GraphOperation
 /// <param name="Created">The link was new and the Resource was created.</param>
 /// <param name="AlreadyExists">The Account already kept the link.</param>
 /// <param name="AlreadyInInbox">It was kept in the Inbox already, so nothing changed there.</param>
-public sealed record ResourceCaptured(Guid? NodeId, bool Created, bool AlreadyExists, bool AlreadyInInbox);
+public sealed record ResourceCaptured(Guid? NodeId, bool Created, bool AlreadyExists, bool AlreadyInInbox)
+{
+    /// <summary>
+    /// Whether the Resource is linked to the Raiz da Conta by Hard Relations once the capture is
+    /// stored (DA-191, DA-195): computed for an agent's capture that names the Resource only
+    /// (DA-205); absent otherwise, never meaning false.
+    /// </summary>
+    [Description("Whether the Resource is linked to the account root by Hard Relations once the capture is stored. Computed only for an agent's capture; absent means not computed, never false.")]
+    public bool? Anchored { get; init; }
+}

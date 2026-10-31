@@ -2,6 +2,7 @@ using System.Text.Json;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Infrastructure.Accounts;
 using LifeGraph.Infrastructure.Persistence;
+using LifeGraph.Infrastructure.Purging;
 using LifeGraph.IntegrationTests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -68,6 +69,12 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
             new NpgsqlParameter("relation", writtenBy)));
         Assert.Equal(0, await _graph.ScalarAsync<long>("SELECT count(*) FROM change_entries WHERE after::text LIKE '%Marcus%' OR before::text LIKE '%Marcus%'"));
         Assert.Equal(["done", "done"], await TextsAsync("SELECT status FROM jobs WHERE kind = 'graph.purge'"));
+
+        // DA-254: one PII-free ledger row for the Node, none for the Relation that went with it.
+        Assert.Equal(1, await _graph.ScalarAsync<long>("SELECT count(*) FROM purge_ledger_entries"));
+        Assert.Equal(1, await _graph.ScalarAsync<long>(
+            "SELECT count(*) FROM purge_ledger_entries WHERE subject_kind = 'node' AND subject_hash = @hash AND hash_version = 1 AND receipt_reference IS NULL",
+            new NpgsqlParameter("hash", PurgeLedgerEntry.SubjectHashOf(PurgedSubjectKind.Node, author))));
     }
 
     // DA-114: the source is cleared only once every entry of the GraphChangeSet is purged.
@@ -102,6 +109,7 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
         Assert.Equal(1, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes WHERE id = @id AND deleted_at IS NULL", new NpgsqlParameter("id", node)));
         Assert.Equal(0, await _graph.ScalarAsync<long>("SELECT count(*) FROM change_entries WHERE purged_at IS NOT NULL"));
         Assert.Equal(["done"], await TextsAsync("SELECT status FROM jobs WHERE kind = 'graph.purge'"));
+        Assert.Equal(0, await _graph.ScalarAsync<long>("SELECT count(*) FROM purge_ledger_entries"));
     }
 
     // DA-115: redoing a delete is a new tombstone with a new window and a new job; the old job no longer matches.
@@ -273,7 +281,7 @@ public sealed class GraphPurgeTests(PostgresDatabase database) : IAsyncLifetime
             Assert.Equal(0, await _graph.ScalarAsync<long>($"SELECT count(*) FROM {table} WHERE account_id = @id", new NpgsqlParameter("id", _account)));
         }
 
-        Assert.Equal(2, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes WHERE account_id = @id", new NpgsqlParameter("id", other)));
+        Assert.Equal(2, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes WHERE account_id = @id AND system_key IS NULL", new NpgsqlParameter("id", other)));
         Assert.Equal(othersJobs, await _graph.ScalarAsync<long>("SELECT count(*) FROM jobs WHERE account_id = @id", new NpgsqlParameter("id", other)));
     }
 

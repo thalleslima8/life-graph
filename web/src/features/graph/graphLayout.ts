@@ -1,4 +1,4 @@
-import type { LocalGraph } from "./localGraph";
+import type { RenderableGraph } from "./graphShape";
 
 /**
  * Where each Node of the local graph starts, without any library (DA-137): the root at the
@@ -14,7 +14,7 @@ export const RING_SPACING = 100;
 /** How far from its placed neighbor a new Node starts. */
 export const NEIGHBOR_OFFSET = RING_SPACING / 4;
 
-export function placeNodes(graph: LocalGraph, rootId: string, placed: ReadonlyMap<string, Point> = new Map()): Map<string, Point> {
+export function placeNodes(graph: RenderableGraph, rootId: string, placed: ReadonlyMap<string, Point> = new Map()): Map<string, Point> {
   const positions = new Map<string, Point>();
   const rings = new Map<number, string[]>();
   for (const node of graph.nodes) {
@@ -51,7 +51,7 @@ function ringPosition(ring: string[], id: string, distance: number): Point {
   return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
 }
 
-function neighborsOf(graph: LocalGraph): Map<string, string[]> {
+function neighborsOf(graph: RenderableGraph): Map<string, string[]> {
   const neighbors = new Map<string, string[]>();
   const link = (from: string, to: string) => {
     const list = neighbors.get(from) ?? [];

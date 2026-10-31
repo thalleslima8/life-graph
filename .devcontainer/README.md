@@ -26,6 +26,9 @@ On an empty volume, `db/bootstrap/init-dev.sh` creates:
 - `lifegraph_provisioner`: what the owner's `accounts` CLI connects as
   (`ConnectionStrings__Provisioning`); it inserts Accounts and their users and
   reads nothing else (DA-107);
+- `lifegraph_operator`: what the operator's `shares disable <public_ref>` CLI
+  connects as (`ConnectionStrings__Operator`); it reads the public reference and
+  writes only the block of the share directory (DA-217);
 - the `vector` and `unaccent` extensions.
 
 `post-create.sh` re-runs the idempotent `roles.sql` (so an existing volume gets

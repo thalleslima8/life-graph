@@ -2,6 +2,7 @@ using System.Reflection;
 using LifeGraph.Accounts.Email;
 using LifeGraph.Accounts.Issuer;
 using LifeGraph.Semantic.Embedding;
+using LifeGraph.Sharing;
 
 namespace LifeGraph.Host.OpenApi;
 
@@ -30,6 +31,8 @@ public static class BuildTimeDocumentGeneration
         [$"{IssuerOptions.SectionName}:{nameof(IssuerOptions.UseEphemeralKeys)}"] = "true",
         [$"{IssuerOptions.SectionName}:{nameof(IssuerOptions.Issuer)}"] = "https://issuer.build.invalid/",
         [$"{EmbeddingOptions.SectionName}:{nameof(EmbeddingOptions.Provider)}"] = nameof(EmbeddingProvider.None),
+        [$"{SharingOptions.SectionName}:{nameof(SharingOptions.Origin)}"] = "https://share.build.invalid",
+        [$"{SharingOptions.SectionName}:{nameof(SharingOptions.AbuseReportAddress)}"] = "abuse@build.invalid",
     };
 
     public static bool IsRunningUnder(Assembly? entryAssembly) =>

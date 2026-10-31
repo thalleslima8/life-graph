@@ -23,5 +23,10 @@ public sealed class GraphModelContributor : IModelContributor
         modelBuilder.ApplyConfiguration(new ChangeEntryConfiguration());
         modelBuilder.ApplyConfiguration(new AgentReadConfiguration());
         modelBuilder.ApplyConfiguration(new ChangeProposalConfiguration());
+        modelBuilder.ApplyConfiguration(new SharedGraphViewConfiguration());
+        modelBuilder.ApplyConfiguration(new SharedGraphViewNodeConfiguration());
+        modelBuilder.ApplyConfiguration(new SharedGraphViewPropertyConfiguration());
+        modelBuilder.ApplyConfiguration(new SharedGraphViewDirectoryConfiguration());
+        modelBuilder.ApplyConfiguration(new AccountExportConfiguration());
     }
 }

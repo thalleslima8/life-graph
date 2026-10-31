@@ -3,14 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
-import { aLocalGraphModel, fakeGraphRenderer as fake } from "@/test/fakeGraphRenderer";
+import { aRenderableGraphModel, fakeGraphRenderer as fake } from "@/test/fakeGraphRenderer";
 import { aChangeSet, aFeed, aLocalGraph, aNode, aType, NODE_ID, ontologyHandlers, OTHER_NODE_ID, RELATION_ID } from "@/test/graphFixtures";
 import { csrfTokenHandler, problem, sessionHandler } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 import { renderRoute } from "@/test/renderRoute";
 import { graphKeys, type NodeDetail } from "./graphData";
 import { LEGEND_AGENT_TEXT } from "./graphMessages";
-import { graphPath, INITIAL_ZOOM, MAX_ZOOM, MIN_ZOOM, steppedZoom } from "./localGraph";
+import { graphPath, INITIAL_ZOOM, MAX_ZOOM, MIN_ZOOM, steppedZoom } from "./graphView";
+import { readLastFocus } from "./localGraph";
 import type { ChangeSetFeed } from "./recentChanges";
 
 // jsdom has no WebGL: the page draws through the fake renderer (DA-137).
@@ -84,6 +85,15 @@ describe("local graph page", () => {
     expect(screen.getByRole("radio", { name: "2" })).toBeChecked();
     expect(asked).toEqual([`${NODE_ID}?depth=2`]);
     expect(fake.recorded.mounts.map((mount) => mount.view.graph.edges.map((edge) => edge.id))).toEqual([[RELATION_ID]]);
+  });
+
+  it("remembers the Node it opened at as the last focus of this browser", async () => {
+    window.localStorage.clear();
+    graphApi(() => HttpResponse.json(aLocalGraph()));
+    renderRoute(graphPath(NODE_ID));
+
+    await screen.findByRole("heading", { level: 1, name: "Grafo de Leituras" });
+    expect(readLastFocus()).toBe(NODE_ID);
   });
 
   it("changes the depth in the URL and keeps the graph on screen, busy, until the deeper one arrives", async () => {
@@ -251,7 +261,7 @@ describe("local graph page", () => {
     graphApi(() => HttpResponse.json(aLocalGraph()));
     renderRoute(graphPath(NODE_ID));
     const legend = await screen.findByRole("region", { name: "Legenda" });
-    const [root, other] = aLocalGraphModel().nodes;
+    const [root, other] = aRenderableGraphModel().nodes;
     const summaries = () => {
       const labels = (fake.recorded.updates.at(-1) ?? fake.recorded.mounts.at(-1)?.view)?.labels;
       return [root, other].map((node) => (node && labels ? labels.nodeSummary(node) : undefined));

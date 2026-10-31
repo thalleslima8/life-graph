@@ -101,6 +101,28 @@ public static class GraphErrors
     /// </summary>
     public static readonly ErrorCode SystemEntryLocked = ErrorCode.BusinessRule("graph.system_entry_locked", ErrorRecovery.NotRecoverable);
 
+    /// <summary>
+    /// The Raiz da Conta keeps what makes it the root (DA-189, DA-203): it is never deleted alone,
+    /// hidden from agents, given another Type or taken back by an Undo of its creation, its Type is
+    /// never hidden from agents, and no other Node takes its Type. A validation error, never
+    /// NotFound: the Node exists and is the person's own.
+    /// </summary>
+    public static readonly ErrorCode AccountRootLocked = ErrorCode.BusinessRule("graph.account_root_locked", ErrorRecovery.NotRecoverable);
+
+    /// <summary>
+    /// The Account has no Raiz da Conta yet (DA-202): a read or write that starts from it is
+    /// refused, never answered NotFound, and no read or write creates it. It comes back at the
+    /// person's next sign-in.
+    /// </summary>
+    public static readonly ErrorCode RootMissing = ErrorCode.BusinessRule("graph.root_missing", ErrorRecovery.AskUser);
+
+    /// <summary>
+    /// An agent's new Node would not be anchored (DA-192, DA-200): neither its <c>anchor</c> nor
+    /// a Hard Relation of the same write links it to a Node reached from the Raiz da Conta. The
+    /// message tells how to fix it, with the root's id; the details name each loose operation.
+    /// </summary>
+    public static readonly ErrorCode AnchorRequired = ErrorCode.BusinessRule("graph.anchor_required", ErrorRecovery.FixInput);
+
     /// <summary>The name of a system Type or Property, in any case, is reserved for it (DA-057).</summary>
     public static readonly ErrorCode NameReserved = ErrorCode.BusinessRule("graph.name_reserved", ErrorRecovery.AskUser);
 
@@ -124,6 +146,12 @@ public static class GraphErrors
 
     /// <summary>The message of <see cref="ResourceUrlInvalid"/>, the same for every cause.</summary>
     public const string ResourceUrlInvalidMessage = "This link cannot be kept as a Resource.";
+
+    /// <summary>The person has no Account export ready to download (DA-248): none asked for, still being built, failed or expired.</summary>
+    public static readonly ErrorCode ExportNotFound = ErrorCode.NotFound("graph.export_not_found");
+
+    /// <summary>An Account export is still being built (DA-248): one at a time per Account.</summary>
+    public static readonly ErrorCode ExportInProgress = ErrorCode.Conflict("graph.export_in_progress");
 
     public static IReadOnlyList<ErrorCode> All { get; } =
     [
@@ -152,9 +180,14 @@ public static class GraphErrors
         PropertyRewriteTooLarge,
         PropertyUsageChanged,
         SystemEntryLocked,
+        AccountRootLocked,
+        RootMissing,
+        AnchorRequired,
         NameReserved,
         ResourceUrlTaken,
         ResourceUrlInvalid,
         CollectionNotManual,
+        ExportNotFound,
+        ExportInProgress,
     ];
 }

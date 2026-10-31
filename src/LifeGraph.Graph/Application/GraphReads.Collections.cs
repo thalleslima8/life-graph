@@ -77,6 +77,7 @@ internal sealed partial class GraphReads
                 .Take(pageSize + 1)
                 .Select(node => new NodeSummary(node.Id, node.Title, node.TypeId, node.Version, node.InboxEnteredAt != null, node.CreatedAt, node.UpdatedAt, Node.SuggestedTypeOf(node.TypeId, node.SuggestedType))
                 {
+                    IsAccountRoot = node.SystemKey == SystemOntology.AccountRootTypeKey,
                     SoftRelationCount = softRelations.Count(soft => soft.SourceNodeId == node.Id || soft.TargetNodeId == node.Id),
                 })
                 .ToListAsync(token);
