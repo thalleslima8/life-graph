@@ -175,6 +175,9 @@ public enum ProposalReason
 
     /// <summary>Past the sliding window of the agent or the Account (DA-047, DA-132).</summary>
     Window,
+
+    /// <summary>Past the plan's monthly write quota of the Account's agents (DA-261).</summary>
+    Quota,
 }
 
 public enum ProposalStatus

@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
+import { LimitNotice } from "@/features/account/LimitNotice";
+import { isPlanLimitReached } from "@/features/account/planData";
 import { LOAD_ERROR_MESSAGE, writeErrorMessage } from "@/features/graph/graphMessages";
 import { CollectionForm } from "./CollectionForm";
 import { NEEDS_REVIEW_LABEL, OUTSIDE_NAV_NOTE, reviewText } from "./collectionMessages";
@@ -36,7 +38,7 @@ export function CollectionsPage() {
         navFull={navFull}
         action={{
           isPending: create.isPending,
-          error: create.error,
+          error: isPlanLimitReached(create.error) ? null : create.error,
           submit: (input, onDone) =>
             create.mutate(input, {
               onSuccess: (receipt) => {
@@ -49,6 +51,7 @@ export function CollectionsPage() {
             }),
         }}
       />
+      <LimitNotice kind="collections" error={create.error} />
       {collections.isPending && <p role="status">Carregando…</p>}
       {collections.isError && (
         <div className="space-y-2">

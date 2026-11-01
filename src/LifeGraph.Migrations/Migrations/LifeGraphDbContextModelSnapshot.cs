@@ -26,6 +26,39 @@ namespace LifeGraph.Migrations.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("LifeGraph.Accounts.Domain.AccountPlanAssignment", b =>
+                {
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("origin");
+
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("plan");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("AccountId")
+                        .HasName("pk_account_plans");
+
+                    b.ToTable("account_plans", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_account_plans_origin", "origin IN ('cli')");
+
+                            t.HasCheckConstraint("ck_account_plans_plan", "plan IN ('free', 'premium')");
+                        });
+                });
+
             modelBuilder.Entity("LifeGraph.Accounts.Domain.AgentIdentity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -438,7 +471,7 @@ namespace LifeGraph.Migrations.Migrations
 
                             t.HasCheckConstraint("ck_change_proposals_operation_count", "operation_count >= 1");
 
-                            t.HasCheckConstraint("ck_change_proposals_reasons", "reasons <@ ARRAY['approval_required', 'bulk', 'sensitive', 'suggested', 'type_change', 'window']::text[]");
+                            t.HasCheckConstraint("ck_change_proposals_reasons", "reasons <@ ARRAY['approval_required', 'bulk', 'quota', 'sensitive', 'suggested', 'type_change', 'window']::text[]");
 
                             t.HasCheckConstraint("ck_change_proposals_redacted_empty", "redacted_at IS NULL OR operations = '[]'::jsonb");
 
@@ -566,6 +599,10 @@ namespace LifeGraph.Migrations.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int>("QuotaOperations")
+                        .HasColumnType("integer")
+                        .HasColumnName("quota_operations");
+
                     b.Property<Guid?>("RevertsChangeSetId")
                         .HasColumnType("uuid")
                         .HasColumnName("reverts_changeset_id");
@@ -614,6 +651,10 @@ namespace LifeGraph.Migrations.Migrations
                         .HasDatabaseName("ix_changesets_agent_identity_id_id")
                         .HasFilter("agent_identity_id IS NOT NULL");
 
+                    b.HasIndex(new[] { "AccountId", "CreatedAt" }, "ix_changesets_account_id_created_at_quota")
+                        .HasDatabaseName("ix_changesets_account_id_created_at_quota")
+                        .HasFilter("quota_operations > 0");
+
                     b.ToTable("changesets", null, t =>
                         {
                             t.HasCheckConstraint("ck_changesets_actor_kind", "actor_kind IN ('agent_identity', 'human', 'system')");
@@ -621,6 +662,8 @@ namespace LifeGraph.Migrations.Migrations
                             t.HasCheckConstraint("ck_changesets_agent_identity", "(actor_kind = 'agent_identity') = (agent_identity_id IS NOT NULL)");
 
                             t.HasCheckConstraint("ck_changesets_channel", "channel IN ('api', 'import', 'mcp', 'system', 'ui')");
+
+                            t.HasCheckConstraint("ck_changesets_quota_operations", "quota_operations >= 0 AND (quota_operations = 0 OR actor_kind = 'agent_identity')");
 
                             t.HasCheckConstraint("ck_changesets_status", "status IN ('applied', 'reverted')");
 
@@ -2013,6 +2056,16 @@ namespace LifeGraph.Migrations.Migrations
                         .HasDatabaseName("ix_oidc_tokens_application_id_status_subject_type");
 
                     b.ToTable("oidc_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("LifeGraph.Accounts.Domain.AccountPlanAssignment", b =>
+                {
+                    b.HasOne("LifeGraph.Infrastructure.Accounts.Account", null)
+                        .WithOne()
+                        .HasForeignKey("LifeGraph.Accounts.Domain.AccountPlanAssignment", "AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_account_plans_account_id");
                 });
 
             modelBuilder.Entity("LifeGraph.Accounts.Domain.AgentIdentity", b =>

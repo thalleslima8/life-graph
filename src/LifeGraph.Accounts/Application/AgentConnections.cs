@@ -28,6 +28,7 @@ internal sealed class AgentConnections(
     IOpenIddictTokenManager tokens,
     ClientDiscontinuation discontinuation,
     IEnumerable<IAgentRevocationParticipant> revocationParticipants,
+    IEntitlements entitlements,
     TimeProvider clock) : IAgentIdentities
 {
     public const int DefaultPageSize = 50;
@@ -85,6 +86,11 @@ internal sealed class AgentConnections(
         // without an AgentIdentity, and a reconnect keeps the old grant untouched (DA-126).
         return await db.InAccountResultTransactionAsync(async token =>
         {
+            if (await ConnectionLimitReachedAsync(human.AccountId, clientId, token) is { } limitReached)
+            {
+                return Result<AgentGrant>.Fail(limitReached);
+            }
+
             var now = clock.GetUtcNow();
             var descriptor = new OpenIddictAuthorizationDescriptor
             {
@@ -109,6 +115,50 @@ internal sealed class AgentConnections(
 
             return Result<AgentGrant>.Ok(new AgentGrant(identity.Id, authorizationId, [.. identity.Scopes]));
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// The plan's limit of Agent Connections (DA-262), checked under the Account's connection lock
+    /// so two consents cannot both take the last place: only an active AgentIdentity counts, and
+    /// reconnecting a client that is still connected is never a new connection. Reactivating a
+    /// revoked one takes a place like a first consent. <c>null</c> when the consent may go on.
+    /// </summary>
+    private async Task<Error?> ConnectionLimitReachedAsync(Guid accountId, string clientId, CancellationToken cancellationToken)
+    {
+        await db.Database.ExecuteSqlAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({"lifegraph.agent_connections:" + accountId.ToString()}, 0))",
+            cancellationToken);
+        return await ReachedConnectionLimitAsync(clientId, cancellationToken) is { } limit
+            ? PlanErrors.LimitReachedError(PlanLimitKind.AgentConnections, limit)
+            : null;
+    }
+
+    /// <summary>
+    /// The plan's limit of Agent Connections when a consent to <paramref name="clientId"/> would
+    /// pass it, so the consent page explains the limit and offers no Allow (DA-262); <c>null</c>
+    /// when the consent may go on. Display only: the grant checks again under the lock.
+    /// </summary>
+    public async Task<int?> ConnectionLimitBlockingAsync(string clientId, CancellationToken cancellationToken)
+    {
+        if (currentPrincipal.Authenticated is not { Type: PrincipalType.Human })
+        {
+            return null;
+        }
+
+        return await db.InAccountTransactionAsync(token => ReachedConnectionLimitAsync(clientId, token), cancellationToken);
+    }
+
+    // Only an active AgentIdentity counts, and a client still connected reconnects freely (DA-262).
+    private async Task<int?> ReachedConnectionLimitAsync(string clientId, CancellationToken cancellationToken)
+    {
+        var active = db.Set<AgentIdentity>().AsNoTracking().Where(identity => identity.RevokedAt == null);
+        if (await active.AnyAsync(identity => identity.ClientId == clientId, cancellationToken))
+        {
+            return null;
+        }
+
+        var limit = (await entitlements.OfCurrentAccountAsync(cancellationToken)).Limits.AgentConnections;
+        return await active.CountAsync(cancellationToken) >= limit ? limit : null;
     }
 
     /// <summary>
@@ -175,6 +225,9 @@ internal sealed class AgentConnections(
         var nextCursor = rows.Count > pageSize ? EncodeCursor(page[^1].Id) : null;
         return Result<AgentIdentityPage>.Ok(new AgentIdentityPage(page, new AgentIdentityPageInfo(nextCursor)));
     }
+
+    public Task<int> CountActiveOfCurrentAccountAsync(CancellationToken cancellationToken) =>
+        db.Set<AgentIdentity>().AsNoTracking().CountAsync(identity => identity.RevokedAt == null, cancellationToken);
 
     public Task<Result<AgentIdentityView>> GetAsync(Guid agentIdentityId, CancellationToken cancellationToken) =>
         db.InAccountTransactionAsync(async token =>

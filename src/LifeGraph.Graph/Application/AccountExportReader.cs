@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using LifeGraph.Accounts.Contracts;
 using LifeGraph.Graph.Domain;
 using LifeGraph.Infrastructure.Accounts;
 using LifeGraph.Infrastructure.Agents;
@@ -24,6 +25,7 @@ internal sealed class AccountExportReader(
     LifeGraphDbContext db,
     IAccountHolderExport accountHolder,
     IAgentIdentityDirectory agentIdentities,
+    IEntitlements entitlements,
     IOptions<AccountExportOptions> options,
     TimeProvider clock)
 {
@@ -40,7 +42,8 @@ internal sealed class AccountExportReader(
 
         var account = await db.Set<Account>().AsNoTracking().SingleAsync(entity => entity.Id == accountId, cancellationToken);
         var email = await accountHolder.EmailOfAsync(accountId, cancellationToken);
-        archive.WriteHeader(now, new ExportedAccount(account.Id, account.CreatedAt, email));
+        var plan = await entitlements.PlanAssignmentOfCurrentAccountAsync(cancellationToken);
+        archive.WriteHeader(now, new ExportedAccount(account.Id, account.CreatedAt, email, new ExportedAccountPlan(plan.Plan, plan.Origin, plan.UpdatedAt)));
 
         // Kept for the Markdown of the Nodes, which names Types, Properties and Tags and links Relations.
         var definitions = new List<ExportedPropertyDefinition>();

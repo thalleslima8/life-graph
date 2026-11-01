@@ -997,6 +997,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         settings[$"{IssuerOptions.SectionName}:Clients:2:ClientId"] = ThirdClientId;
         settings[$"{IssuerOptions.SectionName}:Clients:2:DisplayName"] = "Third Agent";
         settings[$"{IssuerOptions.SectionName}:Clients:2:RedirectUris:0"] = AgentAuthorization.RedirectUri;
+        settings[AgentAuthorization.FreeAgentConnectionsSetting] = "3";
         return settings;
     }
 

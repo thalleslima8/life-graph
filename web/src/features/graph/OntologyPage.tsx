@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { LimitNotice } from "@/features/account/LimitNotice";
+import { isPlanLimitReached } from "@/features/account/planData";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -62,8 +64,12 @@ export function OntologyPage() {
           label="Novo Type"
           idPrefix="new-type"
           submitLabel="Criar Type"
-          action={{ ...createType, submit: (name, onDone) => createType.mutate({ name }, { onSuccess: onDone }) }}
+          action={{
+            ...createType,
+            error: isPlanLimitReached(createType.error) ? null : createType.error,
+            submit: (name, onDone) => createType.mutate({ name }, { onSuccess: onDone }) }}
         />
+        <LimitNotice kind="custom_types" error={createType.error} />
         {types.isPending && <p role="status">Carregando…</p>}
         {types.isError && (
           <p role="alert" className="text-sm text-destructive">

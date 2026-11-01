@@ -43,6 +43,13 @@ public sealed class GraphChangeSet
     /// </summary>
     public int WindowOperations { get; private set; }
 
+    /// <summary>
+    /// How many operations an agent applied on its own with it, counted against the plan's monthly
+    /// write quota of the Account (DA-261). Zero for the person's changes, Undo and proposals the
+    /// person approved, which never consume the quota.
+    /// </summary>
+    public int QuotaOperations { get; private set; }
+
     /// <summary>When the person marked an agent's GraphChangeSet as reviewed in Agent Changes; <c>null</c> while not reviewed.</summary>
     public DateTimeOffset? ReviewedAt { get; private set; }
 
@@ -82,6 +89,17 @@ public sealed class GraphChangeSet
         }
 
         WindowOperations = operations;
+    }
+
+    /// <summary>Records what an agent's own write consumes of the plan's monthly write quota (DA-261).</summary>
+    public void CountTowardsQuota(int operations)
+    {
+        if (ActorKind != ChangeActorKind.AgentIdentity || operations < 0)
+        {
+            throw new InvalidOperationException("Only an agent's write consumes the write quota, and never a negative count.");
+        }
+
+        QuotaOperations = operations;
     }
 
     /// <returns><c>false</c> when it already was reviewed.</returns>

@@ -1,3 +1,4 @@
+using LifeGraph.Accounts.Contracts;
 using LifeGraph.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -9,6 +10,7 @@ namespace LifeGraph.Accounts.Provisioning;
 /// <code>
 /// ConnectionStrings__Provisioning=... dotnet run --project src/LifeGraph.Host -- accounts create --email ada@example.com
 /// dotnet run --project src/LifeGraph.Host -- accounts resend --email ada@example.com
+/// dotnet run --project src/LifeGraph.Host -- accounts plan --email ada@example.com --plan premium
 /// </code>
 /// It takes no password: the user chooses it through the e-mailed link. The link itself is
 /// never printed, so the owner never holds another person's credential.
@@ -21,10 +23,16 @@ public static class AccountsCommandLine
     public const int Failure = 1;
     public const int UsageError = 2;
 
+    private const string PlanAction = "plan";
+    private const string EmailOption = "--email";
+    private const string PlanOption = "--plan";
+
     private const string Usage = """
         Usage:
           accounts create --email <email>   Create a pending account and e-mail the set-password link.
           accounts resend --email <email>   E-mail a new set-password link to a pending account.
+          accounts plan --email <email> --plan free|premium
+                                            Give the account a plan; no billing (DA-260).
         """;
 
     public static bool IsInvocation(IReadOnlyList<string> args) =>
@@ -45,7 +53,12 @@ public static class AccountsCommandLine
         TextWriter output,
         CancellationToken cancellationToken)
     {
-        if (args is not [CommandName, var action, "--email", var email] || string.IsNullOrWhiteSpace(email))
+        if (args is [CommandName, PlanAction, EmailOption, var planEmail, PlanOption, var planName])
+        {
+            return await AssignPlanAsync(services, planEmail, planName, output, cancellationToken);
+        }
+
+        if (args is not [CommandName, var action, EmailOption, var email] || string.IsNullOrWhiteSpace(email))
         {
             await output.WriteLineAsync(Usage);
             return UsageError;
@@ -70,6 +83,35 @@ public static class AccountsCommandLine
         var (message, exitCode) = Describe(outcome);
         await output.WriteLineAsync(message);
         return exitCode;
+    }
+
+    private static async Task<int> AssignPlanAsync(
+        IServiceProvider services,
+        string email,
+        string planName,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        // Only the names the usage lists: Enum.TryParse would also take "1" or "Free, Premium".
+        var plan = Enum.GetValues<AccountPlan>().Cast<AccountPlan?>()
+            .FirstOrDefault(candidate => string.Equals(candidate.ToString(), planName, StringComparison.OrdinalIgnoreCase));
+        if (plan is null || string.IsNullOrWhiteSpace(email))
+        {
+            await output.WriteLineAsync(Usage);
+            return UsageError;
+        }
+
+        await using var scope = services.CreateAsyncScope();
+        var assigner = scope.ServiceProvider.GetRequiredService<AccountPlanAssigner>();
+        var accountId = await assigner.AssignAsync(email, plan.Value, cancellationToken);
+        if (accountId is null)
+        {
+            await output.WriteLineAsync("No account has this e-mail. Use 'accounts create'.");
+            return Failure;
+        }
+
+        await output.WriteLineAsync($"Account {accountId} is now on the {plan.Value.ToString().ToLowerInvariant()} plan.");
+        return Success;
     }
 
     private static (string Message, int ExitCode) Describe(AccountProvisioningOutcome outcome) => outcome switch

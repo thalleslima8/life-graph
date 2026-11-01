@@ -90,7 +90,8 @@ _Avoid_: home, nó do usuário, RootNode (reservado para o SharedGraphView)
 **Âncora** (`anchor`):
 A Hard Relation que liga um Node novo a um Node existente na mesma escrita
 (mesmo GraphChangeSet). É obrigatória para uma AgentIdentity e opcional para o
-usuário.
+usuário. Nos limites do plano, é uma Relation como outra qualquer: só fica fora
+da contagem a Hard Relation que toca a Raiz da Conta (DA-268).
 _Avoid_: pai, parent, relate_to
 
 **Desancorado** (`Unanchored`):

@@ -18,6 +18,7 @@ public sealed class ConnectedAgentsApiTests(PostgresDatabase database) : IAsyncL
         ["Accounts:Issuer:Clients:1:ClientId"] = SecondClientId,
         ["Accounts:Issuer:Clients:1:DisplayName"] = "Second Agent",
         ["Accounts:Issuer:Clients:1:RedirectUris:0"] = AgentAuthorization.RedirectUri,
+        [AgentAuthorization.FreeAgentConnectionsSetting] = "2",
     });
 
     public async ValueTask InitializeAsync()

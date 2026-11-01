@@ -47,6 +47,16 @@ describe("visitor bundle (DA-216)", () => {
       ),
     ).toBe(true);
     expect(visitorBundleBreaches(chunks)).toEqual([]);
+    // The owner's "compartilhado" badge and its lookup never reach a visitor (DA-299).
+    expect(
+      chunks.flatMap((chunk) =>
+        chunk.moduleIds.filter((moduleId) =>
+          /\/src\/features\/sharing\/(SharedBadge\.tsx|sharesData\.ts)$/.test(
+            moduleId.replaceAll("\\", "/"),
+          ),
+        ),
+      ),
+    ).toEqual([]);
     expect(html).toContain(
       '<meta name="robots" content="noindex, nofollow" />',
     );

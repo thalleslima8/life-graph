@@ -8,6 +8,13 @@
     <p>Depois de autorizar, você volta para <strong class="host">@RedirectHost</strong>. Confira se é o endereço do agente que você está conectando.</p>
 
     <form method="post" action="@Action">
+        @if (AgentConnectionLimit is { } limit)
+        {
+            @* Past the plan's Agent Connections there is nothing to authorize (DA-262): no Allow, only the way out. The existing connections keep working (DA-263). *@
+            <p class="warning" role="alert">Seu plano permite @limit @(limit == 1 ? "agente conectado" : "agentes conectados") ao mesmo tempo, e esse limite já foi atingido. Para conectar @ClientName, revogue antes uma conexão em <a href="@ConnectedAgentsUrl">Agentes conectados</a> e tente de novo. Os agentes que já estão conectados continuam funcionando.</p>
+        }
+        else
+        {
         <fieldset>
             <legend>Se você autorizar, o agente poderá:</legend>
             <div class="scope">
@@ -35,6 +42,7 @@
         {
             <p class="warning">Este cliente só volta para um endereço deste computador (loopback): qualquer programa rodando aqui pode se apresentar com o mesmo nome. Só autorize se foi você quem iniciou esta conexão agora.</p>
         }
+        }
 
         <input type="hidden" name="@AntiforgeryFieldName" value="@AntiforgeryToken" />
         @foreach (var (name, value) in RequestParameters)
@@ -42,8 +50,11 @@
             <input type="hidden" name="@name" value="@value" />
         }
         <div class="actions">
-            <button class="primary" type="submit" name="@DecisionField" value="@AllowDecision">Autorizar</button>
-            <button type="submit" name="@DecisionField" value="@DenyDecision">Recusar</button>
+            @if (AgentConnectionLimit is null)
+            {
+                <button class="primary" type="submit" name="@DecisionField" value="@AllowDecision">Autorizar</button>
+            }
+            <button type="submit" name="@DecisionField" value="@DenyDecision">@(AgentConnectionLimit is null ? "Recusar" : "Voltar ao agente")</button>
         </div>
     </form>
 </IssuerPageLayout>
@@ -98,6 +109,14 @@
 
     [Parameter]
     public bool LoopbackOnly { get; set; }
+
+    /// <summary>The plan's limit of Agent Connections when this consent would pass it (DA-262); null when the person may authorize.</summary>
+    [Parameter]
+    public int? AgentConnectionLimit { get; set; }
+
+    /// <summary>"Agentes conectados" in the SPA, where a connection is revoked.</summary>
+    [Parameter, EditorRequired]
+    public string ConnectedAgentsUrl { get; set; } = string.Empty;
 
     /// <summary>The authorization request, posted back with the decision.</summary>
     [Parameter, EditorRequired]

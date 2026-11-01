@@ -7,6 +7,7 @@ import { isApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LimitNotice } from "@/features/account/LimitNotice";
 import { formatDateTime, writeErrorMessage } from "@/features/graph/graphMessages";
 import {
   AGENT_NAME_MAX_LENGTH,
@@ -73,6 +74,7 @@ export function AgentsPage() {
       <p role="status" className="sr-only">
         {announcement}
       </p>
+      <LimitNotice kind="agent_connections" />
 
       {connections.isPending ? (
         <p>Carregando…</p>

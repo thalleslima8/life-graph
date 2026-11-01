@@ -22,6 +22,7 @@ internal sealed class GraphWriter(
     IAccountContext accountContext,
     ICurrentPrincipal currentPrincipal,
     IResourceAddressRules addressRules,
+    PlanCreationLimits planLimits,
     TimeProvider clock) : IGraphWriter
 {
     public const int MaxOperations = 100;
@@ -219,7 +220,21 @@ internal sealed class GraphWriter(
         SoftRelationScheduling.ScheduleFor(db, changeSet, now);
         ResourceFetchScheduling.ScheduleAgain(db, accountId, refetch, now);
         complete?.Invoke(changeSet);
-        await SaveAsync(provenance, cancellationToken);
+
+        // A write that grows a limited kind is held to the plan; the system's own writes (the
+        // Raiz da Conta, a fetch) never are (DA-204), nor Undo and restore, which do not come here (DA-086).
+        if (provenance.Actor is not GraphActor.System && PlanCreationLimits.MayGrowLimitedKinds(write.Added, operations))
+        {
+            var saved = await planLimits.SaveWithinAsync(accountId, token => SaveAsync(provenance, token), cancellationToken);
+            if (!saved.IsSuccess)
+            {
+                return Result<GraphWriteReceipt>.Fail(saved.Error!);
+            }
+        }
+        else
+        {
+            await SaveAsync(provenance, cancellationToken);
+        }
 
         return Result<GraphWriteReceipt>.Ok(new GraphWriteReceipt(changeSet.Id, write.Changes)
         {

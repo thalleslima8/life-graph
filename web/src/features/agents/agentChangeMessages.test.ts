@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProposedOperation } from "./agentChanges";
 import { anOperation } from "../../test/graphFixtures";
-import { fieldLabel, operationTitle } from "./agentChangeMessages";
+import { fieldLabel, operationTitle, reasonLabels } from "./agentChangeMessages";
 
 function capture(overrides: Partial<ProposedOperation> = {}): ProposedOperation {
   return {
@@ -42,5 +42,11 @@ describe("operationTitle of a capture", () => {
 
   it("labels the link field", () => {
     expect(fieldLabel("url")).toBe("Link");
+  });
+});
+
+describe("reasonLabels", () => {
+  it("names the agents' monthly write quota among the reasons a write waits for approval", () => {
+    expect(reasonLabels(["quota", "window"])).toBe("Cota mensal de escritas dos agentes atingida · Muitas alterações em pouco tempo");
   });
 });

@@ -17,7 +17,12 @@ namespace LifeGraph.IntegrationTests.Graph;
 /// </summary>
 public sealed class GraphOntologyTests(PostgresDatabase database) : IAsyncLifetime
 {
-    private readonly LifeGraphApiFactory _factory = new(database);
+    // The DA-165 cap test needs more Nodes than the Free plan allows (global_v2 §55).
+    private readonly LifeGraphApiFactory _factory = new(database, new Dictionary<string, string>
+    {
+        ["Entitlements:Free:Nodes"] = (GraphLimits.PropertyRewriteMaxNodes + 1).ToString(CultureInfo.InvariantCulture),
+    });
+
     private GraphWriteHarness _graph = null!;
     private Guid _account;
 

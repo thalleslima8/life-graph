@@ -183,6 +183,7 @@ public sealed class IssuerHardeningTests(PostgresDatabase database) : IAsyncLife
         {
             [$"{IssuerOptions.SectionName}:Clients:1:ClientId"] = "second-agent",
             [$"{IssuerOptions.SectionName}:Clients:1:RedirectUris:0"] = AgentAuthorization.RedirectUri,
+            [AgentAuthorization.FreeAgentConnectionsSetting] = "2",
             ["Api:RateLimits:AgentPermitLimit"] = "1",
         });
         await TestAccounts.ProvisionConfirmedAsync(factory, "ada@example.test");
@@ -204,6 +205,7 @@ public sealed class IssuerHardeningTests(PostgresDatabase database) : IAsyncLife
         {
             [$"{IssuerOptions.SectionName}:Clients:1:ClientId"] = "second-agent",
             [$"{IssuerOptions.SectionName}:Clients:1:RedirectUris:0"] = AgentAuthorization.RedirectUri,
+            [AgentAuthorization.FreeAgentConnectionsSetting] = "2",
             ["Api:RateLimits:AgentReadPermitLimit"] = "2",
         });
         await TestAccounts.ProvisionConfirmedAsync(factory, "ada@example.test");
@@ -230,6 +232,7 @@ public sealed class IssuerHardeningTests(PostgresDatabase database) : IAsyncLife
         {
             [$"{IssuerOptions.SectionName}:Clients:1:ClientId"] = "second-agent",
             [$"{IssuerOptions.SectionName}:Clients:1:RedirectUris:0"] = AgentAuthorization.RedirectUri,
+            [AgentAuthorization.FreeAgentConnectionsSetting] = "2",
             ["Api:RateLimits:AgentWritePermitLimit"] = "2",
         });
         await TestAccounts.ProvisionConfirmedAsync(factory, "ada@example.test");
@@ -303,6 +306,7 @@ public sealed class IssuerHardeningTests(PostgresDatabase database) : IAsyncLife
         {
             [$"{IssuerOptions.SectionName}:Clients:1:ClientId"] = "second-agent",
             [$"{IssuerOptions.SectionName}:Clients:1:RedirectUris:0"] = AgentAuthorization.RedirectUri,
+            [AgentAuthorization.FreeAgentConnectionsSetting] = "2",
             ["Api:RateLimits:AgentPermitLimit"] = "2",
             ["Api:RateLimits:AgentAccountPermitLimit"] = "3",
         });

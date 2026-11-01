@@ -12,13 +12,7 @@ public sealed class AccountSetup(IServiceScopeFactory scopeFactory)
 {
     public async Task EnsureAsync(Guid accountId, CancellationToken cancellationToken)
     {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        scope.ServiceProvider.GetRequiredService<BackgroundAccount>().Enter(accountId);
-        if (scope.ServiceProvider.GetRequiredService<IAccountContext>().AccountId != accountId)
-        {
-            throw new InvalidOperationException("The setup scope acts for another Account.");
-        }
-
+        await using var scope = scopeFactory.CreateAccountScope(accountId);
         var db = scope.ServiceProvider.GetRequiredService<LifeGraphDbContext>();
         var participants = scope.ServiceProvider.GetServices<IAccountSetupParticipant>().ToList();
         await db.InAccountTransactionAsync(

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using LifeGraph.Accounts.Contracts;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
 
@@ -30,7 +31,12 @@ public sealed record AccountExportGraph(
     IReadOnlyList<ExportedRelation> Relations,
     IReadOnlyList<ExportedTag> Tags);
 
-public sealed record ExportedAccount(Guid Id, DateTimeOffset CreatedAt, string? Email);
+/// <param name="Plan">The Account's plan (DA-298): a fact about the Account, never something that shapes the rest of the export.</param>
+public sealed record ExportedAccount(Guid Id, DateTimeOffset CreatedAt, string? Email, ExportedAccountPlan Plan);
+
+/// <param name="Origin">The way the last plan change was made; <c>null</c> for an Account never given a plan.</param>
+/// <param name="UpdatedAt">When the last plan change was made; <c>null</c> for an Account never given a plan.</param>
+public sealed record ExportedAccountPlan(AccountPlan Plan, AccountPlanOrigin? Origin, DateTimeOffset? UpdatedAt);
 
 public sealed record ExportedPropertyDefinition(
     Guid Id,

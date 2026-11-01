@@ -49,8 +49,9 @@ public sealed class SharedGraphView
     /// <summary>
     /// A share of the chosen Nodes. The domain checks the shape the person sent; which Nodes
     /// may enter (the eligible set of the walk) is the use case's to check (BE-021).
+    /// <paramref name="maxNodes"/> is the plan's NodesPerSharedGraphView.
     /// </summary>
-    public static Result<SharedGraphView> Create(Guid id, Guid accountId, SharedGraphViewDraft draft, Provenance provenance, DateTimeOffset now)
+    public static Result<SharedGraphView> Create(Guid id, Guid accountId, SharedGraphViewDraft draft, int maxNodes, Provenance provenance, DateTimeOffset now)
     {
         var errors = new FieldErrors();
         if (draft.MaxDepth is < SharingLimits.MinDepth or > SharingLimits.MaxDepth)
@@ -59,9 +60,9 @@ public sealed class SharedGraphView
         }
 
         var nodeIds = draft.NodeIds ?? [];
-        if (nodeIds.Count > SharingLimits.MaxNodesPerShare)
+        if (nodeIds.Count > maxNodes)
         {
-            errors.Add("nodeIds", $"At most {SharingLimits.MaxNodesPerShare} Nodes.");
+            errors.Add("nodeIds", $"At most {maxNodes} Nodes.");
         }
 
         if (nodeIds.Distinct().Count() != nodeIds.Count)
@@ -75,9 +76,10 @@ public sealed class SharedGraphView
         }
 
         var propertyIds = draft.PropertyIds ?? [];
-        if (propertyIds.Count > SharingLimits.MaxPropertiesPerShare)
+        var maxProperties = SharingLimits.MaxPropertiesFor(maxNodes);
+        if (propertyIds.Count > maxProperties)
         {
-            errors.Add("propertyIds", $"At most {SharingLimits.MaxPropertiesPerShare} properties.");
+            errors.Add("propertyIds", $"At most {maxProperties} properties.");
         }
         else if (propertyIds.Distinct().Count() != propertyIds.Count)
         {

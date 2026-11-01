@@ -2,6 +2,7 @@ import { infiniteQueryOptions, useMutation, useQueryClient, type UseMutationResu
 import { z } from "zod";
 import { api, isApiError, unwrap, type ApiError } from "@/api/client";
 import type { components } from "@/api/schema.gen";
+import { useInvalidatePlan } from "@/features/account/planData";
 import { changeSetsKey } from "@/features/graph/graphData";
 
 /**
@@ -100,6 +101,7 @@ export const useRenameAgentIdentity = (id: string) => useUpdateAgentIdentity(id)
 
 export function useRevokeAgentIdentity(id: string) {
   const queryClient = useQueryClient();
+  const invalidatePlan = useInvalidatePlan();
   return useMutation({
     mutationFn: async (): Promise<void> => {
       unwrap(await api.DELETE("/api/agent-identities/{agentIdentityId}", { params: { path: { agentIdentityId: id } } }));
@@ -109,6 +111,8 @@ export function useRevokeAgentIdentity(id: string) {
       void queryClient.invalidateQueries({ queryKey: agentIdentityKeys.all });
       // Revoking withdraws the agent's pending proposals (DA-135).
       void queryClient.invalidateQueries({ queryKey: changeSetsKey });
+      // A revoked connection frees its place in the plan (DA-262).
+      void invalidatePlan();
     },
     onError: (error) => {
       if (isAgentIdentityGone(error)) {

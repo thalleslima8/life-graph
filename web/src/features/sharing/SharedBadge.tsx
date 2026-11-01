@@ -1,20 +1,25 @@
-import { useQuery } from "@tanstack/react-query";
-import { sharedNodeIdsOptions } from "./sharesData";
+import type { SharedBadgeState } from "./sharesData";
 
 export const SHARED_BADGE_LABEL = "Compartilhado";
+export const SHARED_BADGE_UNKNOWN_LABEL = "Compartilhamento não verificado";
 
 /**
- * The "compartilhado" badge (DA-078): the Node is in a link of the person's that still opens, or
- * opens again when its root comes back. Said in text, never by colour alone (FE-034). Renders
- * nothing while the list loads, when it fails, or when the Node is in no link.
+ * The "compartilhado" badge (DA-078, DA-299): the Node is in a link of the person's that still
+ * opens, or opens again when its root comes back. Said in text, never by colour alone (FE-034).
+ * While the answer loads or after it fails it says so instead of claiming the Node is not exposed;
+ * a Node in no link shows nothing.
  */
-export function SharedBadge({ nodeId }: { nodeId: string }) {
-  const shared = useQuery({
-    ...sharedNodeIdsOptions(),
-    select: (ids) => ids.has(nodeId),
-  });
-  if (shared.data !== true) {
+export function SharedBadge({ state }: { state: SharedBadgeState }) {
+  if (state === "not-shared") {
     return null;
+  }
+
+  if (state === "unknown") {
+    return (
+      <span className="rounded border border-dashed px-2 py-0.5 text-xs text-muted-foreground">
+        {SHARED_BADGE_UNKNOWN_LABEL}
+      </span>
+    );
   }
 
   return (

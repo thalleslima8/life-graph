@@ -16,8 +16,9 @@ internal sealed partial class SharedGraphViews
 {
     public const int DefaultSharePageSize = 25;
 
-    // Every member of every link the badge counts fits one page (DA-081).
-    public const int MaxSharedNodeIdsPageSize = SharingLimits.MaxActiveShares * SharingLimits.MaxNodesPerShare;
+    // The badge asks only about the Nodes on screen (DA-265, DA-299), in blocks of this many ids:
+    // more is refused, never truncated, so a missing id never reads as "not shared".
+    public const int MaxSharedNodeIdsQueried = 75;
 
     public Task<Result<SharedGraphViewPage<SharedGraphViewSummary>>> ListAsync(string? cursor, int? limit, CancellationToken cancellationToken)
     {
@@ -100,7 +101,7 @@ internal sealed partial class SharedGraphViews
         await db.InAccountTransactionAsync(
             async token =>
             {
-                // At most MaxActiveShares rows: only the links not revoked yet (DA-081).
+                // At most the plan's SharedGraphViews rows: only the links not revoked yet (DA-081).
                 var now = GraphWriter.TruncatedToMicroseconds(clock.GetUtcNow());
                 var open = await db.Set<SharedGraphView>().Where(share => share.RevokedAt == null).ToListAsync(token);
                 foreach (var share in open)
@@ -114,19 +115,19 @@ internal sealed partial class SharedGraphViews
         return Result.Ok();
     }
 
-    public Task<Result<SharedGraphViewPage<Guid>>> ListSharedNodeIdsAsync(string? cursor, int? limit, CancellationToken cancellationToken)
+    public Task<Result<SharedNodeIds>> SharedNodeIdsAmongAsync(IReadOnlyList<Guid> nodeIds, CancellationToken cancellationToken)
     {
-        if (RefusedPrincipal<SharedGraphViewPage<Guid>>() is { } refused)
+        // Only the owner sees the badge; any other principal gets the answer of a route it cannot reach.
+        if (filter.Reader != GraphReader.Human)
         {
-            return Task.FromResult(refused);
+            return Task.FromResult(Result<SharedNodeIds>.Fail(CommonErrors.NotFound.ToError("Not found.")));
         }
 
-        var errors = new FieldErrors();
-        var after = ReadCursor(errors, cursor);
-        var pageSize = ReadPageSize(errors, limit, MaxSharedNodeIdsPageSize, MaxSharedNodeIdsPageSize);
-        if (!errors.IsEmpty)
+        var asked = nodeIds.Distinct().ToList();
+        if (asked.Count is < 1 or > MaxSharedNodeIdsQueried)
         {
-            return Task.FromResult(Result<SharedGraphViewPage<Guid>>.Fail(errors.ToError()));
+            return Task.FromResult(Result<SharedNodeIds>.Fail(SharingErrors.NodeIdsOutOfRange.ToError(
+                $"Ask about between 1 and {MaxSharedNodeIdsQueried} distinct Node ids.")));
         }
 
         return db.InAccountResultTransactionAsync(
@@ -136,17 +137,15 @@ internal sealed partial class SharedGraphViews
                     .Where(share => share.RevokedAt == null
                         && !db.Set<SharedGraphViewDirectoryEntry>().Any(entry => entry.SharedGraphViewId == share.Id && entry.BlockedAt != null))
                     .Select(share => share.Id);
-                var nodeIds = db.Set<SharedGraphViewNode>()
-                    .Where(member => openShares.Contains(member.SharedGraphViewId) && filter.Nodes().Any(node => node.Id == member.NodeId))
+                var shared = await db.Set<SharedGraphViewNode>()
+                    .Where(member => asked.Contains(member.NodeId)
+                        && openShares.Contains(member.SharedGraphViewId)
+                        && filter.Nodes().Any(node => node.Id == member.NodeId))
                     .Select(member => member.NodeId)
-                    .Distinct();
-                if (after is { } last)
-                {
-                    nodeIds = nodeIds.Where(nodeId => nodeId.CompareTo(last) < 0);
-                }
-
-                var rows = await nodeIds.OrderByDescending(nodeId => nodeId).Take(pageSize + 1).ToListAsync(token);
-                return Result<SharedGraphViewPage<Guid>>.Ok(PageOf(rows, pageSize, nodeId => nodeId));
+                    .Distinct()
+                    .OrderBy(nodeId => nodeId)
+                    .ToListAsync(token);
+                return Result<SharedNodeIds>.Ok(new SharedNodeIds(shared));
             },
             cancellationToken);
     }

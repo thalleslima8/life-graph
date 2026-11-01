@@ -55,10 +55,12 @@ public interface ISharedGraphViews
     Task<Result> RevokeAllAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// The live Nodes in a link that is neither revoked nor disabled by the platform, the source of
-    /// the "compartilhado" badge (DA-078). A suspended link counts: restoring its root opens it again.
+    /// Which of the given Nodes are live and in a link that is neither revoked nor disabled by the
+    /// platform: the source of the "compartilhado" badge (DA-078), asked only for the Nodes on screen
+    /// (DA-265, DA-299). A suspended link counts: restoring its root opens it again. Only the person
+    /// asks; more than 75 distinct ids is refused, never truncated.
     /// </summary>
-    Task<Result<SharedGraphViewPage<Guid>>> ListSharedNodeIdsAsync(string? cursor, int? limit, CancellationToken cancellationToken);
+    Task<Result<SharedNodeIds>> SharedNodeIdsAmongAsync(IReadOnlyList<Guid> nodeIds, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -77,6 +79,9 @@ public enum SharedGraphViewDisableOutcome
     AlreadyDisabled,
     NotFound,
 }
+
+/// <summary>The asked Nodes that carry the "compartilhado" badge; bounded by the ids asked (at most 75).</summary>
+public sealed record SharedNodeIds(IReadOnlyList<Guid> Data);
 
 /// <summary>A page of a sharing list (API-060): the items and the cursor of the next page, if any.</summary>
 public sealed record SharedGraphViewPage<T>(IReadOnlyList<T> Data, SharedGraphViewPageInfo Page);
@@ -144,15 +149,17 @@ public sealed record VisitorNode(
 /// <summary>An allowlisted property of the member's Type that has a value.</summary>
 public sealed record VisitorProperty(string Name, PropertyValueKind ValueKind, JsonElement Value);
 
-/// <param name="Nodes">At most 25, by distance, then the walk's ranking, then id descending (DA-220).</param>
-/// <param name="EligibleCount">Every eligible Node, so the person knows what the 25 left out.</param>
+/// <param name="Nodes">At most <see cref="MaxNodes"/>, by distance, then the walk's ranking, then id descending (DA-220).</param>
+/// <param name="EligibleCount">Every eligible Node, so the person knows what the cap left out.</param>
+/// <param name="MaxNodes">The plan's limit of Nodes in one share (E13), so the person's choice is checked against it before sending.</param>
 public sealed record SharedGraphViewProposal(
     Guid RootNodeId,
     int MaxDepth,
     IReadOnlyList<ProposedSharedNode> Nodes,
     int EligibleCount,
     bool Truncated,
-    IReadOnlyList<ShareableProperty> Properties);
+    IReadOnlyList<ShareableProperty> Properties,
+    int MaxNodes);
 
 /// <summary>A Node the share may hold; <see cref="Distance"/> 0 is the root, always kept.</summary>
 public sealed record ProposedSharedNode(Guid Id, string Title, string? TypeName, int Distance);
@@ -181,7 +188,7 @@ public static class SharingErrors
     /// <summary>The Raiz da Conta is never shared (DA-219).</summary>
     public static readonly ErrorCode RootNotShareable = ErrorCode.BusinessRule("sharing.root_not_shareable");
 
-    /// <summary>Every place is taken: revoke a link first (DA-081, DA-220).</summary>
+    /// <summary>Every place the plan gives is taken: revoke a link first (DA-081, DA-220, DA-263).</summary>
     public static readonly ErrorCode LimitReached = ErrorCode.BusinessRule("sharing.limit_reached", ErrorRecovery.AskUser);
 
     /// <summary>A Node outside the eligible set of the walk, or none eligible at all.</summary>
@@ -193,6 +200,9 @@ public static class SharingErrors
     /// <summary>The person has not acknowledged the legal notice.</summary>
     public static readonly ErrorCode LegalNoticeNotAccepted = ErrorCode.BusinessRule("sharing.legal_notice_not_accepted");
 
+    /// <summary>The badge was asked about no Node or more than 75: refused, never truncated (DA-299).</summary>
+    public static readonly ErrorCode NodeIdsOutOfRange = ErrorCode.BusinessRule("sharing.node_ids_out_of_range");
+
     public static IReadOnlyList<ErrorCode> All { get; } =
-        [RootNotShareable, LimitReached, NodeNotEligible, PropertyNotEligible, LegalNoticeNotAccepted];
+        [RootNotShareable, LimitReached, NodeNotEligible, PropertyNotEligible, LegalNoticeNotAccepted, NodeIdsOutOfRange];
 }

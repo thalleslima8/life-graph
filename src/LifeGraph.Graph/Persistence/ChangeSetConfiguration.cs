@@ -24,6 +24,10 @@ internal sealed class GraphChangeSetConfiguration : IEntityTypeConfiguration<Gra
             table.HasCheckConstraint(
                 "ck_changesets_window_operations",
                 "window_operations >= 0 AND (window_operations = 0 OR actor_kind = 'agent_identity')");
+            // Only an agent's own write consumes the plan's write quota (DA-261).
+            table.HasCheckConstraint(
+                "ck_changesets_quota_operations",
+                "quota_operations >= 0 AND (quota_operations = 0 OR actor_kind = 'agent_identity')");
         });
         changeSet.HasAccountKeys(entity => entity.Id, entity => new { entity.AccountId, entity.Id });
         changeSet.Property(entity => entity.Id).ValueGeneratedNever();
@@ -50,6 +54,12 @@ internal sealed class GraphChangeSetConfiguration : IEntityTypeConfiguration<Gra
         changeSet.HasIndex(entity => new { entity.AccountId, entity.CreatedAt })
             .HasFilter("window_operations > 0")
             .HasDatabaseName("ix_changesets_account_id_created_at_window");
+
+        // The monthly write quota sums the Account's agents' own writes since the month began (DA-261).
+        // Named, since the window's index stands on the same columns with another filter.
+        changeSet.HasIndex(entity => new { entity.AccountId, entity.CreatedAt }, "ix_changesets_account_id_created_at_quota")
+            .HasFilter("quota_operations > 0")
+            .HasDatabaseName("ix_changesets_account_id_created_at_quota");
         changeSet.HasIndex(entity => new { entity.AgentIdentityId, entity.Id })
             .HasFilter("agent_identity_id IS NOT NULL")
             .HasDatabaseName("ix_changesets_agent_identity_id_id");

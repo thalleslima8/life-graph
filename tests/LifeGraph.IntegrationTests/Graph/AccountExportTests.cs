@@ -3,6 +3,8 @@ using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using LifeGraph.Accounts.Provisioning;
 using LifeGraph.Agents.Mcp;
 using LifeGraph.Graph.Application;
 using LifeGraph.Graph.Contracts;
@@ -50,6 +52,7 @@ public sealed class AccountExportTests(PostgresDatabase database) : IAsyncLifeti
         ["shared_graph_view_nodes"] = "sharedGraphViews[].nodeIds",
         ["shared_graph_view_properties"] = "sharedGraphViews[].propertyDefinitionIds",
         ["users"] = "account.email",
+        ["account_plans"] = "account.plan",
     };
 
     /// <summary>The tables with an <c>account_id</c> left out of the export, each with its reason (DA-247).</summary>
@@ -135,6 +138,39 @@ public sealed class AccountExportTests(PostgresDatabase database) : IAsyncLifeti
         var markdownFiles = zip.Entries.Where(entry => entry.FullName.StartsWith(AccountExportArchiveWriter.NodesFolder, StringComparison.Ordinal)).Select(entry => entry.FullName).ToList();
         Assert.Equal(export.GetProperty("nodes").GetArrayLength(), markdownFiles.Count);
         Assert.Contains($"{AccountExportArchiveWriter.NodesFolder}{seeded.BookId:D}.md", markdownFiles);
+    }
+
+    [Fact]
+    public async Task The_plan_is_in_the_header_and_the_rest_of_the_export_is_the_same_on_free_and_premium()
+    {
+        await AccountWithDataAsync(_factory, Email);
+        await TestAccounts.ProvisionConfirmedAsync(_factory, OtherEmail);
+        await AssignPlanAsync(OtherEmail, "premium");
+        using var spa = await TestAccounts.SignedInAsync(_factory, Email);
+
+        // Another Account's plan never shows: Ada is still on Free, never given a plan (DA-298).
+        var onFree = await ExportArchiveAsync(spa);
+        var freePlan = JsonNode.Parse(onFree[AccountExportArchiveWriter.DocumentEntry])!["account"]!["plan"]!;
+        Assert.Equal("free", freePlan["plan"]!.GetValue<string>());
+        Assert.Null(freePlan["origin"]);
+        Assert.Null(freePlan["updatedAt"]);
+
+        await AssignPlanAsync(Email, "premium");
+        var onPremium = await ExportArchiveAsync(spa);
+        var premiumPlan = JsonNode.Parse(onPremium[AccountExportArchiveWriter.DocumentEntry])!["account"]!["plan"]!;
+        Assert.Equal("premium", premiumPlan["plan"]!.GetValue<string>());
+        Assert.Equal("cli", premiumPlan["origin"]!.GetValue<string>());
+        Assert.NotNull(premiumPlan["updatedAt"]);
+
+        // The plan never shapes the export: the same entries, the same Markdown and, but for the
+        // plan and the moment of the export, the same document.
+        Assert.Equal(onFree.Keys.Order(), onPremium.Keys.Order());
+        foreach (var entry in onFree.Keys.Where(entry => entry != AccountExportArchiveWriter.DocumentEntry))
+        {
+            Assert.Equal(onFree[entry], onPremium[entry]);
+        }
+
+        Assert.Equal(DocumentWithoutPlanAndMoment(onFree), DocumentWithoutPlanAndMoment(onPremium));
     }
 
     [Fact]
@@ -366,6 +402,38 @@ public sealed class AccountExportTests(PostgresDatabase database) : IAsyncLifeti
             new { rootNodeId = seeded.BookId, maxDepth = 1, nodeIds = new[] { seeded.BookId, seeded.OldBookId }, propertyIds = new[] { seeded.StatusId }, includeTags = true, legalNoticeAccepted = true });
         Assert.Equal(HttpStatusCode.Created, share.StatusCode);
         return seeded with { ShareId = (await JsonOfAsync(share)).GetProperty("id").GetGuid() };
+    }
+
+    private async Task AssignPlanAsync(string email, string plan) =>
+        Assert.Equal(
+            AccountsCommandLine.Success,
+            await AccountsCommandLine.RunAsync(_factory.Provisioning.Services, ["accounts", "plan", "--email", email, "--plan", plan], TextWriter.Null, TestContext.Current.CancellationToken));
+
+    // Requests an export, builds it and returns each entry of the archive by name, as text.
+    private async Task<Dictionary<string, string>> ExportArchiveAsync(SpaClient spa)
+    {
+        Assert.Equal(HttpStatusCode.Accepted, (await spa.PostAsync(ExportPath, new { })).StatusCode);
+        await BuildExportsAsync(_factory);
+        var download = await spa.GetAsync($"{ExportPath}/content");
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+
+        using var zip = new ZipArchive(await download.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken));
+        var entries = new Dictionary<string, string>();
+        foreach (var entry in zip.Entries)
+        {
+            using var reader = new StreamReader(entry.Open());
+            entries[entry.FullName] = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+        }
+
+        return entries;
+    }
+
+    private static string DocumentWithoutPlanAndMoment(Dictionary<string, string> archive)
+    {
+        var document = JsonNode.Parse(archive[AccountExportArchiveWriter.DocumentEntry])!.AsObject();
+        document.Remove("exportedAt");
+        document["account"]!.AsObject().Remove("plan");
+        return document.ToJsonString();
     }
 
     private static JsonElement SectionOf(JsonElement export, string section) => export.GetProperty(section);

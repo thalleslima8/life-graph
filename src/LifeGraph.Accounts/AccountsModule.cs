@@ -4,6 +4,7 @@ using LifeGraph.Accounts.Contracts;
 using LifeGraph.Accounts.Csrf;
 using LifeGraph.Accounts.Deletion;
 using LifeGraph.Accounts.Email;
+using LifeGraph.Accounts.Entitlements;
 using LifeGraph.Accounts.Http;
 using LifeGraph.Accounts.Identity;
 using LifeGraph.Accounts.Issuer;
@@ -29,6 +30,7 @@ public static class AccountsModule
     public static IServiceCollection AddAccountsModule(this IServiceCollection services)
     {
         services.AddErrorCodes(AccountsErrors.All);
+        services.AddErrorCodes(PlanErrors.All);
 
         services.AddOptions<SmtpOptions>().BindConfiguration(SmtpOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
         services.AddOptions<SpaOptions>().BindConfiguration(SpaOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
@@ -37,6 +39,11 @@ public static class AccountsModule
         services.AddSingleton<AccountEmailLinks>();
         services.AddSingleton<IAccountMailer, SmtpAccountMailer>();
         services.AddScoped<AccountProvisioner>();
+
+        // Plans by hand, no billing (DA-260): the limits come from configuration, the plan from account_plans.
+        services.AddOptions<EntitlementsOptions>().BindConfiguration(EntitlementsOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+        services.AddScoped<IEntitlements, AccountEntitlementsReader>();
+        services.AddScoped<AccountPlanAssigner>();
 
         services.AddOptions<CredentialRateLimitOptions>().BindConfiguration(CredentialRateLimitOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
         services.AddSingleton<CredentialAttemptLimiter>();

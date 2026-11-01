@@ -6,6 +6,7 @@ import { axe } from "vitest-axe";
 import { aCollection, aReceipt, COLLECTION_ID, TYPE_ID } from "@/test/graphFixtures";
 import { csrfTokenHandler, problem, sessionHandler } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
+import { aPlan } from "@/test/planFixtures";
 import { renderRoute } from "@/test/renderRoute";
 import type { CollectionItem } from "./collectionsData";
 
@@ -110,6 +111,31 @@ describe("collections page", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "Quero ler" })).toBeInTheDocument();
     expect(sent).toEqual({ name: "Quero ler", criteria: null, pinned: false });
+  });
+
+  it("tells a creation refused past the plan's limit once, keeps the list and reads the plan again", async () => {
+    serveCollections([aCollection()]);
+    let planReads = 0;
+    server.use(
+      http.post("/api/collections", () =>
+        problem(422, "plan.limit_reached", { details: { kind: ["collections"], limit: ["10"] } }),
+      ),
+      http.get("/api/account/plan", () => {
+        planReads += 1;
+        return HttpResponse.json(aPlan({ used: { collections: planReads > 1 ? 10 : 9 } }));
+      }),
+    );
+    const { container } = renderRoute("/collections");
+
+    await userEvent.type(await screen.findByRole("textbox", { name: "Nome" }), "Quero ler");
+    await userEvent.click(screen.getByRole("button", { name: "Criar Collection" }));
+
+    const alert = await screen.findByRole("alert");
+    await waitFor(() => expect(alert).toHaveTextContent("Você usa 10 de 10 Collections"));
+    expect(alert).toHaveTextContent("Nada foi bloqueado");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("list", { name: "Collections" })).toBeInTheDocument();
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it("has no accessibility violations", async () => {
