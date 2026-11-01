@@ -1,14 +1,20 @@
 import {
   infiniteQueryOptions,
+  keepPreviousData,
   queryOptions,
   useMutation,
+  useQueries,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { z } from "zod";
 import { api, isApiError, unwrap } from "@/api/client";
 import type { components } from "@/api/schema.gen";
-import { retryUnlessNotFound } from "@/features/graph/graphData";
+import { useInvalidatePlan } from "@/features/account/planData";
+import {
+  retryUnlessNotFound,
+  SHARED_NODE_IDS_KEY,
+} from "@/features/graph/graphData";
 
 /**
  * SharedGraphViews, the owner's side (DA-075, DA-078, DA-222): the Nodes proposed from a root,
@@ -25,8 +31,6 @@ export type ShareableProperty = Schemas["ShareableProperty"];
 export type SharedGraphViewSummary = Schemas["SharedGraphViewSummary"];
 export type SharedGraphViewStatus = SharedGraphViewSummary["status"];
 
-// Mirror SharingLimits (DA-081, DA-220); the server always checks again (FE-020).
-export const MAX_NODES_PER_SHARE = 25;
 export const SHARE_DEPTHS = [1, 2] as const;
 export type ShareDepth = (typeof SHARE_DEPTHS)[number];
 export const DEFAULT_SHARE_DEPTH: ShareDepth = 1;
@@ -49,11 +53,16 @@ export const sharesKeys = {
   proposal: (rootNodeId: string, depth: ShareDepth) =>
     ["shares", "proposal", rootNodeId, depth] as const,
   list: ["shares", "list"] as const,
-  sharedNodeIds: ["shares", "shared-node-ids"] as const,
+  sharedNodeIds: SHARED_NODE_IDS_KEY,
+  sharedNodeIdsAmong: (nodeIds: readonly string[]) =>
+    [...SHARED_NODE_IDS_KEY, nodeIds] as const,
 };
 
-// 3 links × 25 Nodes (DA-081): one page of the server's largest size holds every shared Node.
-const SHARED_NODE_IDS_PAGE_SIZE = 75;
+/** The most Node ids one badge request asks about; the server refuses more (DA-299). */
+export const SHARED_NODE_IDS_CHUNK_SIZE = 75;
+
+// Members are fixed at creation (ADR 0012): a revoke in another tab converges by age and focus.
+const SHARED_NODE_IDS_STALE_TIME_MS = 30_000;
 
 /** The depth a `?depth=` asks for, or the default when it is absent or not one of 1 and 2. */
 export function shareDepthOf(value: string | null): ShareDepth {
@@ -69,7 +78,7 @@ export function newSharePath(rootNodeId: string): string {
 }
 
 /**
- * The Nodes a share from this root may hold (at most 25) and the properties the person may show.
+ * The Nodes a share from this root may hold (at most the plan's `maxNodes`) and the properties the person may show.
  * Read once per root and depth: the list the person reviews does not change under them, and the
  * server checks every id again at creation (BE-021).
  */
@@ -87,26 +96,37 @@ export const shareProposalOptions = (rootNodeId: string, depth: ShareDepth) =>
     refetchOnWindowFocus: false,
   });
 
-export const createShareSchema = z.object({
-  rootNodeId: z.string().min(1),
-  maxDepth: z.union([z.literal(1), z.literal(2)]),
-  nodeIds: z
+const shareNodeIdsSchema = (maxNodes: number | undefined) => {
+  const atLeastTheRoot = z
     .array(z.string())
-    .min(1, "Mantenha ao menos o Node raiz.")
-    .max(MAX_NODES_PER_SHARE, `Use no máximo ${MAX_NODES_PER_SHARE} Nodes.`),
-  propertyIds: z.array(z.string()),
-  includeTags: z.boolean(),
-  // Starts unchecked: the person acknowledges the notice explicitly, and the server checks again.
-  legalNoticeAccepted: z
-    .boolean()
-    .refine(
-      (accepted) => accepted,
-      "Confirme que leu o aviso para criar o link.",
-    ),
-});
+    .min(1, "Mantenha ao menos o Node raiz.");
+  return maxNodes === undefined
+    ? atLeastTheRoot
+    : atLeastTheRoot.max(maxNodes, `Use no máximo ${maxNodes} Nodes.`);
+};
 
-export type CreateShareFormInput = z.input<typeof createShareSchema>;
-export type CreateShareInput = z.output<typeof createShareSchema>;
+/**
+ * The creation form, with the plan's Nodes per share as the proposal carries it (E13). Without
+ * it the client sets no cap, never a default one: the server always checks (FE-020, DA-266).
+ */
+export const createShareSchema = (maxNodes: number | undefined) =>
+  z.object({
+    rootNodeId: z.string().min(1),
+    maxDepth: z.union([z.literal(1), z.literal(2)]),
+    nodeIds: shareNodeIdsSchema(maxNodes),
+    propertyIds: z.array(z.string()),
+    includeTags: z.boolean(),
+    // Starts unchecked: the person acknowledges the notice explicitly, and the server checks again.
+    legalNoticeAccepted: z
+      .boolean()
+      .refine(
+        (accepted) => accepted,
+        "Confirme que leu o aviso para criar o link.",
+      ),
+  });
+
+export type CreateShareFormInput = z.input<ReturnType<typeof createShareSchema>>;
+export type CreateShareInput = z.output<ReturnType<typeof createShareSchema>>;
 
 /**
  * Creates the share. The result keeps only the link, and only while the flow is mounted: the
@@ -114,6 +134,7 @@ export type CreateShareInput = z.output<typeof createShareSchema>;
  */
 export function useCreateShare() {
   const queryClient = useQueryClient();
+  const invalidatePlan = useInvalidatePlan();
   const mutation = useMutation({
     mutationFn: async (
       input: CreateShareInput,
@@ -131,6 +152,8 @@ export function useCreateShare() {
         queryKey: sharesKeys.sharedNodeIds,
       });
     },
+    // Created or refused at the limit, the plan's count of links is read again (DA-266).
+    onSettled: () => void invalidatePlan(),
   });
   const { reset } = mutation;
   useEffect(() => reset, [reset]);
@@ -154,24 +177,104 @@ export const sharesListOptions = () =>
       data.pages.flatMap((page) => page.data),
   });
 
-/** The Nodes in a link that still opens or may open again: the source of the "compartilhado" badge. */
-export const sharedNodeIdsOptions = () =>
+/** Which of these Nodes are in a link that still opens or may open again (one request, ≤ 75 ids). */
+export const sharedNodeIdsOptions = (nodeIds: readonly string[]) =>
   queryOptions({
-    queryKey: sharesKeys.sharedNodeIds,
+    queryKey: sharesKeys.sharedNodeIdsAmong(nodeIds),
     queryFn: async ({ signal }) =>
-      new Set(
-        unwrap(
-          await api.GET("/api/shared-graph-views/node-ids", {
-            params: { query: { limit: SHARED_NODE_IDS_PAGE_SIZE } },
-            signal,
-          }),
-        ).data,
-      ),
+      unwrap(
+        await api.GET("/api/shared-graph-views/node-ids", {
+          params: { query: { ids: [...nodeIds] } },
+          signal,
+        }),
+      ).data,
+    staleTime: SHARED_NODE_IDS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    placeholderData: keepPreviousData,
   });
+
+export type SharedNodeIds = {
+  /** The shared Nodes among the asked ones; the previous set while a new one loads. */
+  ids: ReadonlySet<string>;
+  /** Some block has no answer of its own yet. */
+  isPending: boolean;
+  isError: boolean;
+  refetch: () => void;
+};
+
+/** The asked ids, distinct and sorted, in blocks the server accepts. */
+export function sharedNodeIdsChunks(nodeIds: readonly string[]): string[][] {
+  const distinct = [...new Set(nodeIds)].sort();
+  const chunks: string[][] = [];
+  for (let start = 0; start < distinct.length; start += SHARED_NODE_IDS_CHUNK_SIZE) {
+    chunks.push(distinct.slice(start, start + SHARED_NODE_IDS_CHUNK_SIZE));
+  }
+
+  return chunks;
+}
+
+/**
+ * The "compartilhado" badge's source for the Nodes on screen (DA-265, DA-299): one query per
+ * block of 75 ids, none when nothing is visible. `ids` keeps its identity while the answers do
+ * not change.
+ */
+export function useSharedNodeIds(
+  visibleNodeIds: readonly string[],
+): SharedNodeIds {
+  const askedKey = sharedNodeIdsChunks(visibleNodeIds)
+    .map((chunk) => chunk.join(","))
+    .join("|");
+  const chunks = useMemo(
+    () =>
+      askedKey === ""
+        ? []
+        : askedKey.split("|").map((chunk) => chunk.split(",")),
+    [askedKey],
+  );
+  const results = useQueries({
+    queries: chunks.map((chunk) => sharedNodeIdsOptions(chunk)),
+  });
+  const answeredKey = results
+    .flatMap((result) => result.data ?? [])
+    .sort()
+    .join(",");
+  const ids = useMemo(
+    () => new Set(answeredKey === "" ? [] : answeredKey.split(",")),
+    [answeredKey],
+  );
+
+  return {
+    ids,
+    isPending: results.some(
+      (result) => result.isPending || result.isPlaceholderData,
+    ),
+    isError: results.some((result) => result.isError),
+    refetch: () => {
+      for (const result of results) {
+        void result.refetch();
+      }
+    },
+  };
+}
+
+export type SharedBadgeState = "shared" | "not-shared" | "unknown";
+
+/** A Node the answer has not covered yet, or failed to, is "unknown", never "not-shared" (DA-299). */
+export function sharedBadgeStateOf(
+  nodeId: string,
+  shared: SharedNodeIds,
+): SharedBadgeState {
+  if (shared.ids.has(nodeId)) {
+    return "shared";
+  }
+
+  return shared.isPending || shared.isError ? "unknown" : "not-shared";
+}
 
 /** Revokes one link, at once and for good (DA-214). */
 export function useRevokeShare() {
   const queryClient = useQueryClient();
+  const invalidatePlan = useInvalidatePlan();
   return useMutation({
     mutationFn: async (sharedGraphViewId: string): Promise<void> => {
       unwrap(
@@ -181,19 +284,26 @@ export function useRevokeShare() {
         ),
       );
     },
-    onSettled: () =>
-      void queryClient.invalidateQueries({ queryKey: sharesKeys.all }),
+    // A revoked link frees its place in the plan (DA-220) and leaves the badge.
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: sharesKeys.all });
+      void invalidatePlan();
+    },
   });
 }
 
 /** Revokes every link of the Account that is not revoked yet. */
 export function useRevokeAllShares() {
   const queryClient = useQueryClient();
+  const invalidatePlan = useInvalidatePlan();
   return useMutation({
     mutationFn: async (): Promise<void> => {
       unwrap(await api.POST("/api/shared-graph-views/revocation"));
     },
-    onSettled: () =>
-      void queryClient.invalidateQueries({ queryKey: sharesKeys.all }),
+    // A revoked link frees its place in the plan (DA-220) and leaves the badge.
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: sharesKeys.all });
+      void invalidatePlan();
+    },
   });
 }

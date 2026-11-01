@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { api, isApiError, unwrap, type ApiError } from "@/api/client";
 import type { components } from "@/api/schema.gen";
+import { useInvalidatePlan } from "@/features/account/planData";
 
 /**
  * The graph's server state for the SPA (DA-118): query options per resource, the list filter
@@ -216,12 +217,15 @@ export function useEditBaseline(node: NodeDetail | undefined, isDirty: boolean):
  */
 export function useGraphWrite<TReceipt, TVariables>(mutationFn: MutationFunction<TReceipt, TVariables>, onConflict?: () => void) {
   const queryClient = useQueryClient();
+  const invalidatePlan = useInvalidatePlan();
   return useMutation<TReceipt, ApiError, TVariables>({
     mutationFn,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: graphKeys.all });
       void queryClient.invalidateQueries({ queryKey: changeSetsKey });
     },
+    // A creation takes a place in the plan and a delete frees one; a refusal may mean the plan changed (DA-266).
+    onSettled: () => void invalidatePlan(),
     onError: (error) => {
       // The copy was stale: read the Node again, never retry on its own (DA-117).
       if (isVersionConflict(error)) {
@@ -255,11 +259,18 @@ export function useUpdateNode(id: string) {
   );
 }
 
+/** The prefix of the "compartilhado" badge's queries (DA-299), owned here so a Node delete can reach it. */
+export const SHARED_NODE_IDS_KEY = ["shares", "shared-node-ids"] as const;
+
 export function useDeleteNode(id: string) {
   const queryClient = useQueryClient();
   return useGraphWrite(
-    async (version: number) =>
-      unwrap(await api.DELETE("/api/nodes/{nodeId}", { params: { path: { nodeId: id }, query: { version } } })),
+    async (version: number) => {
+      const receipt = unwrap(await api.DELETE("/api/nodes/{nodeId}", { params: { path: { nodeId: id }, query: { version } } }));
+      // A deleted Node leaves the badge of the links that held it (DA-299).
+      void queryClient.invalidateQueries({ queryKey: SHARED_NODE_IDS_KEY });
+      return receipt;
+    },
     () => void queryClient.invalidateQueries({ queryKey: graphKeys.node(id) }),
   );
 }

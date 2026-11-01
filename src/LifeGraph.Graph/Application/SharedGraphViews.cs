@@ -1,3 +1,4 @@
+using LifeGraph.Accounts.Contracts;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
 using LifeGraph.Graph.Persistence;
@@ -21,6 +22,7 @@ internal sealed partial class SharedGraphViews(
     LifeGraphDbContext db,
     GraphReadFilter filter,
     IAccountContext accountContext,
+    IEntitlements entitlements,
     TimeProvider clock,
     ILogger<SharedGraphViews> logger) : ISharedGraphViews
 {
@@ -76,7 +78,8 @@ internal sealed partial class SharedGraphViews(
                     return Result<SharedGraphViewProposal>.Fail(eligible.Error!);
                 }
 
-                var proposed = eligible.Value!.Take(SharingLimits.MaxNodesPerShare).ToList();
+                var maxNodes = (await entitlements.OfCurrentAccountAsync(token)).Limits.NodesPerSharedGraphView;
+                var proposed = eligible.Value!.Take(maxNodes).ToList();
                 var nodes = await ProposedNodesAsync(proposed, token);
                 var properties = await ShareablePropertiesAsync([.. proposed.Select(step => step.NodeId)], token);
                 return Result<SharedGraphViewProposal>.Ok(new SharedGraphViewProposal(
@@ -85,7 +88,8 @@ internal sealed partial class SharedGraphViews(
                     nodes,
                     eligible.Value!.Count,
                     eligible.Value.Count > proposed.Count,
-                    properties));
+                    properties,
+                    maxNodes));
             },
             cancellationToken);
     }
@@ -112,16 +116,20 @@ internal sealed partial class SharedGraphViews(
             request.PropertyIds,
             request.IncludeTags);
         var now = GraphWriter.TruncatedToMicroseconds(clock.GetUtcNow());
-        var created = SharedGraphView.Create(Guid.CreateVersion7(), accountId, draft, PersonOnUi, now);
-        if (!created.IsSuccess)
-        {
-            return Result<CreatedSharedGraphView>.Fail(created.Error!);
-        }
-
-        return await db.InAccountResultTransactionAsync(token => CreateInTransactionAsync(created.Value!, draft, token), cancellationToken);
+        return await db.InAccountResultTransactionAsync(
+            async token =>
+            {
+                // The plan is read in the transaction that creates, so the check and the write see the same plan.
+                var limits = (await entitlements.OfCurrentAccountAsync(token)).Limits;
+                var created = SharedGraphView.Create(Guid.CreateVersion7(), accountId, draft, limits.NodesPerSharedGraphView, PersonOnUi, now);
+                return created.IsSuccess
+                    ? await CreateInTransactionAsync(created.Value!, draft, limits.SharedGraphViews, token)
+                    : Result<CreatedSharedGraphView>.Fail(created.Error!);
+            },
+            cancellationToken);
     }
 
-    private async Task<Result<CreatedSharedGraphView>> CreateInTransactionAsync(SharedGraphView share, SharedGraphViewDraft draft, CancellationToken cancellationToken)
+    private async Task<Result<CreatedSharedGraphView>> CreateInTransactionAsync(SharedGraphView share, SharedGraphViewDraft draft, int maxShares, CancellationToken cancellationToken)
     {
         // One create per Account at a time, so two at once cannot both take the last place.
         await db.Database.ExecuteSqlAsync(
@@ -134,7 +142,7 @@ internal sealed partial class SharedGraphViews(
             return Result<CreatedSharedGraphView>.Fail(eligible.Error!);
         }
 
-        // Against the whole eligible set, not only the 25 proposed (DA-220).
+        // Against the whole eligible set, not only the proposed ones (DA-220).
         var eligibleIds = eligible.Value!.Select(step => step.NodeId).ToHashSet();
         var nodeIds = draft.NodeIds ?? [];
         if (nodeIds.Any(id => !eligibleIds.Contains(id)))
@@ -152,10 +160,11 @@ internal sealed partial class SharedGraphViews(
         }
 
         // Suspended and platform-disabled shares hold their place; only a revoked one frees it (DA-220).
-        if (await db.Set<SharedGraphView>().CountAsync(entity => entity.RevokedAt == null, cancellationToken) >= SharingLimits.MaxActiveShares)
+        // Existing links past the plan, after a downgrade, keep working (DA-263): only a new one is refused.
+        if (await db.Set<SharedGraphView>().CountAsync(entity => entity.RevokedAt == null, cancellationToken) >= maxShares)
         {
             return Result<CreatedSharedGraphView>.Fail(SharingErrors.LimitReached.ToError(
-                $"At most {SharingLimits.MaxActiveShares} links at a time; revoke one to create another."));
+                $"At most {maxShares} links at a time; revoke one to create another."));
         }
 
         var token = ShareToken.New();

@@ -28,15 +28,15 @@ public sealed class SharedGraphViewTests
         Assert.False(Create(new SharedGraphViewDraft(Root, depth, [Root], null, false)).IsSuccess);
 
     [Fact]
-    public void The_nodes_must_hold_the_root_be_distinct_and_be_at_most_twenty_five()
+    public void The_nodes_must_hold_the_root_be_distinct_and_be_at_most_the_plans_nodes_per_share()
     {
-        var tooMany = Enumerable.Range(0, SharingLimits.MaxNodesPerShare).Select(_ => Guid.CreateVersion7()).Prepend(Root).ToList();
+        var tooMany = Enumerable.Range(0, MaxNodes).Select(_ => Guid.CreateVersion7()).Prepend(Root).ToList();
         var other = Guid.CreateVersion7();
 
         Assert.False(Create(new SharedGraphViewDraft(Root, 1, [other], null, false)).IsSuccess);
         Assert.False(Create(new SharedGraphViewDraft(Root, 1, [Root, other, other], null, false)).IsSuccess);
         Assert.False(Create(new SharedGraphViewDraft(Root, 1, tooMany, null, false)).IsSuccess);
-        Assert.True(Create(new SharedGraphViewDraft(Root, 1, tooMany[..SharingLimits.MaxNodesPerShare], null, false)).IsSuccess);
+        Assert.True(Create(new SharedGraphViewDraft(Root, 1, tooMany[..MaxNodes], null, false)).IsSuccess);
     }
 
     [Fact]
@@ -50,10 +50,11 @@ public sealed class SharedGraphViewTests
     [Fact]
     public void More_properties_than_the_members_types_can_carry_are_refused()
     {
-        var properties = Enumerable.Range(0, SharingLimits.MaxPropertiesPerShare + 1).Select(_ => Guid.CreateVersion7()).ToArray();
+        var maxProperties = SharingLimits.MaxPropertiesFor(MaxNodes);
+        var properties = Enumerable.Range(0, maxProperties + 1).Select(_ => Guid.CreateVersion7()).ToArray();
 
         Assert.False(Create(new SharedGraphViewDraft(Root, 1, [Root], properties, false)).IsSuccess);
-        Assert.True(Create(new SharedGraphViewDraft(Root, 1, [Root], properties[..SharingLimits.MaxPropertiesPerShare], false)).IsSuccess);
+        Assert.True(Create(new SharedGraphViewDraft(Root, 1, [Root], properties[..maxProperties], false)).IsSuccess);
     }
 
     [Fact]
@@ -96,6 +97,18 @@ public sealed class SharedGraphViewTests
         Assert.Null(ShareToken.HashOfPresented(new string('*', token.Value.Length)));
     }
 
+    [Fact]
+    public void The_node_cap_is_the_one_the_plan_gives()
+    {
+        var thirty = Enumerable.Range(0, 29).Select(_ => Guid.CreateVersion7()).Prepend(Root).ToList();
+
+        Assert.False(Create(new SharedGraphViewDraft(Root, 1, thirty, null, false)).IsSuccess);
+        Assert.True(SharedGraphView.Create(Guid.CreateVersion7(), Guid.CreateVersion7(), new SharedGraphViewDraft(Root, 1, thirty, null, false), 30, PersonOnUi, DateTimeOffset.UnixEpoch).IsSuccess);
+    }
+
+    // The Free plan's Nodes per share (global_v2 §55, DA-081).
+    private const int MaxNodes = 25;
+
     private static Limaj.Framework.Core.Result<SharedGraphView> Create(SharedGraphViewDraft draft) =>
-        SharedGraphView.Create(Guid.CreateVersion7(), Guid.CreateVersion7(), draft, PersonOnUi, DateTimeOffset.UnixEpoch);
+        SharedGraphView.Create(Guid.CreateVersion7(), Guid.CreateVersion7(), draft, MaxNodes, PersonOnUi, DateTimeOffset.UnixEpoch);
 }

@@ -1,15 +1,12 @@
-import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { delay, http, HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { axe } from "vitest-axe";
-import { createQueryClient } from "@/app/queryClient";
-import { NODE_ID, OTHER_NODE_ID } from "@/test/graphFixtures";
+import { NODE_ID } from "@/test/graphFixtures";
 import { csrfTokenHandler, problem, sessionHandler } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 import { renderRoute } from "@/test/renderRoute";
-import { SHARED_BADGE_LABEL, SharedBadge } from "./SharedBadge";
 import { lastAccessText, SHARE_STATUS_LABELS } from "./sharingMessages";
 import {
   sharedNodeIdsOptions,
@@ -142,7 +139,7 @@ describe("the shared links page", () => {
     const api = sharesApi();
     const user = userEvent.setup();
     const { queryClient } = renderRoute("/shares");
-    await queryClient.prefetchQuery(sharedNodeIdsOptions());
+    await queryClient.prefetchQuery(sharedNodeIdsOptions([NODE_ID]));
     const row = await screen.findByRole("listitem", { name: "Estoicismo" });
 
     await user.click(
@@ -161,7 +158,7 @@ describe("the shared links page", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     expect(
-      queryClient.getQueryState(sharesKeys.sharedNodeIds)?.isInvalidated,
+      queryClient.getQueryState(sharesKeys.sharedNodeIdsAmong([NODE_ID]))?.isInvalidated,
     ).toBe(true);
   });
 
@@ -224,49 +221,5 @@ describe("lastAccessText", () => {
   it("says the UTC day, or that nobody visited", () => {
     expect(lastAccessText("2026-01-02")).toBe("02/01/2026 (UTC)");
     expect(lastAccessText(null)).toBe("Nunca acessado");
-  });
-});
-
-describe("the shared badge", () => {
-  function renderBadge(nodeId: string) {
-    return render(
-      <QueryClientProvider client={createQueryClient()}>
-        <SharedBadge nodeId={nodeId} />
-      </QueryClientProvider>,
-    );
-  }
-
-  it("marks a Node in a link, in words", async () => {
-    server.use(
-      http.get("/api/shared-graph-views/node-ids", () =>
-        HttpResponse.json({ data: [NODE_ID], page: { nextCursor: null } }),
-      ),
-    );
-
-    renderBadge(NODE_ID);
-
-    expect(await screen.findByText(SHARED_BADGE_LABEL)).toBeInTheDocument();
-  });
-
-  it("renders nothing for a Node in no link, while loading and on error", async () => {
-    let answer: () => Promise<Response> = async () =>
-      HttpResponse.json({ data: [NODE_ID], page: { nextCursor: null } });
-    server.use(http.get("/api/shared-graph-views/node-ids", () => answer()));
-    renderBadge(OTHER_NODE_ID);
-    await waitFor(() =>
-      expect(screen.queryByText(SHARED_BADGE_LABEL)).not.toBeInTheDocument(),
-    );
-
-    answer = async () => {
-      await delay("infinite");
-      return HttpResponse.json({});
-    };
-    const loading = renderBadge(NODE_ID);
-    expect(loading.container).toBeEmptyDOMElement();
-    loading.unmount();
-
-    answer = async () => problem(500, "internal");
-    const failed = renderBadge(NODE_ID);
-    await waitFor(() => expect(failed.container).toBeEmptyDOMElement());
   });
 });

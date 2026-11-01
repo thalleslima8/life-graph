@@ -1,15 +1,14 @@
 namespace LifeGraph.Graph.Domain;
 
-/// <summary>The limits of SharedGraphViews: constants until E13 makes them plan limits (DA-081, DA-220).</summary>
+/// <summary>
+/// The technical limits of SharedGraphViews. How many links an Account holds and how many Nodes
+/// each holds are plan limits since E13 (<c>IEntitlements</c>: SharedGraphViews and
+/// NodesPerSharedGraphView); the Free values are those of DA-081.
+/// </summary>
 public static class SharingLimits
 {
-    /// <summary>Shares that hold a place: active, suspended and disabled by the platform; only a revoked one frees it (DA-220).</summary>
-    public const int MaxActiveShares = 3;
-
-    public const int MaxNodesPerShare = 25;
-
     /// <summary>Every property the members' Types can carry, so no real choice is ever refused (API-082).</summary>
-    public const int MaxPropertiesPerShare = MaxNodesPerShare * GraphLimits.TypePropertiesMaxCount;
+    public static int MaxPropertiesFor(int maxNodes) => maxNodes * GraphLimits.TypePropertiesMaxCount;
 
     public const int MinDepth = 1;
 

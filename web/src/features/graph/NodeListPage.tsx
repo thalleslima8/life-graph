@@ -3,6 +3,8 @@ import { useInfiniteQuery, useQuery, type UseQueryResult } from "@tanstack/react
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
 import { z } from "zod";
+import { LimitNotice } from "@/features/account/LimitNotice";
+import { isPlanLimitReached } from "@/features/account/planData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -222,7 +224,8 @@ function CreateNodeForm({ inInbox }: { inInbox: boolean }) {
           {errors.title.message}
         </p>
       )}
-      {create.isError && (
+      <LimitNotice kind="nodes" error={create.error} />
+      {create.isError && !isPlanLimitReached(create.error) && (
         <p id="new-node-error" role="alert" className="text-sm text-destructive">
           {writeErrorMessage(create.error)}
         </p>

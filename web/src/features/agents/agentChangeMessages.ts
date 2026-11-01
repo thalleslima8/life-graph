@@ -17,6 +17,7 @@ const REASON_LABELS: Readonly<Record<ProposalItem["reasons"][number], string>> =
   type_change: "Troca de Type de um Node seu",
   bulk: "Muitas alterações de uma vez",
   window: "Muitas alterações em pouco tempo",
+  quota: "Cota mensal de escritas dos agentes atingida",
 };
 
 export function reasonLabels(reasons: ProposalItem["reasons"]): string {

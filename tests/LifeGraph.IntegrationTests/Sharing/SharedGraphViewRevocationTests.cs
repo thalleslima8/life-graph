@@ -22,6 +22,9 @@ public sealed class SharedGraphViewRevocationTests(PostgresDatabase database) : 
     private const string EmailA = "ada@example.test";
     private const string EmailB = "grace@example.test";
 
+    // The badge's ceiling per request (DA-299).
+    private const int MaxIdsAsked = 75;
+
     // What legitimately differs between two answers: the request's own trace and the clock.
     private static readonly string[] PerRequestFields = ["traceId", "correlationId", "requestId"];
     private static readonly string[] PerRequestHeaders = ["Date", "traceparent", "X-Correlation-Id", "X-Request-Id"];
@@ -94,17 +97,62 @@ public sealed class SharedGraphViewRevocationTests(PostgresDatabase database) : 
         var second = await CreatedNodeAsync("Epicureanism");
         var (_, firstToken) = await ShareAsync(first);
         var (_, secondToken) = await ShareAsync(second);
-        var badgeBefore = await SharedNodeIdsAsync();
+        var badgeBefore = await SharedNodeIdsAsync(first, second);
 
         var revoked = await _spa.PostAsync("/api/shared-graph-views/revocation", new { });
 
         Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
         Assert.Equal(new[] { first, second }.Order(), badgeBefore.Order());
-        Assert.Empty(await SharedNodeIdsAsync());
+        Assert.Empty(await SharedNodeIdsAsync(first, second));
         await AssertAnswersLikeAnUnknownLinkAsync(firstToken);
         await AssertAnswersLikeAnUnknownLinkAsync(secondToken);
         var list = await JsonOfAsync(await _spa.GetAsync("/api/shared-graph-views"));
         Assert.All(list.RootElement.GetProperty("data").EnumerateArray(), link => Assert.Equal("revoked", link.GetProperty("status").GetString()));
+    }
+
+    [Fact]
+    public async Task The_badge_answers_only_for_the_asked_nodes_of_the_own_account()
+    {
+        var shared = await CreatedNodeAsync("Stoicism");
+        var notShared = await CreatedNodeAsync("Epicureanism");
+        var elsewhere = await CreatedNodeAsync("Cynicism");
+        await ShareAsync(shared);
+        await ShareAsync(elsewhere);
+        using var other = await TestAccounts.SignedInAsync(_factory, EmailB);
+
+        var asked = await SharedNodeIdsAsync(shared, notShared, shared);
+        var foreign = await JsonOfAsync(await other.GetAsync(SharedNodeIdsUrl([shared, elsewhere])));
+
+        Assert.Equal([shared], asked);
+        Assert.Empty(foreign.RootElement.GetProperty("data").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task The_badge_refuses_more_than_75_ids_or_none_instead_of_truncating()
+    {
+        var root = await CreatedNodeAsync("Stoicism");
+        await ShareAsync(root);
+        var tooMany = Enumerable.Range(0, MaxIdsAsked).Select(_ => Guid.CreateVersion7()).Append(root);
+
+        var refused = await _spa.GetAsync(SharedNodeIdsUrl(tooMany));
+        var none = await _spa.GetAsync("/api/shared-graph-views/node-ids");
+        var atTheCeiling = await SharedNodeIdsAsync([.. Enumerable.Range(0, MaxIdsAsked - 1).Select(_ => Guid.CreateVersion7()), root]);
+
+        Assert.Equal((HttpStatusCode.UnprocessableEntity, HttpStatusCode.UnprocessableEntity), (refused.StatusCode, none.StatusCode));
+        Assert.Equal([root], atTheCeiling);
+    }
+
+    [Fact]
+    public async Task A_visitor_does_not_reach_the_badge()
+    {
+        var root = await CreatedNodeAsync("Stoicism");
+        var (_, token) = await ShareAsync(root);
+        using var visitor = _factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = LifeGraphApiFactory.ShareOrigin });
+        visitor.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var answer = await visitor.GetAsync(SharedNodeIdsUrl([root]), TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, answer.StatusCode);
     }
 
     [Fact]
@@ -130,7 +178,7 @@ public sealed class SharedGraphViewRevocationTests(PostgresDatabase database) : 
         await AssertAnswersLikeAnUnknownLinkAsync(token);
         var summary = (await JsonOfAsync(await _spa.GetAsync($"/api/shared-graph-views/{id}"))).RootElement;
         Assert.Equal("disabled_by_platform", summary.GetProperty("status").GetString());
-        Assert.Empty(await SharedNodeIdsAsync());
+        Assert.Empty(await SharedNodeIdsAsync(root));
     }
 
     [Fact]
@@ -219,11 +267,16 @@ public sealed class SharedGraphViewRevocationTests(PostgresDatabase database) : 
         return (id, token);
     }
 
-    private async Task<List<Guid>> SharedNodeIdsAsync()
+    private async Task<List<Guid>> SharedNodeIdsAsync(params Guid[] among)
     {
-        var page = await JsonOfAsync(await _spa.GetAsync("/api/shared-graph-views/node-ids"));
-        return page.RootElement.GetProperty("data").EnumerateArray().Select(id => id.GetGuid()).ToList();
+        var response = await _spa.GetAsync(SharedNodeIdsUrl(among));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var shared = await JsonOfAsync(response);
+        return shared.RootElement.GetProperty("data").EnumerateArray().Select(id => id.GetGuid()).ToList();
     }
+
+    private static string SharedNodeIdsUrl(IEnumerable<Guid> among) =>
+        "/api/shared-graph-views/node-ids?" + string.Join("&", among.Select(id => $"ids={id}"));
 
     private async Task<Guid> CreatedNodeAsync(string title)
     {

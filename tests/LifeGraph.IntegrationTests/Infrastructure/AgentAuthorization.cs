@@ -21,6 +21,12 @@ public static class AgentAuthorization
     public const string ClientName = "Test Agent";
     public const string RedirectUri = "https://agent.example.test/callback";
 
+    /// <summary>
+    /// The Free plan's Agent Connections (one, global_v2 §55; counted as DA-262 says): a fixture that connects several clients
+    /// to one Account sets it to the number of clients.
+    /// </summary>
+    public const string FreeAgentConnectionsSetting = "Entitlements:Free:AgentConnections";
+
     public static readonly Uri McpResource = new(LifeGraphApiFactory.Origin, "mcp");
 
     /// <summary>A pre-registered client (slice 1) and, unless turned off, auto-consent.</summary>

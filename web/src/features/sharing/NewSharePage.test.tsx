@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
+import { planKeys, planOptions } from "@/features/account/planData";
 import { aNode, NODE_ID, OTHER_NODE_ID } from "@/test/graphFixtures";
 import { csrfTokenHandler, problem, sessionHandler } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
@@ -41,6 +42,7 @@ function aProposal(
     ],
     eligibleCount: 2,
     truncated: false,
+    maxNodes: 25,
     properties: [{ id: PROPERTY_ID, name: "Tradutor" }],
     ...overrides,
   };
@@ -152,7 +154,8 @@ describe("creating a shared link", () => {
     const { container, router, queryClient } = renderRoute(
       `/shares/new?rootNodeId=${NODE_ID}`,
     );
-    await queryClient.prefetchQuery(sharedNodeIdsOptions());
+    await queryClient.prefetchQuery(sharedNodeIdsOptions([NODE_ID]));
+    await queryClient.prefetchQuery(planOptions());
 
     await toNotice(user);
     await user.click(
@@ -170,8 +173,11 @@ describe("creating a shared link", () => {
     expect(await screen.findByText("Link copiado.")).toBeInTheDocument();
     // The new link's Nodes now carry the badge (DA-222).
     expect(
-      queryClient.getQueryState(sharesKeys.sharedNodeIds)?.isInvalidated,
+      queryClient.getQueryState(sharesKeys.sharedNodeIdsAmong([NODE_ID]))
+        ?.isInvalidated,
     ).toBe(true);
+    // The link takes a place in the plan, so the plan is read again (DA-266).
+    expect(queryClient.getQueryState(planKeys.all)?.isInvalidated).toBe(true);
     // Only the mutation holds the link, never the query cache (DA-079).
     expect(
       JSON.stringify(
@@ -229,8 +235,22 @@ describe("creating a shared link", () => {
 
     expect(
       await screen.findByText(
-        /2 de 31 elegíveis: um link tem no máximo 25 Nodes/,
+        /2 de 31 elegíveis: no seu plano, um link tem no máximo 25 Nodes/,
       ),
+    ).toBeInTheDocument();
+  });
+
+  it("takes the most Nodes per link from the plan, not from a constant", async () => {
+    sharingApi({
+      proposal: () =>
+        HttpResponse.json(
+          aProposal({ eligibleCount: 300, truncated: true, maxNodes: 250 }),
+        ),
+    });
+    renderRoute(`/shares/new?rootNodeId=${NODE_ID}`);
+
+    expect(
+      await screen.findByText(/no seu plano, um link tem no máximo 250 Nodes/),
     ).toBeInTheDocument();
   });
 

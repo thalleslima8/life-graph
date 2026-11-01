@@ -90,8 +90,23 @@ public sealed class ProvisioningRoleTests(PostgresDatabase database) : IAsyncLif
             grants.Add(reader.GetString(0));
         }
 
-        // A new table (the graph's included) is never granted to it by default.
-        Assert.Equal(["accounts:INSERT", "users:INSERT", "users:SELECT", "users:UPDATE"], grants);
+        // A new table (the graph's included) is never granted to it by default. The one amendment is
+        // DA-267: the plan of an Account, which the `accounts plan` CLI writes but never deletes.
+        Assert.Equal(
+            [
+                "account_plans:INSERT", "account_plans:SELECT", "account_plans:UPDATE",
+                "accounts:INSERT", "users:INSERT", "users:SELECT", "users:UPDATE",
+            ],
+            grants);
+    }
+
+    [Fact]
+    public async Task Provisioning_role_cannot_delete_a_plan()
+    {
+        var violation = await Assert.ThrowsAsync<PostgresException>(
+            () => ExecuteAsync(database.ProvisioningConnectionString, "DELETE FROM account_plans"));
+
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, violation.SqlState);
     }
 
     [Fact]

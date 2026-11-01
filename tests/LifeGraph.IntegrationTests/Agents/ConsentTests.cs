@@ -199,6 +199,31 @@ public sealed class ConsentTests(PostgresDatabase database) : IAsyncLifetime
         Assert.True(await RequiresApprovalAsync());
     }
 
+    // DA-262: past the plan's Agent Connections (1 on Free) the page explains the limit, links to
+    // the revocation and offers no Allow; going back tells the agent access_denied.
+    [Fact]
+    public async Task Past_the_plans_agent_connections_the_page_explains_the_limit_and_offers_no_allow()
+    {
+        using var browser = await AgentAuthorization.SignedInBrowserAsync(_factory, Email);
+        await ConsentAsync(browser, []);
+
+        var page = await browser.Http.GetStringAsync(
+            AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce(), clientId: LoopbackClientId, redirectUri: LoopbackRedirect),
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains("permite 1 agente conectado", page, StringComparison.Ordinal);
+        Assert.Contains($"""href="{LifeGraphApiFactory.SpaBaseUrl}/agentes">Agentes conectados</a>""", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("value=\"allow\"", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("Autorizar", page, StringComparison.Ordinal);
+        var back = await HtmlForm.PostAsync(browser.Http, "/connect/authorize", [.. HtmlForm.HiddenFields(page), new("decision", "deny")]);
+        Assert.Equal(HttpStatusCode.Redirect, back.StatusCode);
+        Assert.Contains("error=access_denied", back.Headers.Location!.Query, StringComparison.Ordinal);
+        Assert.Equal(1L, await database.QueryScalarAsMigratorAsync<long>("SELECT count(*) FROM agent_identities"));
+
+        // The client already connected reconnects as before (DA-262).
+        Assert.Contains("Autorizar", await browser.Http.GetStringAsync(AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce()), TestContext.Current.CancellationToken), StringComparison.Ordinal);
+    }
+
     private static async Task ConsentAsync(SpaClient browser, IEnumerable<KeyValuePair<string, string>> choices)
     {
         var page = await browser.Http.GetStringAsync(AgentAuthorization.AuthorizePath(AgentAuthorization.NewPkce()), TestContext.Current.CancellationToken);

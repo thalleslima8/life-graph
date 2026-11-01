@@ -1,4 +1,5 @@
 import { isApiError } from "@/api/client";
+import { refusedLimitText } from "@/features/account/limitMessages";
 import type { PropertyValueKind } from "./graphData";
 import type { ChangeSetItem, UndoRefusal } from "./recentChanges";
 import type { SchemaRefusal } from "./graphData";
@@ -159,6 +160,11 @@ export function writeErrorMessage(error: unknown): string {
 
   if (error.code === "graph.node_version_conflict") {
     return VERSION_CONFLICT_MESSAGE;
+  }
+
+  const limitText = refusedLimitText(error);
+  if (limitText !== undefined) {
+    return limitText;
   }
 
   if (error.code === "validation_failed") {

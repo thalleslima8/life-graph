@@ -70,6 +70,12 @@ describe("property editor refusals", () => {
     expect(writeErrorMessage(new ApiError(status, code, "Refused"))).toContain(expected);
   });
 
+  it("explains a creation refused past the plan's limit, without saying anything is blocked", () => {
+    const refusal = new ApiError(422, "plan.limit_reached", "Refused", { details: { kind: ["custom_types"], limit: ["5"] } });
+    expect(writeErrorMessage(refusal)).toContain("5 de 5 Types próprios");
+    expect(writeErrorMessage(refusal)).toContain("Nada foi bloqueado");
+  });
+
   it("explains that an option Nodes chose cannot be removed, and points to archiving it", () => {
     expect(schemaRefusalMessage({ kind: "has_values" })).toContain("arquive-a");
   });

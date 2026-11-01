@@ -3444,6 +3444,46 @@
         }
       }
     },
+    "/api/account/plan": {
+      "get": {
+        "tags": [
+          "Account plan"
+        ],
+        "operationId": "GetAccountPlan",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPlanView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/account-root": {
       "get": {
         "tags": [
@@ -3865,22 +3905,14 @@
         "operationId": "ListSharedNodeIds",
         "parameters": [
           {
-            "name": "cursor",
+            "name": "ids",
             "in": "query",
             "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "pattern": "^-?(?:0|[1-9]\\d*)$",
-              "type": [
-                "integer",
-                "string"
-              ],
-              "format": "int32"
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           }
         ],
@@ -3890,17 +3922,27 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SharedGraphViewPageOfGuid"
+                  "$ref": "#/components/schemas/SharedNodeIds"
                 }
               }
             }
           },
-          "400": {
-            "description": "Bad Request",
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4242,6 +4284,44 @@
           }
         }
       },
+      "AccountPlan": {
+        "enum": [
+          "free",
+          "premium"
+        ]
+      },
+      "AccountPlanView": {
+        "required": [
+          "plan",
+          "limits",
+          "nodesPerSharedGraphView",
+          "agentWrites"
+        ],
+        "type": "object",
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/AccountPlan"
+          },
+          "limits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanLimitUsage"
+            }
+          },
+          "nodesPerSharedGraphView": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "agentWrites": {
+            "$ref": "#/components/schemas/AgentWriteQuotaUsage"
+          }
+        }
+      },
       "AccountRootItem": {
         "required": [
           "id"
@@ -4367,6 +4447,37 @@
           },
           "revoked": {
             "type": "boolean"
+          }
+        }
+      },
+      "AgentWriteQuotaUsage": {
+        "required": [
+          "used",
+          "max",
+          "resetsAt"
+        ],
+        "type": "object",
+        "properties": {
+          "used": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "max": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "resetsAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -6033,6 +6144,48 @@
           }
         }
       },
+      "PlanLimitKind": {
+        "enum": [
+          "nodes",
+          "relations",
+          "resources",
+          "collections",
+          "custom_types",
+          "custom_properties",
+          "agent_connections",
+          "shared_graph_views"
+        ]
+      },
+      "PlanLimitUsage": {
+        "required": [
+          "kind",
+          "used",
+          "max"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PlanLimitKind"
+          },
+          "used": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "max": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -6332,7 +6485,8 @@
           "sensitive",
           "type_change",
           "bulk",
-          "window"
+          "window",
+          "quota"
         ]
       },
       "ProposalStatus": {
@@ -6856,25 +7010,6 @@
           }
         }
       },
-      "SharedGraphViewPageOfGuid": {
-        "required": [
-          "data",
-          "page"
-        ],
-        "type": "object",
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "page": {
-            "$ref": "#/components/schemas/SharedGraphViewPageInfo"
-          }
-        }
-      },
       "SharedGraphViewPageOfSharedGraphViewSummary": {
         "required": [
           "data",
@@ -6900,7 +7035,8 @@
           "nodes",
           "eligibleCount",
           "truncated",
-          "properties"
+          "properties",
+          "maxNodes"
         ],
         "type": "object",
         "properties": {
@@ -6938,6 +7074,14 @@
             "items": {
               "$ref": "#/components/schemas/ShareableProperty"
             }
+          },
+          "maxNodes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -7016,6 +7160,21 @@
               "string"
             ],
             "format": "date-time"
+          }
+        }
+      },
+      "SharedNodeIds": {
+        "required": [
+          "data"
+        ],
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -7542,6 +7701,9 @@
       "name": "Search"
     },
     {
+      "name": "Account plan"
+    },
+    {
       "name": "Account export"
     },
     {
@@ -7831,6 +7993,11 @@
       "recovery": "fix_input"
     },
     {
+      "code": "plan.limit_reached",
+      "status": 422,
+      "recovery": "ask_user"
+    },
+    {
       "code": "sharing.legal_notice_not_accepted",
       "status": 422,
       "recovery": "fix_input"
@@ -7839,6 +8006,11 @@
       "code": "sharing.limit_reached",
       "status": 422,
       "recovery": "ask_user"
+    },
+    {
+      "code": "sharing.node_ids_out_of_range",
+      "status": 422,
+      "recovery": "fix_input"
     },
     {
       "code": "sharing.node_not_eligible",

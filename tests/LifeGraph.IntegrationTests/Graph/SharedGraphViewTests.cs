@@ -1,3 +1,4 @@
+using System.Globalization;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
 using LifeGraph.Infrastructure.Errors;
@@ -14,12 +15,23 @@ namespace LifeGraph.IntegrationTests.Graph;
 /// <summary>
 /// SharedGraphViews against a real Postgres (DA-075, DA-076, DA-219, DA-220): the proposal walks
 /// Hard Relations only, never reaches a Node Oculto para agentes nor the Raiz da Conta, and the
-/// creation checks every Node again on the server, holds at most three links and stores only the
-/// token's hash.
+/// creation checks every Node again on the server, holds as many links and Nodes as the plan gives
+/// (three of 25 on Free, E13) and stores only the token's hash.
 /// </summary>
 public sealed class SharedGraphViewTests(PostgresDatabase database) : IAsyncLifetime
 {
-    private readonly LifeGraphApiFactory _factory = new(database);
+    // The Free values of DA-081 (the defaults); Premium is configured small so a test can reach it.
+    private const int FreeShares = 3;
+    private const int FreeNodesPerShare = 25;
+    private const int PremiumShares = 4;
+    private const int PremiumNodesPerShare = 28;
+
+    private readonly LifeGraphApiFactory _factory = new(database, new Dictionary<string, string>
+    {
+        ["Entitlements:Premium:SharedGraphViews"] = PremiumShares.ToString(CultureInfo.InvariantCulture),
+        ["Entitlements:Premium:NodesPerSharedGraphView"] = PremiumNodesPerShare.ToString(CultureInfo.InvariantCulture),
+    });
+
     private GraphWriteHarness _graph = null!;
     private Guid _account;
 
@@ -57,7 +69,7 @@ public sealed class SharedGraphViewTests(PostgresDatabase database) : IAsyncLife
     }
 
     [Fact]
-    public async Task Proposal_holds_twenty_five_nodes_and_reports_how_many_were_eligible()
+    public async Task Proposal_holds_the_free_plans_twenty_five_nodes_and_reports_how_many_were_eligible()
     {
         var hub = await CreateNodeAsync("Hub");
         for (var index = 0; index < 30; index++)
@@ -67,10 +79,34 @@ public sealed class SharedGraphViewTests(PostgresDatabase database) : IAsyncLife
 
         var proposal = Succeeded(await ProposeAsync(hub, 1));
 
-        Assert.Equal(SharingLimits.MaxNodesPerShare, proposal.Nodes.Count);
+        Assert.Equal(FreeNodesPerShare, proposal.Nodes.Count);
+        Assert.Equal(FreeNodesPerShare, proposal.MaxNodes);
         Assert.Equal(31, proposal.EligibleCount);
         Assert.True(proposal.Truncated);
         Assert.Equal(hub, proposal.Nodes[0].Id);
+    }
+
+    [Fact]
+    public async Task On_premium_the_proposal_and_the_share_hold_the_plans_nodes_per_share()
+    {
+        var hub = await CreateNodeAsync("Hub");
+        var leaves = new List<Guid>();
+        for (var index = 0; index < 30; index++)
+        {
+            leaves.Add(await CreateNodeAsync($"Leaf {index}"));
+            await RelateAsync(hub, leaves[^1]);
+        }
+
+        await MakePremiumAsync();
+        var proposal = Succeeded(await ProposeAsync(hub, 1));
+
+        Assert.Equal(PremiumNodesPerShare, proposal.Nodes.Count);
+        Assert.Equal(PremiumNodesPerShare, proposal.MaxNodes);
+        Assert.True(proposal.Truncated);
+        var nodeIds = proposal.Nodes.Select(node => node.Id).ToList();
+        Assert.True((await CreateAsync(new CreateSharedGraphView(hub, 1, nodeIds, null, false, true))).IsSuccess);
+        var tooMany = await CreateAsync(new CreateSharedGraphView(hub, 1, [.. nodeIds, leaves.First(leaf => !nodeIds.Contains(leaf))], null, false, true));
+        Assert.Equal(CommonErrors.ValidationFailed.Code, tooMany.Error?.Code);
     }
 
     [Fact]
@@ -194,7 +230,7 @@ public sealed class SharedGraphViewTests(PostgresDatabase database) : IAsyncLife
     public async Task A_fourth_link_is_refused_until_one_is_revoked()
     {
         var root = await CreateNodeAsync("Stoicism");
-        for (var index = 0; index < SharingLimits.MaxActiveShares; index++)
+        for (var index = 0; index < FreeShares; index++)
         {
             Succeeded(await CreateAsync(new CreateSharedGraphView(root, 1, [root], null, false, true)));
         }
@@ -207,6 +243,24 @@ public sealed class SharedGraphViewTests(PostgresDatabase database) : IAsyncLife
             TestContext.Current.CancellationToken);
         var afterRevoke = await CreateAsync(new CreateSharedGraphView(root, 1, [root], null, false, true));
         Assert.True(afterRevoke.IsSuccess, afterRevoke.Error?.Code);
+    }
+
+    [Fact]
+    public async Task On_premium_a_fourth_link_is_created_and_after_a_downgrade_every_link_stays_open_but_no_new_one_is()
+    {
+        var root = await CreateNodeAsync("Stoicism");
+        await MakePremiumAsync();
+        for (var index = 0; index < PremiumShares; index++)
+        {
+            Succeeded(await CreateAsync(new CreateSharedGraphView(root, 1, [root], null, false, true)));
+        }
+
+        Assert.Equal(SharingErrors.LimitReached.Code, (await CreateAsync(new CreateSharedGraphView(root, 1, [root], null, false, true))).Error?.Code);
+
+        // Back to Free (DA-263): nothing is revoked or hidden; only a new link is refused.
+        await database.ExecuteAsMigratorAsync("DELETE FROM account_plans", TestContext.Current.CancellationToken);
+        Assert.Equal(SharingErrors.LimitReached.Code, (await CreateAsync(new CreateSharedGraphView(root, 1, [root], null, false, true))).Error?.Code);
+        Assert.Equal(PremiumShares, await _graph.ScalarAsync<long>("SELECT count(*) FROM shared_graph_views WHERE revoked_at IS NULL"));
     }
 
     [Fact]
@@ -245,6 +299,12 @@ public sealed class SharedGraphViewTests(PostgresDatabase database) : IAsyncLife
             "SELECT count(*) FROM shared_graph_views WHERE id = @id AND root_node_id IS NULL AND revoked_at IS NOT NULL AND revoked_by = 'system'",
             new NpgsqlParameter("id", created.Id)));
     }
+
+    // The owner's CLI writes this row (DA-267); the test writes it as the migrator.
+    private Task MakePremiumAsync() =>
+        database.ExecuteAsMigratorAsync(
+            $"INSERT INTO account_plans (account_id, plan, origin, updated_at) VALUES ('{_account}', 'premium', 'cli', now())",
+            TestContext.Current.CancellationToken);
 
     private Task<Result<SharedGraphViewProposal>> ProposeAsync(Guid rootNodeId, int? depth) =>
         _graph.AsAsync(new AuthenticatedPrincipal(_account, PrincipalType.Human), services => services.GetRequiredService<ISharedGraphViews>()

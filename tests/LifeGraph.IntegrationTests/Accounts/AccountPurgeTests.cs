@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using LifeGraph.Accounts.Provisioning;
 using LifeGraph.Agents.Mcp;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Infrastructure.Accounts;
@@ -150,6 +151,11 @@ public sealed class AccountPurgeTests(PostgresDatabase database) : IAsyncLifetim
         Assert.Equal(HttpStatusCode.Created, share.StatusCode);
         var export = await browser.PostAsync("/api/account/export", new { });
         Assert.Equal(HttpStatusCode.Accepted, export.StatusCode);
+
+        // A plan given by the owner's CLI (DA-260, DA-267), which goes with its Account.
+        var plan = await AccountsCommandLine.RunAsync(
+            _factory.Provisioning.Services, ["accounts", "plan", "--email", email, "--plan", "premium"], TextWriter.Null, TestContext.Current.CancellationToken);
+        Assert.Equal(AccountsCommandLine.Success, plan);
         return account;
     }
 

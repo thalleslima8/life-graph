@@ -425,6 +425,7 @@ public sealed class ResourceToolsTests(PostgresDatabase database) : IAsyncLifeti
         settings[$"{IssuerOptions.SectionName}:Clients:1:ClientId"] = OtherClientId;
         settings[$"{IssuerOptions.SectionName}:Clients:1:DisplayName"] = "Other Agent";
         settings[$"{IssuerOptions.SectionName}:Clients:1:RedirectUris:0"] = AgentAuthorization.RedirectUri;
+        settings[AgentAuthorization.FreeAgentConnectionsSetting] = "2";
         return settings;
     }
 }

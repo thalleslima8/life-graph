@@ -19,6 +19,12 @@ public interface IAgentIdentities
 
     /// <summary>A connection of the Account that is not revoked; another Account's or a revoked one is NotFound.</summary>
     Task<Result<AgentIdentityView>> GetAsync(Guid agentIdentityId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The Account's active connections (<c>RevokedAt == null</c>), the ones the plan's limit
+    /// counts (DA-262). Read inside the caller's Account transaction.
+    /// </summary>
+    Task<int> CountActiveOfCurrentAccountAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>Whether the connection's client can still be used (DA-123).</summary>

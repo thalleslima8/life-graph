@@ -6,12 +6,13 @@ import { useSession } from "@/features/session/session";
 import { exportStatusOptions, useDownloadExport, useStartExport, type AccountExportView } from "./accountData";
 import { DELETION_MESSAGES, EXPORT_MESSAGES } from "./accountMessages";
 import { DeleteAccountDialog } from "./DeleteAccountDialog";
+import { PlanUsageSection } from "./PlanUsageSection";
 
 const TITLE_ID = "account-title";
 const EXPORT_TITLE_ID = "account-export-title";
 const DELETION_TITLE_ID = "account-deletion-title";
 
-/** The person's Account (DA-255): the export of all their data (DA-085, DA-247) and the deletion of the Account (DA-082). */
+/** The person's Account (DA-255): the plan and its usage (DA-266), the export of all their data (DA-085, DA-247) and the deletion of the Account (DA-082). */
 export function AccountPage() {
   const session = useSession();
   const status = useQuery(exportStatusOptions());
@@ -26,6 +27,7 @@ export function AccountPage() {
         </h1>
         {session && <p className="text-sm text-muted-foreground">{session.email}</p>}
       </div>
+      <PlanUsageSection />
       <ExportSection status={status} start={start} download={download} />
       {session && (
         <DeletionSection

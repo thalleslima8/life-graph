@@ -37,7 +37,7 @@ export const ROOT_NOT_SHAREABLE_MESSAGE =
 export const NOTHING_ELIGIBLE_MESSAGE =
   "Nenhum Node pode entrar neste link: a raiz está oculta para agentes. Um Node oculto nunca é compartilhado; desoculte-o antes, se quiser compartilhá-lo.";
 export const LIMIT_REACHED_MESSAGE =
-  "Você já tem 3 links. Links suspensos ou desativados pela plataforma também contam: revogue um para criar outro.";
+  "Você atingiu o limite de links do seu plano. Links suspensos ou desativados pela plataforma também contam: revogue um para criar outro. Os links que você já tem continuam funcionando.";
 const PROPOSAL_CHANGED_MESSAGE =
   "O grafo mudou desde a proposta. Volte e revise a lista de novo.";
 export const LEGAL_NOTICE_TEXT =
@@ -195,7 +195,7 @@ function ShareFlow({
   const create = useCreateShare();
   const ids = useId();
   const form = useForm<CreateShareFormInput, unknown, CreateShareInput>({
-    resolver: zodResolver(createShareSchema),
+    resolver: zodResolver(createShareSchema(Number(proposal.maxNodes))),
     defaultValues: {
       rootNodeId: proposal.rootNodeId,
       maxDepth: depth,
@@ -287,7 +287,7 @@ function ShareFlow({
                 className="text-sm text-muted-foreground"
               >
                 {proposal.truncated
-                  ? `${proposal.nodes.length} de ${proposal.eligibleCount} elegíveis: um link tem no máximo 25 Nodes, os mais próximos da raiz.`
+                  ? `${proposal.nodes.length} de ${proposal.eligibleCount} elegíveis: no seu plano, um link tem no máximo ${Number(proposal.maxNodes)} Nodes, os mais próximos da raiz.`
                   : `${proposal.nodes.length} de ${proposal.eligibleCount} elegíveis. Desmarque o que não quer compartilhar.`}
               </p>
               <ul className="space-y-1">

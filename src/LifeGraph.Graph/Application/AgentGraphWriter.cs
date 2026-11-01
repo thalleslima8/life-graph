@@ -1,3 +1,4 @@
+using LifeGraph.Accounts.Contracts;
 using LifeGraph.Graph.Contracts;
 using LifeGraph.Graph.Domain;
 using LifeGraph.Infrastructure.Agents;
@@ -27,6 +28,7 @@ internal sealed class AgentGraphWriter(
     ICurrentPrincipal currentPrincipal,
     IAgentIdentityDirectory agentDirectory,
     IResourceAddressRules addressRules,
+    IEntitlements entitlements,
     IOptions<AgentWriteOptions> options,
     TimeProvider clock) : IAgentGraphWriter
 {
@@ -122,6 +124,10 @@ internal sealed class AgentGraphWriter(
                 if (reasons.Count == 0 && await CrossesWindowAsync(agentIdentityId, assessment.OnPersonsEntities, now, token))
                 {
                     reasons.Add(ProposalReason.Window);
+                }
+                else if (reasons.Count == 0 && await ExceedsQuotaAsync(operations.Count, now, token))
+                {
+                    reasons.Add(ProposalReason.Quota);
                 }
 
                 // What it turns out to need now goes, whole, to the person (DA-132), and a
@@ -257,6 +263,11 @@ internal sealed class AgentGraphWriter(
                 {
                     reasons.Add(ProposalReason.Window);
                 }
+                else if (reasons.Count == 0 && await ExceedsQuotaAsync(request.Operations.Count, now, token))
+                {
+                    // Past the plan's quota the whole write goes to the person, never a part (DA-261).
+                    reasons.Add(ProposalReason.Quota);
+                }
 
                 if (reasons.Count > 0)
                 {
@@ -284,6 +295,7 @@ internal sealed class AgentGraphWriter(
             changeSet =>
             {
                 changeSet.CountTowardsWindow(application.WindowOperations);
+                changeSet.CountTowardsQuota(application.Operations.Count);
                 complete?.Invoke(changeSet, createdNodes);
             },
             cancellationToken);
@@ -417,6 +429,19 @@ internal sealed class AgentGraphWriter(
         await agentDirectory.RequiresApprovalForWritesAsync(agentIdentityId, cancellationToken) is { } requiresApproval
             ? new WritingAgent(agentIdentityId, requiresApproval)
             : null;
+
+    // The Account's agents' own operations since the UTC month began, against the plan's quota
+    // (DA-261), under the Account's agent lock like the window. The person's approvals and Undo
+    // record none, so they never consume it.
+    private async Task<bool> ExceedsQuotaAsync(int operations, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var quota = (await entitlements.OfCurrentAccountAsync(cancellationToken)).Limits.AgentWriteOperationsPerMonth;
+        var since = AgentWriteQuota.PeriodStartOf(now);
+        var used = await db.Set<GraphChangeSet>().AsNoTracking()
+            .Where(changeSet => changeSet.QuotaOperations > 0 && changeSet.CreatedAt >= since)
+            .SumAsync(changeSet => changeSet.QuotaOperations, cancellationToken);
+        return AgentWriteQuota.IsExceededBy(operations, used, quota);
+    }
 
     // The window sums what agents applied on their own to the person's entities (DA-132): the
     // count each GraphChangeSet kept when it was applied, undone ones included. A count over the

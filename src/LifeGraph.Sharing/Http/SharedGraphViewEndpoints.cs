@@ -41,10 +41,11 @@ public static class SharedGraphViewEndpoints
             .WithName("ListSharedGraphViews")
             .Produces<SharedGraphViewPage<SharedGraphViewSummary>>()
             .ProducesValidationProblem();
-        shares.MapGet("/node-ids", ListSharedNodeIdsAsync)
+        shares.MapGet("/node-ids", SharedNodeIdsAmongAsync)
             .WithName("ListSharedNodeIds")
-            .Produces<SharedGraphViewPage<Guid>>()
-            .ProducesValidationProblem();
+            .Produces<SharedNodeIds>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         shares.MapGet("/{sharedGraphViewId:guid}", GetAsync)
             .WithName("GetSharedGraphView")
             .Produces<SharedGraphViewSummary>()
@@ -105,13 +106,12 @@ public static class SharedGraphViewEndpoints
         CancellationToken cancellationToken) =>
         responder.ToHttpResult(await shares.ListAsync(cursor, limit, cancellationToken), page => TypedResults.Ok(page));
 
-    private static async Task<IResult> ListSharedNodeIdsAsync(
-        [FromQuery] string? cursor,
-        [FromQuery] int? limit,
+    private static async Task<IResult> SharedNodeIdsAmongAsync(
+        [FromQuery] Guid[]? ids,
         ISharedGraphViews shares,
         IHttpResultResponder responder,
         CancellationToken cancellationToken) =>
-        responder.ToHttpResult(await shares.ListSharedNodeIdsAsync(cursor, limit, cancellationToken), page => TypedResults.Ok(page));
+        responder.ToHttpResult(await shares.SharedNodeIdsAmongAsync(ids ?? [], cancellationToken), shared => TypedResults.Ok(shared));
 
     private static async Task<IResult> GetAsync(
         Guid sharedGraphViewId,

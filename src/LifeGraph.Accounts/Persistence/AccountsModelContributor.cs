@@ -1,3 +1,4 @@
+using LifeGraph.Accounts.Contracts;
 using LifeGraph.Accounts.Domain;
 using LifeGraph.Infrastructure.Accounts;
 using LifeGraph.Infrastructure.Persistence;
@@ -7,10 +8,50 @@ using OpenIddict.EntityFrameworkCore.Models;
 
 namespace LifeGraph.Accounts.Persistence;
 
-/// <summary>The Accounts module's share of the one model (DA-111): the AgentIdentities.</summary>
+/// <summary>The Accounts module's share of the one model (DA-111): the AgentIdentities and the assigned plans.</summary>
 public sealed class AccountsModelContributor : IModelContributor
 {
-    public void Configure(ModelBuilder modelBuilder) => modelBuilder.ApplyConfiguration(new AgentIdentityConfiguration());
+    public void Configure(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfiguration(new AgentIdentityConfiguration());
+        modelBuilder.ApplyConfiguration(new AccountPlanAssignmentConfiguration());
+    }
+}
+
+/// <summary>
+/// One row per Account with a plan other than the default, under the isolation policy like every
+/// Account table (DA-004). It goes with its Account: the foreign key cascades, so the Account
+/// deletion needs no write grant on it (DA-260).
+/// </summary>
+internal sealed class AccountPlanAssignmentConfiguration : IEntityTypeConfiguration<AccountPlanAssignment>
+{
+    public const string TableName = "account_plans";
+    public const int PlanMaxLength = 16;
+    public const int OriginMaxLength = 16;
+
+    public void Configure(EntityTypeBuilder<AccountPlanAssignment> assignment)
+    {
+        assignment.ToTable(TableName, table =>
+        {
+            table.HasCheckConstraint("ck_account_plans_plan", $"plan IN ({StoredNames<AccountPlan>()})");
+            table.HasCheckConstraint("ck_account_plans_origin", $"origin IN ({StoredNames<AccountPlanOrigin>()})");
+        });
+        assignment.HasKey(entity => entity.AccountId).HasName("pk_account_plans");
+        assignment.Property(entity => entity.AccountId).ValueGeneratedNever();
+        assignment.HasOne<Account>().WithOne().HasForeignKey<AccountPlanAssignment>(entity => entity.AccountId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("fk_account_plans_account_id");
+        assignment.Property(entity => entity.Plan)
+            .HasMaxLength(PlanMaxLength)
+            .HasConversion(plan => plan.ToString().ToLowerInvariant(), stored => Enum.Parse<AccountPlan>(stored, ignoreCase: true));
+        assignment.Property(entity => entity.Origin)
+            .HasMaxLength(OriginMaxLength)
+            .HasConversion(origin => origin.ToString().ToLowerInvariant(), stored => Enum.Parse<AccountPlanOrigin>(stored, ignoreCase: true));
+    }
+
+    private static string StoredNames<TEnum>()
+        where TEnum : struct, Enum =>
+        string.Join(", ", Enum.GetNames<TEnum>().Select(name => $"'{name.ToLowerInvariant()}'"));
 }
 
 /// <summary>

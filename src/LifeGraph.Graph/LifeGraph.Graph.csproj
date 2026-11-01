@@ -12,6 +12,8 @@
   <ItemGroup>
     <ProjectReference Include="..\LifeGraph.Infrastructure\LifeGraph.Infrastructure.csproj" />
     <ProjectReference Include="..\LifeGraph.Http\LifeGraph.Http.csproj" />
+    <!-- Only its Contracts namespace, as the architecture tests hold (DA-112): the plan in the export (DA-298). -->
+    <ProjectReference Include="..\LifeGraph.Accounts\LifeGraph.Accounts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

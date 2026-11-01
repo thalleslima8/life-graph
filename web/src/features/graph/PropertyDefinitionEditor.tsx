@@ -5,6 +5,8 @@ import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { isApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
+import { LimitNotice } from "@/features/account/LimitNotice";
+import { isPlanLimitReached } from "@/features/account/planData";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -335,7 +337,8 @@ export function PropertyDefinitionEditor({ definition, onDone }: { definition?: 
       <Button type="submit" variant="secondary" disabled={action.isPending}>
         {definition ? "Salvar" : "Criar propriedade"}
       </Button>
-      <RefusalOrError error={kindRefusal ? null : action.error} />
+      {!definition && <LimitNotice kind="custom_properties" error={create.error} />}
+      <RefusalOrError error={kindRefusal || (!definition && isPlanLimitReached(create.error)) ? null : action.error} />
 
       <ConfirmDialog
         open={awaitingMidnightConfirmation !== null}

@@ -50,6 +50,9 @@ internal static class AuthorizationEndpoints
     /// <summary>The SPA's page that asks for a password reset link.</summary>
     private const string ForgotPasswordSpaPath = "/forgot-password";
 
+    // "Agentes conectados", where the person revokes a connection to make room (DA-262).
+    private const string ConnectedAgentsSpaPath = "/agentes";
+
     /// <summary>The sign-in form's fields.</summary>
     public const string EmailField = "email";
     public const string PasswordField = "password";
@@ -104,6 +107,7 @@ internal static class AuthorizationEndpoints
         AgentConnections connections,
         ClientDiscontinuation discontinuation,
         IAgentIssuer agentIssuer,
+        IOptions<SpaOptions> spaOptions,
         CancellationToken cancellationToken)
     {
         var request = httpContext.GetOpenIddictServerRequest();
@@ -189,6 +193,8 @@ internal static class AuthorizationEndpoints
             [nameof(ConsentPage.RequireApprovalField)] = RequireApprovalField,
             [nameof(ConsentPage.RequireApprovalValue)] = RequireApprovalValue,
             [nameof(ConsentPage.RequireApprovalChecked)] = await connections.RequiresApprovalForWritesAsync(request.ClientId, cancellationToken),
+            [nameof(ConsentPage.AgentConnectionLimit)] = await connections.ConnectionLimitBlockingAsync(request.ClientId, cancellationToken),
+            [nameof(ConsentPage.ConnectedAgentsUrl)] = new Uri(new Uri(spaOptions.Value.BaseUrl), ConnectedAgentsSpaPath).AbsoluteUri,
             [nameof(ConsentPage.LoopbackOnly)] = registeredRedirects.Length > 0
                 && registeredRedirects.All(uri => Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && RedirectUriMatching.IsLoopback(parsed)),
             [nameof(ConsentPage.RequestParameters)] = ParametersOf(request, tokens.FormFieldName),
@@ -224,6 +230,13 @@ internal static class AuthorizationEndpoints
             if (grant.Error!.Code == CommonErrors.ValidationFailed.Code)
             {
                 return Page.InvalidRequest();
+            }
+
+            // Past the plan's Agent Connections the consent grants nothing (DA-262); the
+            // existing connections keep working (DA-263).
+            if (grant.Error.Code == PlanErrors.LimitReached.Code)
+            {
+                return Refuse(Errors.AccessDenied, "The plan's limit of agent connections is reached. Revoke a connection in Agentes conectados to connect this one.");
             }
 
             return grant.Error.Code == AccountsErrors.AgentIdentityConflict.Code

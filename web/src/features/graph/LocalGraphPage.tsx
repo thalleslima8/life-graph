@@ -62,6 +62,7 @@ import type { RenderableNode } from "./graphShape";
 import { INITIAL_ZOOM, MAX_ZOOM, MIN_ZOOM, graphPath, steppedZoom, zoomLevelOf } from "./graphView";
 import { useChangeSetProbe } from "./recentChanges";
 import { SharedBadge } from "@/features/sharing/SharedBadge";
+import { sharedBadgeStateOf, useSharedNodeIds } from "@/features/sharing/sharesData";
 
 type TypeNameOf = (typeId: string | null) => string;
 
@@ -279,6 +280,8 @@ function LocalGraphView({
     }),
     [rootTitle, graph.nodes.length, graph.edges.length],
   );
+  // Only the list shows the badge, so only the list asks about the Nodes on screen (DA-299).
+  const shared = useSharedNodeIds(mode === "list" ? shown.nodes.map((node) => node.id) : []);
   if (mode === "list") {
     return (
       <GraphList
@@ -288,7 +291,7 @@ function LocalGraphView({
         onSelect={onSelect}
         onReroot={onReroot}
         labels={labels}
-        nodeBadge={(nodeId) => <SharedBadge nodeId={nodeId} />}
+        nodeBadge={(nodeId) => <SharedBadge state={sharedBadgeStateOf(nodeId, shared)} />}
       />
     );
   }

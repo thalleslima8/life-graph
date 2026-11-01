@@ -24,6 +24,9 @@ public static class GraphModule
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddSingleton<IModelContributor, GraphModelContributor>();
+        services.AddScoped<GraphUsage>();
+        services.AddScoped<AccountPlanReader>();
+        services.AddScoped<PlanCreationLimits>();
         services.AddScoped<GraphWriter>();
         services.AddScoped<IGraphWriter>(provider => provider.GetRequiredService<GraphWriter>());
         services.AddScoped<IAgentGraphWriter, AgentGraphWriter>();

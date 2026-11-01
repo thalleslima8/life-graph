@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router";
 import { z } from "zod";
+import { LimitNotice } from "@/features/account/LimitNotice";
+import { isPlanLimitReached } from "@/features/account/planData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,7 +87,8 @@ export function CaptureResourceForm({ inInbox }: { inInbox: boolean }) {
           {errors.url.message}
         </p>
       )}
-      {capture.isError && (
+      <LimitNotice kind="resources" error={capture.error} />
+      {capture.isError && !isPlanLimitReached(capture.error) && (
         <p id="capture-error" role="alert" className="text-sm text-destructive">
           {captureErrorMessage(capture.error)}
         </p>

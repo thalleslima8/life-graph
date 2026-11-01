@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { AddToCollectionMenu } from "@/features/collections/AddToCollectionMenu";
 import { SharedBadge } from "@/features/sharing/SharedBadge";
-import { newSharePath } from "@/features/sharing/sharesData";
+import { newSharePath, sharedBadgeStateOf, useSharedNodeIds } from "@/features/sharing/sharesData";
 import { TagPicker } from "@/features/tags/TagPicker";
 import {
   ANY_TYPE,
@@ -181,10 +181,11 @@ function NotFoundState() {
 
 function ReadyInspector({ node, onNavigate }: { node: NodeDetail; onNavigate?: (nodeId: string) => void }) {
   const { readOnly } = useContext(InspectorOptionsContext);
+  const shared = useSharedNodeIds([node.id]);
 
   return (
     <>
-      <SharedBadge nodeId={node.id} />
+      <SharedBadge state={sharedBadgeStateOf(node.id, shared)} />
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-muted-foreground">Type</dt>
         <dd>{node.typeId === null ? NO_TYPE_LABEL : (node.typeName ?? TYPE_UNAVAILABLE_LABEL)}</dd>
