@@ -30,16 +30,15 @@ public static class AgentsModule
     public const string AgentPolicy = "agent";
 
     /// <summary>
-    /// What every agent is told when it connects (DA-194): the person's graph hangs from one
-    /// account root, so a new Node always goes under the most specific Node it belongs to.
+    /// What every agent is told when it connects (DA-194), kept short: some clients drop or
+    /// ignore it, so it only points at the contract. Every rule that protects the person lives in
+    /// the tools' descriptions and answers (DA-284).
     /// </summary>
     public const string ServerInstructions =
-        "Life Graph is the person's own graph of subjects, Resources, people, events and projects, all hanging from one account root."
-        + " Before you create anything, search for the subject (" + GraphReadTools.SearchGraphName + " or " + GraphReadTools.GetContextName + "): it may already exist."
-        + " Every Node you create needs an `anchor`: the most specific existing Node it belongs under."
-        + " When the subject has no Node yet, create that Node first, anchored, and anchor the new ones under it."
-        + " Call " + GraphReadTools.GetContextName + " with no arguments to start at the account root and learn its id; anchor at the root only when nothing more specific fits."
-        + " Every change you make is shown to the person, who can undo it.";
+        "Life Graph is the person's own graph, hanging from one account root."
+        + " Call " + GraphReadTools.GetContextName + " with no arguments first: it starts at the root and gives its id."
+        + " Search (" + GraphReadTools.SearchGraphName + ") before you create anything, and give every new Node an `anchor` under the most specific Node it belongs to."
+        + " Each tool's description and answer carry the rules: follow them.";
 
     public const string ResourceName = "Life Graph";
 
@@ -47,7 +46,7 @@ public static class AgentsModule
     public const string McpServerName = "life-graph";
 
     /// <summary>The MCP server's version in the handshake; it moves with the tool surface.</summary>
-    public const string McpServerVersion = "0.3.0";
+    public const string McpServerVersion = "0.4.0";
 
     /// <summary>The Protected Resource Metadata of the MCP endpoint (RFC 9728: the well-known prefix, then the resource's path).</summary>
     public const string ResourceMetadataPath = "/.well-known/oauth-protected-resource" + AgentAccess.McpPath;

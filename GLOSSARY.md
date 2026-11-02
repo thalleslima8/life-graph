@@ -113,6 +113,14 @@ import) e a partir de qual fonte.
 _Avoid_: autoria, log, auditoria
 
 **GraphChangeSet**:
+**Resultado possivelmente incompleto** (`possiblyIncomplete`):
+Estado de uma leitura de agente (`search_graph`, `get_context` por `subject`) que
+só pôde buscar por palavras, porque a busca por significado não rodou. Os hits,
+ou a falta deles, podem deixar de fora Nodes que existem: a ausência não está
+comprovada e não justifica criar um Node. Equivale ao `Degraded` da API REST da
+pessoa, que mantém esse nome.
+_Avoid_: resultado vazio, "não existe", degradado (para a ausência de um Node)
+
 Um grupo de alterações no grafo feitas por um ator em uma interação. É a
 unidade que se inspeciona e desfaz. Só existe aplicado: o que um agente propõe
 e ainda espera decisão é uma ChangeProposal. Estados: Applied, Reverted.

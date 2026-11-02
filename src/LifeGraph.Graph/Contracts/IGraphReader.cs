@@ -24,6 +24,13 @@ public interface IGraphReader
     /// </summary>
     Task<Result<GraphContext>> GetContextAsync(GraphContextQuery query, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The same subgraph as <see cref="GetContextAsync"/>, under the same filter and limits, with
+    /// each Node in short (DA-285): title, Type, the start of the body, when it changed and how
+    /// many Relations it has, so the caller chooses which Nodes to read in full.
+    /// </summary>
+    Task<Result<GraphContextSummary>> GetContextSummaryAsync(GraphContextQuery query, CancellationToken cancellationToken);
+
     /// <summary>The Types the caller sees, with their properties (DA-039), a page at a time (API-060).</summary>
     Task<Result<GraphTypeList>> ListTypesAsync(GraphTypeListQuery query, CancellationToken cancellationToken);
 
@@ -148,6 +155,13 @@ public sealed record GraphSearchResult(IReadOnlyList<SearchHit> Hits)
     /// Nodes are being indexed. The hits are then those found by words.
     /// </summary>
     public bool Degraded { get; init; }
+
+    /// <summary>
+    /// True when the hits may leave out Nodes that exist (DA-283): the search could not look by
+    /// meaning, so the absence of a Node is not proven, with hits by words or with none. The same
+    /// state as <see cref="Degraded"/>, said for the agent that decides whether to create a Node.
+    /// </summary>
+    public bool PossiblyIncomplete => Degraded;
 }
 
 /// <summary>How a search found a Node (DA-183).</summary>
@@ -255,7 +269,65 @@ public sealed record GraphContext(
     bool Truncated,
     int OmittedCount,
     int OmittedEdgeCount,
-    IReadOnlyList<NodeHeadline> Candidates);
+    IReadOnlyList<NodeHeadline> Candidates)
+{
+    /// <summary>
+    /// True when a <c>subject</c> was looked for by words while the search by meaning could not
+    /// run (DA-310), the same state as <see cref="GraphSearchResult.PossiblyIncomplete"/>: the
+    /// <see cref="Candidates"/> may leave out Nodes that exist.
+    /// </summary>
+    public bool PossiblyIncomplete { get; init; }
+}
+
+/// <summary>A Node in short, as a context summary lists it (DA-285): no fixed field is added or left out on request.</summary>
+/// <param name="Excerpt">The start of the body, at most <see cref="GraphReadLimits.ExcerptMaxLength"/> characters.</param>
+/// <param name="RelationCount">How many Relations to Nodes the caller sees, as <see cref="GraphNodeRead.RelationCount"/>.</param>
+/// <param name="Distance">Relations away from where the read started; 0 for that Node.</param>
+public sealed record GraphNodeSummary(
+    Guid Id,
+    EnvelopedText Title,
+    string? TypeName,
+    EnvelopedText Excerpt,
+    DateTimeOffset UpdatedAt,
+    int RelationCount,
+    int Distance)
+{
+    /// <summary>
+    /// Whether the Node is linked to the Raiz da Conta by Hard Relations (DA-191), over the whole
+    /// graph, Nodes the caller cannot read included (DA-195). Absent means not computed, never
+    /// false.
+    /// </summary>
+    public bool? Anchored { get; init; }
+}
+
+/// <summary>
+/// A <see cref="GraphContext"/> whose Nodes come in short (DA-285): the same status, edges,
+/// counts and candidates, the same limits.
+/// </summary>
+public sealed record GraphContextSummary(
+    GraphContextStatus Status,
+    Guid? RootNodeId,
+    IReadOnlyList<GraphNodeSummary> Nodes,
+    IReadOnlyList<GraphEdge> Edges,
+    bool Truncated,
+    int OmittedCount,
+    int OmittedEdgeCount,
+    IReadOnlyList<NodeHeadline> Candidates)
+{
+    /// <inheritdoc cref="GraphContext.PossiblyIncomplete"/>
+    public bool PossiblyIncomplete { get; init; }
+}
+
+/// <summary>
+/// The public messages of the reads an agent's adapter tells apart (DA-310): the refusal keeps the
+/// code <c>graph.node_not_found</c>, and this message says why the absence is not proven.
+/// </summary>
+public static class GraphReadMessages
+{
+    /// <summary>No Node matched a <c>subject</c> while the search by meaning could not run.</summary>
+    public const string SubjectNotFoundPossiblyIncomplete =
+        "No Node matched the subject, but the search could only look by words: absence is not proven.";
+}
 
 /// <param name="Options">The choices of a Select or MultiSelect that can be chosen, by label; archived ones are left out (DA-167).</param>
 /// <param name="IsSystem">A system Property: locked, its name reserved (DA-057, DA-155).</param>

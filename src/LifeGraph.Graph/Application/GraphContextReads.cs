@@ -100,7 +100,46 @@ internal sealed class GraphContextReads(
             },
             cancellationToken);
 
-    public async Task<Result<GraphContext>> GetContextAsync(GraphContextQuery query, CancellationToken cancellationToken)
+    public Task<Result<GraphContext>> GetContextAsync(GraphContextQuery query, CancellationToken cancellationToken) =>
+        ContextAsync(
+            query,
+            new ContextShape<GraphNodeView, GraphContext>(
+                ContextDetailName.Full,
+                async (nodeIds, distances, token) =>
+                {
+                    var viewed = await views.ViewsAsync(nodeIds, ViewLimits.Context, distances, token);
+                    var anchored = await AnchorReach.AnchoredAmongAsync(db, [.. viewed.Select(node => node.Id)], token);
+                    return [.. viewed.Select(node => node with { Anchored = anchored.Contains(node.Id) })];
+                },
+                node => node.Id,
+                (status, rootId, cut, candidates) => new GraphContext(status, rootId, cut.Nodes, cut.Edges, cut.Truncated, cut.OmittedCount, cut.OmittedEdgeCount, candidates),
+                context => context.Nodes.Select(node => node.Id),
+                (context, possiblyIncomplete) => context with { PossiblyIncomplete = possiblyIncomplete }),
+            cancellationToken);
+
+    public Task<Result<GraphContextSummary>> GetContextSummaryAsync(GraphContextQuery query, CancellationToken cancellationToken) =>
+        ContextAsync(
+            query,
+            new ContextShape<GraphNodeSummary, GraphContextSummary>(
+                ContextDetailName.Summary,
+                async (nodeIds, distances, token) =>
+                {
+                    var summaries = await views.SummariesAsync(nodeIds, distances, token);
+                    var anchored = await AnchorReach.AnchoredAmongAsync(db, [.. summaries.Select(node => node.Id)], token);
+                    return [.. summaries.Select(node => node with { Anchored = anchored.Contains(node.Id) })];
+                },
+                node => node.Id,
+                (status, rootId, cut, candidates) => new GraphContextSummary(status, rootId, cut.Nodes, cut.Edges, cut.Truncated, cut.OmittedCount, cut.OmittedEdgeCount, candidates),
+                context => context.Nodes.Select(node => node.Id),
+                (context, possiblyIncomplete) => context with { PossiblyIncomplete = possiblyIncomplete }),
+            cancellationToken);
+
+    // Both details of a context: the same arguments, resolution, walk, limits and audit; only
+    // how each Node is shown differs (DA-285).
+    private async Task<Result<TContext>> ContextAsync<TNode, TContext>(
+        GraphContextQuery query,
+        ContextShape<TNode, TContext> shape,
+        CancellationToken cancellationToken)
     {
         var errors = new FieldErrors();
         var subject = query.Subject?.Trim();
@@ -119,14 +158,14 @@ internal sealed class GraphContextReads(
             : null;
         return await RunAsync(
             AgentReadOperation.GetContext,
-            new { nodeId = query.NodeId, subject, depth, includeSoft = query.IncludeSoft },
+            new { nodeId = query.NodeId, subject, depth, includeSoft = query.IncludeSoft, detail = shape.Detail },
             errors,
             async (reader, token) =>
             {
                 var accountRootId = fromRoot ? await AccountRootIdAsync(token) : null;
                 if (fromRoot && accountRootId is null)
                 {
-                    return Read.Failed<GraphContext>(GraphErrors.RootMissing.ToError(RootMissingMessage));
+                    return Read.Failed<TContext>(GraphErrors.RootMissing.ToError(RootMissingMessage));
                 }
 
                 var resolved = (accountRootId ?? query.NodeId) is { } nodeId
@@ -137,20 +176,24 @@ internal sealed class GraphContextReads(
                     var headlines = await views.HeadlinesAsync(candidateIds, GraphReadLimits.ContextTextMaxLength, token);
                     var anchored = await AnchorReach.AnchoredAmongAsync(db, [.. headlines.Select(headline => headline.Id)], token);
                     var candidates = headlines.Select(headline => headline with { Anchored = anchored.Contains(headline.Id) }).ToList();
-                    return Read.Of(
-                        new GraphContext(GraphContextStatus.Ambiguous, null, [], [], false, 0, 0, candidates),
-                        candidates.Select(candidate => candidate.Id));
+                    var ambiguous = shape.Build(GraphContextStatus.Ambiguous, null, ContextCut<TNode>.Empty, candidates);
+                    return Read.Of(shape.MarkPossiblyIncomplete(ambiguous, resolved.PossiblyIncomplete), candidates.Select(candidate => candidate.Id));
                 }
 
                 if (resolved.NodeId is not { } rootId)
                 {
-                    return Read.Failed<GraphContext>(GraphErrors.NodeNotFound.ToError(NodeNotFoundMessage));
+                    var notFoundMessage = resolved.PossiblyIncomplete ? GraphReadMessages.SubjectNotFoundPossiblyIncomplete : NodeNotFoundMessage;
+                    return Read.Failed<TContext>(GraphErrors.NodeNotFound.ToError(notFoundMessage));
                 }
 
-                var context = await ExpandAsync(reader, new ContextScope(rootId, depth, query.IncludeSoft), token);
-                return context is null
-                    ? Read.Failed<GraphContext>(GraphErrors.NodeNotFound.ToError(NodeNotFoundMessage))
-                    : Read.Of(context, context.Nodes.Select(node => node.Id));
+                var cut = await ExpandAsync(reader, new ContextScope(rootId, depth, query.IncludeSoft), shape, token);
+                if (cut is null)
+                {
+                    return Read.Failed<TContext>(GraphErrors.NodeNotFound.ToError(NodeNotFoundMessage));
+                }
+
+                var context = shape.Build(GraphContextStatus.Found, rootId, cut, []);
+                return Read.Of(context, shape.NodeIdsOf(context));
             },
             cancellationToken);
     }
@@ -265,22 +308,32 @@ internal sealed class GraphContextReads(
 
         var enoughToTell = GraphReadLimits.AmbiguousCandidates + 1;
         var byTitle = await ContextWalk.FindByTitleAsync(db, reader, subject, enoughToTell, cancellationToken);
-        List<Guid> byWords = byTitle.Count > 0
+        if (byTitle.Count > 0)
+        {
+            return SubjectResolution.Decide(null, byTitle, [], []);
+        }
+
+        var search = new NodeSearch(subject, TypeId: null, GraphReadLimits.AmbiguousCandidates);
+        var byWords = await ContextWalk.SearchAsync(db, reader, search, cancellationToken);
+
+        var canLookByMeaning = await hybridSearch.CanLookByMeaningAsync(embedding, cancellationToken);
+        List<Guid> byMeaning = byWords.Count > 0 || !canLookByMeaning
             ? []
-            : await ContextWalk.SearchAsync(db, reader, new NodeSearch(subject, TypeId: null, GraphReadLimits.AmbiguousCandidates), cancellationToken);
-        List<Guid> byMeaning = byTitle.Count > 0 || byWords.Count > 0 || embedding is null
-            ? []
-            : [.. (await hybridSearch.SearchAsync(reader, new NodeSearch(subject, TypeId: null, GraphReadLimits.AmbiguousCandidates), embedding, cancellationToken)).Hits
+            : [.. (await hybridSearch.SearchAsync(reader, search, embedding, cancellationToken)).Hits
                 .Where(hit => hit.Match == SearchMatch.Semantic)
                 .Select(hit => hit.NodeId)];
-        return SubjectResolution.Decide(null, byTitle, byWords, byMeaning);
+        return SubjectResolution.ByWords(subject, byWords, byMeaning, canLookByMeaning);
     }
 
     // The walk's best step for each Node ranks it; the limits keep the first Nodes. The edges
     // are every visible Relation among the Nodes kept, not only the ones walked (DA-128). The
     // answer stays under its byte budget by dropping the lowest ranked Nodes, then, with the
     // Nodes that fit, the lowest ranked edges: a Node is never dropped to make room for edges.
-    private async Task<GraphContext?> ExpandAsync(GraphReader reader, ContextScope scope, CancellationToken cancellationToken)
+    private async Task<ContextCut<TNode>?> ExpandAsync<TNode, TContext>(
+        GraphReader reader,
+        ContextScope scope,
+        ContextShape<TNode, TContext> shape,
+        CancellationToken cancellationToken)
     {
         var steps = await ContextWalk.WalkAsync(db, reader, scope, cancellationToken);
         if (steps.Count == 0)
@@ -294,26 +347,14 @@ internal sealed class GraphContextReads(
             .Take(GraphReadLimits.ContextMaxNodes)
             .ToList();
         var distances = ranked.ToDictionary(step => step.NodeId, step => step.Distance);
-        var viewed = await views.ViewsAsync([.. ranked.Select(step => step.NodeId)], ViewLimits.Context, distances, cancellationToken);
-        var anchored = await AnchorReach.AnchoredAmongAsync(db, [.. viewed.Select(node => node.Id)], cancellationToken);
-        var nodes = viewed.Select(node => node with { Anchored = anchored.Contains(node.Id) }).ToList();
+        var nodes = await shape.ProjectAsync([.. ranked.Select(step => step.NodeId)], distances, cancellationToken);
         var reach = await ContextWalk.CountReachAsync(db, reader, scope, cancellationToken);
 
         var budget = new ContextBudget(scope.RootNodeId);
         nodes = nodes[..budget.NodesThatFit(nodes)];
-        var edges = await EdgesAmongAsync(scope, nodes, cancellationToken);
+        var edges = await EdgesAmongAsync(scope, [.. nodes.Select(shape.IdOf)], cancellationToken);
         var keptEdges = budget.EdgesThatFit(nodes, edges.Edges);
-        var omittedNodes = Math.Max(0, reach - nodes.Count);
-        var omittedEdges = edges.VisibleCount - keptEdges;
-        return new GraphContext(
-            GraphContextStatus.Found,
-            scope.RootNodeId,
-            nodes,
-            edges.Edges[..keptEdges],
-            omittedNodes > 0 || omittedEdges > 0,
-            omittedNodes,
-            omittedEdges,
-            []);
+        return new ContextCut<TNode>(nodes, edges.Edges[..keptEdges], Math.Max(0, reach - nodes.Count), edges.VisibleCount - keptEdges);
     }
 
     /// <summary>
@@ -322,9 +363,8 @@ internal sealed class GraphContextReads(
     /// with how many there are. A Soft one comes only when asked, and only if it touches the
     /// starting Node, as the walk follows Soft Relations only from there.
     /// </summary>
-    private async Task<EdgePage> EdgesAmongAsync(ContextScope scope, List<GraphNodeView> nodes, CancellationToken cancellationToken)
+    private async Task<EdgePage> EdgesAmongAsync(ContextScope scope, List<Guid> nodeIds, CancellationToken cancellationToken)
     {
-        var nodeIds = nodes.Select(node => node.Id).ToList();
         var rootId = scope.RootNodeId;
         var includeSoft = scope.IncludeSoft;
         var among = filter.RelationsWithSoft().Where(relation =>
@@ -433,6 +473,9 @@ internal sealed record SubjectResolution(Guid? NodeId, IReadOnlyList<Guid>? Cand
 {
     public static readonly SubjectResolution NotFound = new(null, null);
 
+    /// <summary>Words were looked for while the search by meaning could not run (DA-310).</summary>
+    public bool PossiblyIncomplete { get; init; }
+
     /// <param name="byId">The visible Node the subject names by id, if any.</param>
     /// <param name="byExactTitle">The visible Nodes whose title is the subject, without regard to accents or case.</param>
     /// <param name="byWords">The visible Nodes words found, best first.</param>
@@ -452,6 +495,14 @@ internal sealed record SubjectResolution(Guid? NodeId, IReadOnlyList<Guid>? Cand
             _ => byMeaning.Count > 0 ? Unconfirmed(byMeaning) : NotFound,
         };
     }
+
+    /// <summary>
+    /// What words, then meaning, found for a <paramref name="subject"/> with no Node by id or exact
+    /// title. Words that are not an id are also looked for by meaning; when that could not run,
+    /// what words found, or nothing, may leave out Nodes that exist (DA-310).
+    /// </summary>
+    public static SubjectResolution ByWords(string subject, IReadOnlyList<Guid> byWords, IReadOnlyList<Guid> byMeaning, bool canLookByMeaning) =>
+        Decide(null, [], byWords, byMeaning) with { PossiblyIncomplete = !Guid.TryParse(subject, out _) && !canLookByMeaning };
 
     private static SubjectResolution Unconfirmed(IReadOnlyList<Guid> matches) =>
         new(null, [.. matches.Take(GraphReadLimits.AmbiguousCandidates)]);
@@ -473,11 +524,42 @@ internal static class Read
 /// <summary>The first visible edges among the context's Nodes, and how many there are in all.</summary>
 internal sealed record EdgePage(List<GraphEdge> Edges, int VisibleCount);
 
+/// <summary>The names of a context's details, as the audit records them (DA-037, DA-285).</summary>
+internal static class ContextDetailName
+{
+    public const string Full = "full";
+
+    public const string Summary = "summary";
+}
+
+/// <summary>What a walk kept once the limits cut it: the Nodes, the edges among them, and how many of each were left out.</summary>
+internal sealed record ContextCut<TNode>(List<TNode> Nodes, List<GraphEdge> Edges, int OmittedCount, int OmittedEdgeCount)
+{
+    public static readonly ContextCut<TNode> Empty = new([], [], 0, 0);
+
+    public bool Truncated => OmittedCount > 0 || OmittedEdgeCount > 0;
+}
+
+/// <summary>
+/// How one detail of a context shows its Nodes (DA-285): the projection of the ranked Nodes,
+/// in their order, and the answer built around them.
+/// </summary>
+/// <param name="Detail">Its name in the audit (<see cref="ContextDetailName"/>).</param>
+internal sealed record ContextShape<TNode, TContext>(
+    string Detail,
+    Func<IReadOnlyList<Guid>, IReadOnlyDictionary<Guid, int>, CancellationToken, Task<List<TNode>>> ProjectAsync,
+    Func<TNode, Guid> IdOf,
+    Func<GraphContextStatus, Guid?, ContextCut<TNode>, IReadOnlyList<NodeHeadline>, TContext> Build,
+    Func<TContext, IEnumerable<Guid>> NodeIdsOf,
+    Func<TContext, bool, TContext> MarkPossiblyIncomplete);
+
 /// <summary>
 /// The context's byte budget (DA-036, DA-128), measured on the JSON each Node and edge adds,
 /// in the wire format the answer is written in (<see cref="GraphWireJson"/>), so trimming
 /// costs no more serializations than there are items. The starting Node always
-/// stays, whatever its size.
+/// stays, whatever its size. A Node is measured as the detail shows it: a
+/// <see cref="GraphNodeView"/> in full, a <see cref="GraphNodeSummary"/> in short (DA-285);
+/// both answers carry the same envelope.
 /// </summary>
 internal sealed class ContextBudget(Guid rootNodeId, int maxBytes = GraphReadLimits.ContextMaxBytes)
 {
@@ -486,7 +568,7 @@ internal sealed class ContextBudget(Guid rootNodeId, int maxBytes = GraphReadLim
         GraphContextStatus.Found, rootNodeId, [], [], true, int.MaxValue, int.MaxValue, []));
 
     /// <summary>How many of the first Nodes fit; at least one.</summary>
-    public int NodesThatFit(IReadOnlyList<GraphNodeView> nodes)
+    public int NodesThatFit<TNode>(IReadOnlyList<TNode> nodes)
     {
         var total = _envelopeBytes;
         for (var count = 0; count < nodes.Count; count++)
@@ -502,9 +584,9 @@ internal sealed class ContextBudget(Guid rootNodeId, int maxBytes = GraphReadLim
     }
 
     /// <summary>How many of the first edges fit, with the given Nodes.</summary>
-    public int EdgesThatFit(IReadOnlyList<GraphNodeView> nodes, IReadOnlyList<GraphEdge> edges)
+    public int EdgesThatFit<TNode>(IReadOnlyList<TNode> nodes, IReadOnlyList<GraphEdge> edges)
     {
-        var total = _envelopeBytes + nodes.Sum(SizeOf);
+        var total = _envelopeBytes + nodes.Sum(node => SizeOf(node));
         for (var count = 0; count < edges.Count; count++)
         {
             total += SizeOf(edges[count]);

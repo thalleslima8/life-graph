@@ -2,7 +2,7 @@
 
 - **Ordem:** 9
 - **Depende de:** E2, E7
-- **Última revisão:** 2026-10-24
+- **Última revisão:** 2026-11-01
 
 ## Contexto
 
@@ -150,6 +150,10 @@ por isso este épico vem depois do E7.
     está indexando.
   - Tudo passa pelo filtro central. Para agentes, Nodes ocultos não aparecem.
   - O texto da busca não vai para log (GEN-043), e a busca tem rate limit.
+  - Nota (E21, DA-283): a descrição do `search_graph` não manda mais "tentar de
+    novo depois". Para o agente, a busca que cai para FTS devolve
+    `possiblyIncomplete` e uma dica: a ausência não está comprovada e ele não
+    deve criar duplicata. O `get_context` por `subject` faz o mesmo (DA-310).
 - **DA-184 — Interfaces do frontend do E9** (Q400/Q401; consenso: o arquiteto
   escolheu um híbrido e o analista validou depois de um contra-argumento).
   - Soft Relations: `nodeSoftRelationsQuery`, `useAcceptSoftRelation` e

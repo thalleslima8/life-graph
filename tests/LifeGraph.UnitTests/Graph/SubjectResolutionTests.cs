@@ -90,4 +90,45 @@ public sealed class SubjectResolutionTests
 
         Assert.Equal(GraphReadLimits.AmbiguousCandidates, SubjectResolution.Decide(null, many, [], []).Candidates!.Count);
     }
+
+    // DA-310: what words found while meaning could not run may leave Nodes out.
+    [Fact]
+    public void Words_found_while_meaning_could_not_run_are_candidates_possibly_incomplete()
+    {
+        var resolved = SubjectResolution.ByWords("filosofia", [First], [], canLookByMeaning: false);
+
+        Assert.Equal([First], resolved.Candidates);
+        Assert.True(resolved.PossiblyIncomplete);
+    }
+
+    [Fact]
+    public void Nothing_found_while_meaning_could_not_run_is_not_found_possibly_incomplete()
+    {
+        var resolved = SubjectResolution.ByWords("filosofia", [], [], canLookByMeaning: false);
+
+        Assert.Null(resolved.NodeId);
+        Assert.Null(resolved.Candidates);
+        Assert.True(resolved.PossiblyIncomplete);
+    }
+
+    [Fact]
+    public void Words_found_while_meaning_could_run_are_not_possibly_incomplete()
+    {
+        Assert.False(SubjectResolution.ByWords("filosofia", [First], [], canLookByMeaning: true).PossiblyIncomplete);
+        Assert.False(SubjectResolution.ByWords("filosofia", [], [Second], canLookByMeaning: true).PossiblyIncomplete);
+    }
+
+    // An id is never looked for by meaning, so a missing one is proven absent.
+    [Fact]
+    public void An_unknown_id_is_not_possibly_incomplete_even_while_meaning_could_not_run()
+    {
+        Assert.False(SubjectResolution.ByWords(First.ToString(), [], [], canLookByMeaning: false).PossiblyIncomplete);
+    }
+
+    [Fact]
+    public void An_id_or_an_exact_title_is_never_possibly_incomplete()
+    {
+        Assert.False(SubjectResolution.Decide(First, [], [], []).PossiblyIncomplete);
+        Assert.False(SubjectResolution.Decide(null, [First, Second], [], []).PossiblyIncomplete);
+    }
 }

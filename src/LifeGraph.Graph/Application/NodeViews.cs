@@ -115,6 +115,39 @@ internal sealed class NodeViews(LifeGraphDbContext db, GraphReadFilter filter)
     }
 
     /// <summary>
+    /// The Nodes of a context in short (DA-285), in the given order, with the distances as in
+    /// <see cref="ViewsAsync"/>. Each count is of the Relations to Nodes the reader sees, as a
+    /// Node read on its own counts them, all of them in one grouped query (DB-022).
+    /// </summary>
+    public async Task<List<GraphNodeSummary>> SummariesAsync(
+        IReadOnlyList<Guid> nodeIds,
+        IReadOnlyDictionary<Guid, int> distances,
+        CancellationToken cancellationToken)
+    {
+        var nodes = await HeadlineNodesAsync(nodeIds, cancellationToken);
+        var provenances = await ProvenanceOfAsync([.. nodes.Keys], cancellationToken);
+        var relations = filter.Relations();
+        var relationCounts = await relations.Where(relation => nodeIds.Contains(relation.SourceNodeId)).Select(relation => relation.SourceNodeId)
+            .Concat(relations.Where(relation => nodeIds.Contains(relation.TargetNodeId)).Select(relation => relation.TargetNodeId))
+            .GroupBy(nodeId => nodeId)
+            .Select(ends => new { NodeId = ends.Key, Count = ends.Count() })
+            .ToDictionaryAsync(row => row.NodeId, row => row.Count, cancellationToken);
+        return [.. nodeIds.Where(nodes.ContainsKey).Select(nodeId =>
+        {
+            var (node, typeName) = nodes[nodeId];
+            var provenance = provenances.GetValueOrDefault(nodeId, NodeProvenance.Unrecorded);
+            return new GraphNodeSummary(
+                node.Id,
+                provenance.Envelope(Cut(node.Title, GraphReadLimits.ContextTextMaxLength).Text),
+                typeName,
+                provenance.Envelope(Cut(node.Body, GraphReadLimits.ExcerptMaxLength).Text),
+                node.UpdatedAt,
+                relationCounts.GetValueOrDefault(nodeId),
+                distances.GetValueOrDefault(nodeId));
+        })];
+    }
+
+    /// <summary>
     /// Cuts a text to at most <paramref name="maxLength"/> characters, never between the two
     /// halves of a surrogate pair.
     /// </summary>

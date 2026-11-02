@@ -35,7 +35,7 @@ internal sealed class HybridSearch(LifeGraphDbContext db, IQueryEmbedder queryEm
         QueryEmbedding? embedding,
         CancellationToken cancellationToken)
     {
-        var byMeaning = embedding is not null && !await IndexingAsync(cancellationToken) ? embedding : null;
+        var byMeaning = await CanLookByMeaningAsync(embedding, cancellationToken) ? embedding : null;
         if (byMeaning is not null)
         {
             // pgvector >= 0.8: the HNSW scan goes on past the Nodes the filter drops, so a
@@ -46,6 +46,13 @@ internal sealed class HybridSearch(LifeGraphDbContext db, IQueryEmbedder queryEm
         var hits = await ContextWalk.HybridSearchAsync(db, reader, search, byMeaning, cancellationToken);
         return new HybridSearchOutcome(hits, Degraded: byMeaning is null);
     }
+
+    /// <summary>
+    /// Whether a search with this <paramref name="embedding"/> can look by meaning, in the open
+    /// transaction of the Account: there is one, and the Account is not being indexed.
+    /// </summary>
+    public async Task<bool> CanLookByMeaningAsync(QueryEmbedding? embedding, CancellationToken cancellationToken) =>
+        embedding is not null && !await IndexingAsync(cancellationToken);
 
     /// <summary>The vector as pgvector reads it in text: <c>[0.1,-0.2,…]</c>.</summary>
     public static string VectorLiteral(ReadOnlyMemory<float> vector)
