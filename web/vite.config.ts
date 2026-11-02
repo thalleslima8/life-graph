@@ -12,6 +12,10 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   server: {
+    // IPv4 loopback explicitly: "localhost" can resolve to ::1 only, which the devcontainer's port forwarding does not reach.
+    host: "127.0.0.1",
+    port: 5173,
+    strictPort: true,
     // Same origin in dev as in production: the auth cookie (BFF, DA-010) stays first-party.
     proxy: {
       "/api": apiTarget,
