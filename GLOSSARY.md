@@ -100,10 +100,26 @@ Hard Relations, ignorando a direção delas. É um estado legítimo, não um err
 Soft Relations não contam. Um Node na Inbox também pode estar desancorado.
 _Avoid_: órfão, solto, perdido
 
+**Guia para agentes**:
+O Node que a pessoa designa como ponto de entrada para suas AgentIdentities: o
+`get_context` sem argumentos o devolve junto da Raiz da Conta, com o corpo
+cortado e rotulado como conteúdo da pessoa. É uma convenção sugerida, nunca uma
+autorização: não amplia scopes nem anula o filtro central. É uma designação sobre
+um Node comum, um por Account, e não uma segunda raiz.
+_Avoid_: raiz lógica, segunda raiz, prompt do sistema, instruções do agente
+
 **Origin**:
 Quem originou um objeto do grafo: `user`, `agent`, `system` ou `import`. É
 independente de a Relation ser Hard ou Soft.
 _Avoid_: fonte, source (reservados para Provenance)
+
+**Resultado possivelmente incompleto** (`possiblyIncomplete`):
+Estado de uma leitura de agente (`search_graph`, `get_context` por `subject`) que
+só pôde buscar por palavras, porque a busca por significado não rodou. Os hits,
+ou a falta deles, podem deixar de fora Nodes que existem: a ausência não está
+comprovada e não justifica criar um Node. Equivale ao `Degraded` da API REST da
+pessoa, que mantém esse nome.
+_Avoid_: resultado vazio, "não existe", degradado (para a ausência de um Node)
 
 ## Histórico e confiança
 
@@ -123,6 +139,21 @@ As operações que um agente pediu e que ainda não mudaram o grafo, à espera d
 quem decide: a pessoa ou, quando permitido, o próprio agente. Aplicada, vira um
 GraphChangeSet. Estados: Proposed, Applied, Rejected, Expired, Withdrawn.
 _Avoid_: GraphChangeSet proposto, rascunho, sugestão pendente
+
+**Revisado por você**:
+O marcador, com data (`reviewedAt`), de que a pessoa conferiu um Node. Só um Human
+o aplica, e uma edição posterior de AgentIdentity o invalida. É independente do
+`trust`: um Node escrito por agente continua untrusted mesmo revisado, para a
+proveniência não se perder.
+_Avoid_: aprovado, verificado, confiável, Trusted (reservado para a Source do
+usuário)
+
+**Fila de revisão**:
+A visão das ChangeProposals em Proposed e ainda não expiradas, ou seja, o que
+aguarda a decisão da pessoa ("Aguardando você" na interface). Não é uma entidade
+nem um estado. Decidir várias de uma vez é uma decisão em lote: cada
+ChangeProposal vira o seu próprio GraphChangeSet, e o lote em si não é um.
+_Avoid_: pendentes, rascunhos, lote de alterações
 
 **Withdrawn**:
 Estado de uma ChangeProposal que saiu da fila sem decisão da pessoa: o agente

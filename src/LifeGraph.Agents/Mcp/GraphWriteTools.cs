@@ -69,6 +69,31 @@ public sealed class GraphWriteTools
         + " Without an anchor the change is refused with graph.anchor_required, which tells the root's id;"
         + " while the account has no root yet, with graph.root_missing.";
 
+    /// <summary>The default most operations of one proposal, as the descriptions tell it: <see cref="AgentWriteOptions.MaxOperations"/> (DA-045, DA-308).</summary>
+    public const string DefaultMaxOperationsText = "50";
+
+    /// <summary>
+    /// The default most changes to the person's own Nodes a proposal may make without their
+    /// approval, as the descriptions tell it: <see cref="AgentWriteOptions.BulkThreshold"/> (DA-046, DA-308).
+    /// </summary>
+    public const string DefaultBulkThresholdText = "20";
+
+    // DA-286, DA-308: there is no bulk tool; many changes go in one proposal, and past the bulk
+    // threshold the person approves it, which is an answer and not an error (DA-130).
+    private const string BatchNote =
+        " To change many Nodes at once (one Tag on many Nodes, say) there is no bulk tool: send the operations together in one "
+        + SuggestChangesName + ", then apply the proposal with " + ApplyChangesName + "."
+        + " A proposal has at most " + DefaultMaxOperationsText + " operations by default; more are refused, and the refusal tells the limit."
+        + " With more than " + DefaultBulkThresholdText + " changes to the person's own Nodes (by default) it waits for the person's approval:"
+        + " the answer has `requiresUser` true, which is not an error. Tell the person and do not send it again.";
+
+    private const string BatchExample =
+        " Example, a new Node related to a known one and one Tag put on two Nodes, in one proposal:"
+        + " {\"operations\":[{\"op\":\"create_node\",\"ref\":\"trip\",\"title\":\"Trip to Lisbon\",\"anchor\":{\"nodeId\":\"<id of the Node it belongs under>\"}},"
+        + "{\"op\":\"create_relation\",\"sourceRef\":\"trip\",\"targetNodeId\":\"<id of a known Node>\",\"kind\":\"related_to\"},"
+        + "{\"op\":\"" + TagNodeName + "\",\"nodeId\":\"<id>\",\"tag\":\"<a name from list_tags>\"},"
+        + "{\"op\":\"" + TagNodeName + "\",\"nodeId\":\"<another id>\",\"tag\":\"<the same name>\"}]}.";
+
     private const string WriteNote =
         " The change is applied at once and the person can see and undo it, unless it needs their approval: then the answer has status \""
         + PendingApprovalStatus + "\" and nothing changed yet.";
@@ -166,10 +191,12 @@ public sealed class GraphWriteTools
         + " Each operation has `op`: \"create_node\" (title, body, typeId, properties, suggestedType, ref, anchor), \"update_node\" (nodeId, expectedVersion, title, body, typeId, properties),"
         + " \"create_relation\" (sourceNodeId or sourceRef, targetNodeId or targetRef, kind), \"remove_relation\" (relationId), \"delete_node\" (nodeId, expectedVersion),"
         + " \"tag_node\" or \"untag_node\" (nodeId, tag: a name from list_tags)."
-        + " `ref` names a Node created by an earlier operation, so a relation or an anchor can point at it. Too many operations at once are refused, and the refusal tells the limit."
+        + " `ref` names a Node created by an earlier operation, so a relation or an anchor can point at it."
         + AnchorNote
         + " In one proposal, a new Node may instead hang from another new Node that is anchored, through its anchor (`" + AnchorKeys.Ref + "`) or a create_relation; a Node left loose refuses the whole proposal, and the refusal names it."
-        + " The answer is the proposal's id; when `requiresUser` is false you may apply it yourself with apply_changes, otherwise only the person can (deletes, Type changes, many changes to the person's own content).")]
+        + " The answer is the proposal's id; when `requiresUser` is false you may apply it yourself with apply_changes, otherwise only the person can (deletes, Type changes, many changes to the person's own content)."
+        + BatchNote
+        + BatchExample)]
     public static async Task<CallToolResult> SuggestChangesAsync(
         IAgentGraphWriter writer,
         [Description("The operations, in order.")] List<SuggestedOperation> operations,
@@ -188,7 +215,11 @@ public sealed class GraphWriteTools
     [McpServerTool(Name = ApplyChangesName, Title = "Aplicar uma proposta", ReadOnly = false, Idempotent = true, Destructive = false, OpenWorld = false)]
     [Description("Applies a proposal you made with suggest_changes, as it is, if the person has not decided on it and it does not need their approval."
         + " Send a new `idempotencyKey` for each proposal and the same one when you retry: a retry then answers the same, with nothing applied twice."
-        + " Every new Node of the proposal must still be anchored now, under the most specific Node it belongs to: if an anchor was deleted, hidden or left loose since, nothing is applied and the refusal names the Node; make a new proposal anchored elsewhere.")]
+        + " Every new Node of the proposal must still be anchored now, under the most specific Node it belongs to: if an anchor was deleted, hidden or left loose since, nothing is applied and the refusal names the Node; make a new proposal anchored elsewhere."
+        + " A proposal with `requiresUser` true is refused here: only the person approves it, in Agent Changes."
+        + BatchNote
+        + " Example: when " + SuggestChangesName + " answers {\"proposalId\":\"<id>\",\"requiresUser\":false,...}, call " + ApplyChangesName
+        + " with {\"proposalId\":\"<that id>\",\"idempotencyKey\":\"tag-trip-1\"}.")]
     public static async Task<CallToolResult> ApplyChangesAsync(
         IAgentGraphWriter writer,
         [Description("The proposal's id (from suggest_changes).")] Guid proposalId,

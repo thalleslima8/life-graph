@@ -12,7 +12,8 @@ namespace LifeGraph.IntegrationTests.Graph;
 /// The search by words and by meaning (DA-183) on a real Postgres with pgvector: a Node is found
 /// by its words, by meaning or by both, and each hit says which; an agent never meets a Node
 /// Oculto para agentes by either way (DA-035); the same question gives the same answer; and with
-/// the model down or the Nodes being indexed, the search finds by words and says it is degraded.
+/// the model down or the Nodes being indexed, the search finds by words and says it is degraded
+/// and possibly incomplete (DA-283).
 /// The vectors are pinned at known angles (DA-175).
 /// </summary>
 public sealed class HybridSearchTests(PostgresDatabase database) : IAsyncLifetime
@@ -52,6 +53,7 @@ public sealed class HybridSearchTests(PostgresDatabase database) : IAsyncLifetim
         var result = await SearchAsync(Human, Query);
 
         Assert.False(result.Degraded);
+        Assert.False(result.PossiblyIncomplete);
         Assert.Equal(both, result.Hits[0].Id);
         Assert.Equal(
             new Dictionary<Guid, SearchMatch> { [both] = SearchMatch.Both, [byMeaning] = SearchMatch.Semantic, [byWords] = SearchMatch.Text },
@@ -96,7 +98,7 @@ public sealed class HybridSearchTests(PostgresDatabase database) : IAsyncLifetim
     }
 
     [Fact]
-    public async Task With_the_model_down_the_search_finds_by_words_and_says_it_is_degraded()
+    public async Task With_the_model_down_the_search_finds_by_words_and_says_it_is_degraded_and_possibly_incomplete()
     {
         await CreateNodeAsync("Marco Aurélio", angle: 0);
         var byWords = await CreateNodeAsync("Diário de filosofia");
@@ -106,11 +108,12 @@ public sealed class HybridSearchTests(PostgresDatabase database) : IAsyncLifetim
         var result = await SearchAsync(Human, Query);
 
         Assert.True(result.Degraded);
+        Assert.True(result.PossiblyIncomplete);
         Assert.Equal([(byWords, SearchMatch.Text)], result.Hits.Select(hit => (hit.Id, hit.Match)));
     }
 
     [Fact]
-    public async Task While_the_nodes_are_being_indexed_the_search_finds_by_words_and_says_it_is_degraded()
+    public async Task While_the_nodes_are_being_indexed_the_search_finds_by_words_and_says_it_is_degraded_and_possibly_incomplete()
     {
         await CreateNodeAsync("Marco Aurélio", angle: 0);
         var byWords = await CreateNodeAsync("Diário de filosofia");
@@ -125,6 +128,7 @@ public sealed class HybridSearchTests(PostgresDatabase database) : IAsyncLifetim
         var result = await SearchAsync(Human, Query);
 
         Assert.True(result.Degraded);
+        Assert.True(result.PossiblyIncomplete);
         Assert.Equal([(byWords, SearchMatch.Text)], result.Hits.Select(hit => (hit.Id, hit.Match)));
     }
 

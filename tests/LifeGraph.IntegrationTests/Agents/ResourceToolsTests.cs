@@ -214,7 +214,7 @@ public sealed class ResourceToolsTests(PostgresDatabase database) : IAsyncLifeti
         var ontoShown = await AgentMcp.RefusalAsync(_agent, GraphWriteTools.UpdateNodeName, MoveTo("https://example.test/shown?utm_source=x"));
 
         Assert.Equal(ontoShown, ontoHidden);
-        Assert.Equal("This link cannot be kept as a Resource.", ontoHidden);
+        Assert.StartsWith("This link cannot be kept as a Resource. ", ontoHidden, StringComparison.Ordinal);
         Assert.DoesNotContain(hiddenResource.ToString(), ontoHidden, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("https://example.test/mine", await _graph.ScalarAsync<string>("SELECT canonical_url FROM nodes WHERE id = @id", new NpgsqlParameter("id", mine)));
 
@@ -274,7 +274,8 @@ public sealed class ResourceToolsTests(PostgresDatabase database) : IAsyncLifeti
 
         var refusal = await AgentMcp.RefusalAsync(_agent, ResourceTools.CaptureResourceName, new { url = "https://example.test/over-budget" });
 
-        Assert.Equal(CaptureAdmission.TooManyCapturesMessage, refusal);
+        Assert.StartsWith(CaptureAdmission.TooManyCapturesMessage + " Wait ", refusal, StringComparison.Ordinal);
+        Assert.Contains(" seconds before you call again", refusal, StringComparison.Ordinal);
         Assert.Equal(0L, await _graph.ScalarAsync<long>("SELECT count(*) FROM nodes WHERE canonical_url IS NOT NULL"));
     }
 

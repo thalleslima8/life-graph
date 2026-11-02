@@ -20,6 +20,8 @@ public sealed class DeterministicEmbedder : IEmbedder
 
     private int _calls;
 
+    private int _queryAttempts;
+
     public string ModelId => Model;
 
     /// <summary>Plays a third-party model, which a Node hidden from agents never reaches (DA-072).</summary>
@@ -30,6 +32,9 @@ public sealed class DeterministicEmbedder : IEmbedder
 
     /// <summary>How many texts it embedded.</summary>
     public int Calls => _calls;
+
+    /// <summary>How many queries it was asked to embed, failed ones included (DA-283: no retry).</summary>
+    public int QueryAttempts => _queryAttempts;
 
     public Task<ReadOnlyMemory<float>> EmbedPassageAsync(string text, CancellationToken cancellationToken)
     {
@@ -48,6 +53,7 @@ public sealed class DeterministicEmbedder : IEmbedder
     /// </summary>
     public Task<ReadOnlyMemory<float>> EmbedQueryAsync(string text, CancellationToken cancellationToken)
     {
+        Interlocked.Increment(ref _queryAttempts);
         if (Fails)
         {
             throw new EmbedderUnavailableException("The test model is down.");

@@ -229,7 +229,7 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
         Assert.True(second.RootElement.GetProperty("deduplicated").GetBoolean());
         Assert.Equal("proposed", status.RootElement.GetProperty("status").GetString());
         Assert.False(status.RootElement.TryGetProperty("operations", out var _));
-        Assert.Equal("The proposal was not found.", fromOther);
+        Assert.StartsWith("The proposal was not found. ", fromOther, StringComparison.Ordinal);
         Assert.Equal("Draft", await _graph.ScalarAsync<string>("SELECT title FROM nodes WHERE id = @id", new NpgsqlParameter("id", node)));
     }
 
@@ -280,7 +280,8 @@ public sealed class GraphWriteToolsTests(PostgresDatabase database) : IAsyncLife
 
         var refused = await AgentMcp.RefusalAsync(otherAgent, GraphWriteTools.ApplyChangesName, new { proposalId = proposal, idempotencyKey = "k1" });
 
-        Assert.Equal("The proposal was not found.", refused);
+        Assert.StartsWith("The proposal was not found. ", refused, StringComparison.Ordinal);
+        Assert.Contains(GraphWriteTools.SuggestChangesName, refused, StringComparison.Ordinal);
     }
 
     // DA-043 item 2: only a pending proposal that has not expired is applied.
