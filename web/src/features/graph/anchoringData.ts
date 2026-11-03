@@ -17,6 +17,12 @@ export const CONNECT_KIND_DEFAULT = "related_to";
 
 const UNANCHORED_PAGE_SIZE = 50;
 
+/** Above this, a Desancorados counter shows "99+": the page itself has the exact list. */
+export const UNANCHORED_COUNT_CAP = 99;
+
+/** A Desancorados count as a counter shows it, capped at {@link UNANCHORED_COUNT_CAP}. */
+export const shownUnanchoredCount = (total: number) => (total > UNANCHORED_COUNT_CAP ? `${UNANCHORED_COUNT_CAP}+` : String(total));
+
 /** The Account has no root yet: it is created at the next sign-in (DA-201, DA-202). */
 export const isRootMissing = (error: unknown): boolean => isApiError(error, "graph.root_missing");
 

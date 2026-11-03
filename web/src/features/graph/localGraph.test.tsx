@@ -7,6 +7,7 @@ import { aLocalGraph, NODE_ID, OTHER_NODE_ID } from "@/test/graphFixtures";
 import { server } from "@/test/msw/server";
 import { graphPath } from "./graphView";
 import {
+  graphViewPath,
   localGraphQuery,
   useGraphView,
   type GraphView,
@@ -89,5 +90,13 @@ describe("local graph query", () => {
 
     expect(asked).toEqual(["?depth=3"]);
     expect([graph.omittedNodeCount, graph.omittedEdgeCount, graph.nodes[1]?.distance]).toEqual([12, 3, 1]);
+  });
+});
+
+describe("graph view path", () => {
+  it("writes only what differs from the default view", () => {
+    expect(graphViewPath(NODE_ID, {})).toBe(graphPath(NODE_ID));
+    expect(graphViewPath(NODE_ID, { depth: 1, selected: OTHER_NODE_ID })).toBe(`${graphPath(NODE_ID)}?depth=1&selected=${OTHER_NODE_ID}`);
+    expect(graphViewPath(NODE_ID, { depth: 2, view: "list" })).toBe(`${graphPath(NODE_ID)}?view=list`);
   });
 });

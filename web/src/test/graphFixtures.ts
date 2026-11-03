@@ -5,6 +5,7 @@ import type { ChangeSetFeed, ChangeSetItem } from "@/features/graph/recentChange
 import type { TagItem } from "@/features/tags/tagsData";
 import type { CollectionItem } from "@/features/collections/collectionsData";
 import type { ChangeSetDetail, ProposalDetail, ProposalItem, ProposedOperation } from "@/features/agents/agentChanges";
+import { ACCOUNT_ROOT_ID } from "@/test/msw/server";
 
 /** Builders of API bodies for the graph screens; each test overrides only what it is about. */
 
@@ -211,4 +212,20 @@ export function aLocalGraph(overrides: Partial<components["schemas"]["LocalGraph
     omittedEdgeCount: 0,
     ...overrides,
   };
+}
+
+/** The Home's reads for an Account with no Node besides its root, for tests that only pass through the Home. */
+export function emptyHomeHandlers() {
+  return [
+    http.get("/api/nodes", () => HttpResponse.json({ data: [], page: { nextCursor: null } })),
+    http.get("/api/nodes/:nodeId/graph", () =>
+      HttpResponse.json(
+        aLocalGraph({
+          rootNodeId: ACCOUNT_ROOT_ID,
+          nodes: [{ id: ACCOUNT_ROOT_ID, title: "Raiz", typeId: null, distance: 0, degree: 0, agentUnreviewed: false }],
+          edges: [],
+        }),
+      ),
+    ),
+  ];
 }

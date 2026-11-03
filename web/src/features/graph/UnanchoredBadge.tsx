@@ -1,8 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { UNANCHORED_PATH, unanchoredCountOptions } from "./anchoringData";
-
-const COUNT_CAP = 99;
+import { shownUnanchoredCount, UNANCHORED_PATH, unanchoredCountOptions } from "./anchoringData";
 
 /**
  * The Inbox's way to Desancorados (DA-197, DA-208): a link with how many Nodes are loose. While
@@ -11,7 +9,7 @@ const COUNT_CAP = 99;
 export function UnanchoredBadge() {
   const count = useQuery(unanchoredCountOptions());
   const total = Number(count.data ?? 0);
-  const shown = total > COUNT_CAP ? `${COUNT_CAP}+` : String(total);
+  const shown = shownUnanchoredCount(total);
   const label = count.isSuccess ? `Sem âncora: ${total === 1 ? "1 Node solto" : `${total} Nodes soltos`}` : "Sem âncora";
 
   return (

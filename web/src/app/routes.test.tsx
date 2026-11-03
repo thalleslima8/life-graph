@@ -3,20 +3,23 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { axe } from "vitest-axe";
-import { aCollection } from "@/test/graphFixtures";
+import { aCollection, emptyHomeHandlers } from "@/test/graphFixtures";
 import { sessionHandler } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 import { renderRoute } from "@/test/renderRoute";
 
 describe("app shell", () => {
   beforeEach(() => {
-    server.use(sessionHandler(() => ({ email: "ada@example.test" })));
+    server.use(
+      sessionHandler(() => ({ email: "ada@example.test" })),
+      ...emptyHomeHandlers(),
+    );
   });
 
   it("renders the home page at the root for a signed-in user", async () => {
     renderRoute("/");
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Life Graph" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Seu grafo" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Principal" })).toBeInTheDocument();
   });
 
@@ -68,7 +71,7 @@ describe("app shell", () => {
 
     await userEvent.click(screen.getByRole("link", { name: "Voltar para o início" }));
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Life Graph" })).toHaveFocus();
+    expect(await screen.findByRole("heading", { level: 1, name: "Seu grafo" })).toHaveFocus();
   });
 
   it.each(["/", "/does-not-exist"])("has no accessibility violations at %s", async (path) => {
