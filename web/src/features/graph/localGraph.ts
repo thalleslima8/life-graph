@@ -6,6 +6,7 @@ import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema.gen";
 import { graphKeys, retryUnlessNotFound } from "./graphData";
 import type { RenderableGraph } from "./graphShape";
+import { graphPath } from "./graphView";
 
 /**
  * The local graph of the 2.5D view (DA-138, DA-142): the query of the subgraph around one
@@ -138,6 +139,30 @@ function readView(params: URLSearchParams): GraphView {
   };
 }
 
+/** The search of a graph view: only what differs from the default is written. */
+function graphViewSearch(view: GraphView): URLSearchParams {
+  const written = new URLSearchParams();
+  if (view.depth !== DEFAULT_DEPTH) {
+    written.set("depth", String(view.depth));
+  }
+
+  if (view.view !== DEFAULT_VIEW_MODE) {
+    written.set("view", view.view);
+  }
+
+  if (view.selected) {
+    written.set("selected", view.selected);
+  }
+
+  return written;
+}
+
+/** The graph page of a Node opened with the given depth, view and selection, the rest at the default. */
+export function graphViewPath(nodeId: string, view: Partial<GraphView>): string {
+  const search = graphViewSearch({ depth: DEFAULT_DEPTH, view: DEFAULT_VIEW_MODE, ...view }).toString();
+  return search === "" ? graphPath(nodeId) : `${graphPath(nodeId)}?${search}`;
+}
+
 /**
  * The depth, the view and the selected Node of the graph page, in the URL. An invalid value
  * reads as the default, and only what differs from the default is written. Selecting replaces
@@ -149,26 +174,7 @@ export function useGraphView(): [GraphView, (next: Partial<GraphView>) => void] 
   const setView = useCallback(
     (next: Partial<GraphView>) => {
       const onlySelection = Object.keys(next).every((key) => key === "selected");
-      setParams(
-        (current) => {
-          const merged = { ...readView(current), ...next };
-          const written = new URLSearchParams();
-          if (merged.depth !== DEFAULT_DEPTH) {
-            written.set("depth", String(merged.depth));
-          }
-
-          if (merged.view !== DEFAULT_VIEW_MODE) {
-            written.set("view", merged.view);
-          }
-
-          if (merged.selected) {
-            written.set("selected", merged.selected);
-          }
-
-          return written;
-        },
-        { replace: onlySelection },
-      );
+      setParams((current) => graphViewSearch({ ...readView(current), ...next }), { replace: onlySelection });
     },
     [setParams],
   );

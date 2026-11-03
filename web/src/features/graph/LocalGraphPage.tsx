@@ -1,70 +1,46 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Button } from "@/components/ui/button";
-import { GraphCanvas } from "./GraphCanvas";
-import { graphKeys, isNotFound, typesQuery } from "./graphData";
-import { GraphList } from "./GraphList";
+import { graphKeys, isNotFound, useTypeNames } from "./graphData";
 import {
   AGENT_NEWS_ACTION,
   AGENT_NEWS_MESSAGE,
-  AGENT_UNREVIEWED_LABEL,
   BACK_TO_NODES_LABEL,
   CREATE_RELATION_LABEL,
   DEPTH_LEGEND,
   GRAPH_DRAW_ERROR_MESSAGE,
   GRAPH_UPDATING_MESSAGE,
   GRAPH_VIEW_MODE_LABELS,
-  LEGEND_AGENT_TEXT,
-  LEGEND_HARD_TEXT,
-  LEGEND_SIZE_TEXT,
-  LEGEND_SOFT_TEXT,
-  LEGEND_TITLE,
   LOAD_ERROR_MESSAGE,
   LOADING_MESSAGE,
   LOCAL_GRAPH_TITLE,
   NO_RELATIONS_MESSAGE,
-  NO_TYPE_LABEL,
   NODE_NOT_FOUND_TITLE,
   OPEN_IN_INSPECTOR_LABEL,
   RETRY_LABEL,
   REVIEW_AGENT_CHANGES_LABEL,
   SELECTED_AGENT_NOTICE,
   SELECTED_GONE_MESSAGE,
-  TYPE_NAME_LOADING_LABEL,
-  TYPE_UNAVAILABLE_LABEL,
   VIEW_MODE_LEGEND,
-  ZOOM_CONTROLS_LABEL,
-  ZOOM_IN_LABEL,
   ZOOM_LEVEL_MESSAGES,
-  ZOOM_OUT_LABEL,
-  ZOOM_RESET_LABEL,
-  localGraphLabel,
   localGraphTitle,
-  nodeSummaryText,
   omittedMessage,
 } from "./graphMessages";
-import { AGENT_RING_COLOR, AGENT_RING_WIDTH, EDGE_COLOR, edgeStyleOf, typeColorOf, type EdgeLine } from "./graphVisuals";
+import { GraphLegend, LocalGraphView, ZoomControls } from "./LocalGraphParts";
 import {
   GRAPH_DEPTHS,
   GRAPH_VIEW_MODES,
   localGraphQuery,
   rememberLastFocus,
-  renderableGraphOf,
   useGraphView,
   type GraphDepth,
   type GraphViewMode,
   type LocalGraph,
-  type LocalGraphEdge,
 } from "./localGraph";
 import { NodeInspector } from "./NodeInspector";
-import type { RenderableNode } from "./graphShape";
-import { INITIAL_ZOOM, MAX_ZOOM, MIN_ZOOM, graphPath, steppedZoom, zoomLevelOf } from "./graphView";
+import { INITIAL_ZOOM, graphPath, zoomLevelOf } from "./graphView";
 import { useChangeSetProbe } from "./recentChanges";
-import { SharedBadge } from "@/features/sharing/SharedBadge";
-import { sharedBadgeStateOf, useSharedNodeIds } from "@/features/sharing/sharesData";
-
-type TypeNameOf = (typeId: string | null) => string;
 
 /**
  * The local graph around one Node (DA-138, DA-142). States: loading, not found (the same for
@@ -247,71 +223,6 @@ export function LocalGraphPage() {
   );
 }
 
-/** The graph drawn or listed: the two views share the selection, the re-root and the texts (DA-142). */
-function LocalGraphView({
-  mode,
-  graph,
-  rootTitle,
-  selectedId,
-  zoom,
-  typeNameOf,
-  onZoomChange,
-  onSelect,
-  onReroot,
-  onDrawingFailed,
-}: {
-  mode: GraphViewMode;
-  graph: LocalGraph;
-  rootTitle: string;
-  selectedId: string | undefined;
-  zoom: number;
-  typeNameOf: TypeNameOf;
-  onZoomChange: (zoom: number) => void;
-  onSelect: (nodeId: string) => void;
-  onReroot: (nodeId: string) => void;
-  onDrawingFailed: () => void;
-}) {
-  const shown = useMemo(() => renderableGraphOf(graph, typeNameOf), [graph, typeNameOf]);
-  const labels = useMemo(
-    () => ({
-      canvas: localGraphLabel(rootTitle, graph.nodes.length, graph.edges.length),
-      agentUnreviewed: AGENT_UNREVIEWED_LABEL,
-      nodeSummary: (node: RenderableNode) => nodeSummaryText(node.typeName ?? NO_TYPE_LABEL, node.degree ?? 0),
-    }),
-    [rootTitle, graph.nodes.length, graph.edges.length],
-  );
-  // Only the list shows the badge, so only the list asks about the Nodes on screen (DA-299).
-  const shared = useSharedNodeIds(mode === "list" ? shown.nodes.map((node) => node.id) : []);
-  if (mode === "list") {
-    return (
-      <GraphList
-        graph={shown}
-        selectedId={selectedId}
-        highlightAgent
-        onSelect={onSelect}
-        onReroot={onReroot}
-        labels={labels}
-        nodeBadge={(nodeId) => <SharedBadge state={sharedBadgeStateOf(nodeId, shared)} />}
-      />
-    );
-  }
-
-  return (
-    <GraphCanvas
-      graph={shown}
-      selectedId={selectedId}
-      highlightAgent
-      zoom={zoom}
-      onZoomChange={onZoomChange}
-      onSelect={onSelect}
-      onReroot={onReroot}
-      labels={labels}
-      onUnavailable={onDrawingFailed}
-      onRenderError={onDrawingFailed}
-    />
-  );
-}
-
 function ViewModeControl({ mode, onChange }: { mode: GraphViewMode; onChange: (mode: GraphViewMode) => void }) {
   return (
     <fieldset>
@@ -341,91 +252,6 @@ function DepthControl({ depth, onChange }: { depth: GraphDepth; onChange: (depth
         ))}
       </div>
     </fieldset>
-  );
-}
-
-/** The names of the Account's Types, for the legend and the near level's summary (DA-140). */
-function useTypeNames(): TypeNameOf {
-  const { data, isPending } = useQuery(typesQuery);
-  return useCallback(
-    (typeId: string | null) => {
-      if (typeId === null) {
-        return NO_TYPE_LABEL;
-      }
-
-      return data?.find((type) => type.id === typeId)?.name ?? (isPending ? TYPE_NAME_LOADING_LABEL : TYPE_UNAVAILABLE_LABEL);
-    },
-    [data, isPending],
-  );
-}
-
-function ZoomControls({ zoom, onChange }: { zoom: number; onChange: (zoom: number) => void }) {
-  return (
-    <div role="group" aria-label={ZOOM_CONTROLS_LABEL} className="flex gap-2">
-      <Button type="button" variant="secondary" size="sm" disabled={zoom >= MAX_ZOOM} onClick={() => onChange(steppedZoom(zoom, "in"))}>
-        {ZOOM_IN_LABEL}
-      </Button>
-      <Button type="button" variant="secondary" size="sm" disabled={zoom <= MIN_ZOOM} onClick={() => onChange(steppedZoom(zoom, "out"))}>
-        {ZOOM_OUT_LABEL}
-      </Button>
-      <Button type="button" variant="secondary" size="sm" onClick={() => onChange(INITIAL_ZOOM)}>
-        {ZOOM_RESET_LABEL}
-      </Button>
-    </div>
-  );
-}
-
-/** What size, line and colour mean on the drawing: none of it is said by colour alone (FE-034). */
-function GraphLegend({ graph, typeNameOf }: { graph: LocalGraph; typeNameOf: TypeNameOf }) {
-  const typeIds = [...new Set(graph.nodes.map((node) => node.typeId ?? null))];
-  const hasSoft = graph.edges.some((edge) => edge.assertion === "soft");
-  const hasAgentChanges = graph.nodes.some((node) => node.agentUnreviewed) || graph.edges.some((edge) => edge.agentUnreviewed);
-  return (
-    <section aria-labelledby="graph-legend-title" className="space-y-2 text-sm">
-      <h2 id="graph-legend-title" className="font-medium">
-        {LEGEND_TITLE}
-      </h2>
-      <ul className="flex flex-wrap gap-x-6 gap-y-2">
-        <li>{LEGEND_SIZE_TEXT}</li>
-        <li className="flex items-center gap-2">
-          <EdgeSample assertion="hard" />
-          {LEGEND_HARD_TEXT}
-        </li>
-        {hasSoft && (
-          <li className="flex items-center gap-2">
-            <EdgeSample assertion="soft" />
-            {LEGEND_SOFT_TEXT}
-          </li>
-        )}
-        {hasAgentChanges && (
-          <li className="flex items-center gap-2">
-            <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4">
-              <circle cx="8" cy="8" r="6" fill="none" stroke={AGENT_RING_COLOR} strokeWidth={AGENT_RING_WIDTH} />
-              <circle cx="8" cy="8" r="3" fill={EDGE_COLOR} />
-            </svg>
-            {LEGEND_AGENT_TEXT}
-          </li>
-        )}
-        {typeIds.map((typeId) => (
-          <li key={typeId ?? NO_TYPE_LABEL} className="flex items-center gap-2">
-            {/* The Type palette is the drawing's (graphVisuals), not a design token. */}
-            <span aria-hidden="true" className="inline-block size-3 rounded-full" style={{ backgroundColor: typeColorOf(typeId) }} />
-            {typeNameOf(typeId)}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-const EDGE_SAMPLE_PATHS: Record<EdgeLine, string> = { straight: "M2 8 H30", curved: "M2 12 Q16 0 30 12" };
-
-function EdgeSample({ assertion }: { assertion: LocalGraphEdge["assertion"] }) {
-  const style = edgeStyleOf(assertion);
-  return (
-    <svg aria-hidden="true" viewBox="0 0 32 16" className="h-4 w-8">
-      <path d={EDGE_SAMPLE_PATHS[style.line]} fill="none" stroke={EDGE_COLOR} strokeWidth={style.size} />
-    </svg>
   );
 }
 

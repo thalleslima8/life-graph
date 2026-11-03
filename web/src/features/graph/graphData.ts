@@ -1,9 +1,10 @@
-import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient, type MutationFunction } from "@tanstack/react-query";
-import { useState } from "react";
+import { infiniteQueryOptions, queryOptions, useMutation, useQuery, useQueryClient, type MutationFunction } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
 import { useSearchParams } from "react-router";
 import { api, isApiError, unwrap, type ApiError } from "@/api/client";
 import type { components } from "@/api/schema.gen";
 import { useInvalidatePlan } from "@/features/account/planData";
+import { NO_TYPE_LABEL, TYPE_NAME_LOADING_LABEL, TYPE_UNAVAILABLE_LABEL } from "./graphMessages";
 
 /**
  * The graph's server state for the SPA (DA-118): query options per resource, the list filter
@@ -146,6 +147,24 @@ export const typesQuery = queryOptions({
   queryKey: graphKeys.types,
   queryFn: async ({ signal }) => unwrap(await api.GET("/api/types", { params: { query: { limit: ONTOLOGY_PAGE_SIZE } }, signal })).data,
 });
+
+/** A Type's name for display, from its id; null is the Node without a Type. */
+export type TypeNameOf = (typeId: string | null) => string;
+
+/** The names of the Account's Types, for the legend and the near level's summary (DA-140). */
+export function useTypeNames(): TypeNameOf {
+  const { data, isPending } = useQuery(typesQuery);
+  return useCallback(
+    (typeId: string | null) => {
+      if (typeId === null) {
+        return NO_TYPE_LABEL;
+      }
+
+      return data?.find((type) => type.id === typeId)?.name ?? (isPending ? TYPE_NAME_LOADING_LABEL : TYPE_UNAVAILABLE_LABEL);
+    },
+    [data, isPending],
+  );
+}
 
 export const propertyDefinitionsQuery = queryOptions({
   queryKey: graphKeys.propertyDefinitions,

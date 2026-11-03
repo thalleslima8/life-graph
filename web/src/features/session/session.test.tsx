@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { api, setUnauthorizedHandler, unwrap } from "@/api/client";
+import { emptyHomeHandlers } from "@/test/graphFixtures";
 import { csrfTokenHandler, sessionHandler, type FakeSession } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 import { renderRoute } from "@/test/renderRoute";
@@ -18,6 +19,7 @@ function fakeAccountApi(initial: FakeSession) {
   const state = { session: initial, csrfTokens: [] as (string | null)[] };
   const csrf = csrfTokenHandler();
   server.use(
+    ...emptyHomeHandlers(),
     csrf.handler,
     sessionHandler(() => state.session),
     http.post("/api/sessions", async ({ request }) => {
@@ -69,7 +71,7 @@ describe("session", () => {
 
     await logIn(ADA.email);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Life Graph" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Seu grafo" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("?tab=recent");
     expect(screen.getByText(ADA.email)).toBeInTheDocument();
   });
@@ -100,7 +102,7 @@ describe("session", () => {
 
     const { router } = renderRoute("/login");
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Life Graph" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Seu grafo" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/");
   });
 
