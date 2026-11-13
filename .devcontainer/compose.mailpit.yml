@@ -4,7 +4,7 @@
 
 services:
   mailpit:
-    image: axllent/mailpit@sha256:ed9b00c609e77e99c79b93f1178255ebc271868920f2c69a8d166bd5634ed10d
+    image: axllent/mailpit@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
     container_name: lifegraph-mailpit-dev
     networks:
       - lifegraph_devnet
