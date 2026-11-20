@@ -13,7 +13,7 @@ name: lifegraph-public
 services:
   cloudflared:
     # Pinned by digest, like every image of the dev environment (DA-007).
-    image: cloudflare/cloudflared:2026.9.3@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+    image: cloudflare/cloudflared:2026.11.0@sha256:b94b96edf2c9c4360f8879c8580cfaa99077f19c849ec595ca2f711b27d4f344
     profiles: ["public"]
     container_name: lifegraph-cloudflared-dev
     command: ["tunnel", "--no-autoupdate", "run"]
