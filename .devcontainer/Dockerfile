@@ -8,7 +8,7 @@
 # The Docker socket is NOT mounted (isolation): integration tests use the compose
 # postgres service instead of Testcontainers here (DA-093).
 
-FROM mcr.microsoft.com/devcontainers/dotnet:10.0
+FROM mcr.microsoft.com/devcontainers/dotnet:11.0
 
 ARG INSTALL_NODE=true
 ARG INSTALL_PSQL=true
